@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=65.5.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eb_mia"
+version = "0.1.0"
+description = "Minimal example with multiple top-level packages"
+authors = [
+  { name = "Marcus Lassila", email = "lassila@chalmers.se" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["data", "mia", "vae"]
