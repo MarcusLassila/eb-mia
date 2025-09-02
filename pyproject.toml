@@ -9,7 +9,7 @@ description = "Minimal example with multiple top-level packages"
 authors = [
   { name = "Marcus Lassila", email = "lassila@chalmers.se" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = []
 
 [tool.setuptools.packages.find]

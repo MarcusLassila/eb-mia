@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: eb_mia
+Version: 0.1.0
+Summary: Minimal example with multiple top-level packages
+Author-email: Marcus Lassila <lassila@chalmers.se>
+Requires-Python: >=3.11
