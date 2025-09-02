@@ -1,5 +1,6 @@
 from data import data
 from vae import train, vae
+import utils
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -37,8 +38,8 @@ def main():
     for i_model in range(NUM_REF_MODELS):
         mask = train_masks[i_model]
 
-        train_indices = mask.nonzero(as_tuple=True)[0]
-        nontrain_indices = (~mask).nonzero(as_tuple=True)[0]
+        train_indices = utils.mask_to_index(mask)
+        nontrain_indices = utils.mask_to_index(~mask)
         val_size = int(0.05 * len(dataset))
         val_indices = nontrain_indices[torch.randperm(n=nontrain_indices.shape[0])[:val_size]]
 
@@ -47,7 +48,7 @@ def main():
         train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
         val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-        model = vae.VAE(in_channels=channels, in_dim=height, latent_dim=LATENT_DIM)
+        model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=LATENT_DIM)
         train.train_vae(
             model=model,
             train_dataloader=train_dataloader,

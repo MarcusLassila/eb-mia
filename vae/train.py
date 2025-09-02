@@ -47,7 +47,7 @@ def train_vae(model, train_dataloader, val_dataloader, epochs, device, lr, savep
         model_checkpoint = {
             "model_state_dict": model.state_dict(),
             "train_indices": train_dataloader.dataset.indices,
-            "in_channels": model.in_channels,
+            "in_channels": model.in_ch,
             "in_dim": model.in_dim,
             "latent_dim": model.latent_dim,
             "train_loss": train_loss,
