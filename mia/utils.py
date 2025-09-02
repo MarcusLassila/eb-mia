@@ -1,0 +1,33 @@
+from vae import vae
+
+import torch
+
+def load_model(dataset: str, model_type: str, index_model: int, device: torch.device):
+    model_path = f"trained_models/{model_type}/{dataset}_model_{index_model}.pth"
+    checkpoint = torch.load(model_path, map_location=device)
+    match model_type:
+        case "VAE":
+            model = vae.VAE(
+                in_ch=checkpoint["in_channels"],
+                in_dim=checkpoint["in_dim"],
+                latent_dim=checkpoint["latent_dim"],
+            )
+            model.to(device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            train_indices = checkpoint["train_indices"]
+        case _:
+            raise ValueError(f"Unsupported model: {model_type}")
+    return model, train_indices
+
+def get_train_indices(dataset: str, model_type: str, index_model: int):
+    model_path = f"trained_models/{model_type}/{dataset}_model_{index_model}.pth"
+    checkpoint = torch.load(model_path, map_location="cpu")
+    return checkpoint["train_indices"]
+
+def mask_to_index(mask: torch.Tensor):
+    return mask.nonzero(as_tuple=True)[0]
+
+def index_to_mask(index: torch.Tensor, n_indices):
+    mask = torch.zeros(n_indices, dtype=torch.bool)
+    mask[index] = True
+    return mask
