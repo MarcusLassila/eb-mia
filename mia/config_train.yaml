@@ -1,0 +1,9 @@
+CIFAR10-VAE:
+  batch_size: 128
+  dataset: "CIFAR10"
+  epochs: 500
+  latent_dim: 128
+  lr: 0.001
+  model: "VAE"
+  n_ref_models: 10
+  weight_decay: 0.0001
