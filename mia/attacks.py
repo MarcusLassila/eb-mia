@@ -35,7 +35,7 @@ class GlobalLossAttack:
 
     def run_attack(self, audit_samples, index_target_model):
         audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
-        return self.loss_signal(audit_loader, index_target_model)
+        return -self.loss_signal(audit_loader, index_target_model)
 
 class UncalibratedBASE:
 
