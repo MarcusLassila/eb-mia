@@ -4,9 +4,9 @@ from tqdm.auto import tqdm
 
 import time
 
-def train_vae(model, train_dataloader, val_dataloader, epochs, device, lr, savepath):
+def train_vae(model, train_dataloader, val_dataloader, epochs, device, lr, weight_decay, savepath):
     model.to(device)
-    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     train_loss = []
     val_loss = []
     for epoch in range(1, epochs + 1):

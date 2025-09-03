@@ -2,6 +2,25 @@ from vae import vae
 
 import torch
 
+import subprocess
+import yaml
+
+class Config:
+
+    def __init__(self, dictionary):
+        self.__dict__.update(dictionary)
+
+    def __str__(self):
+        return yaml.dump(self.__dict__)
+
+def get_root():
+    ''' Return path to the root of the repository. '''
+    try:
+        root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL)
+        return root.decode("utf-8").strip()
+    except subprocess.CalledProcessError:
+        return None
+
 def load_model(dataset: str, model_type: str, index_model: int, device: torch.device):
     model_path = f"trained_models/{model_type}/{dataset}_model_{index_model}.pth"
     checkpoint = torch.load(model_path, map_location=device)

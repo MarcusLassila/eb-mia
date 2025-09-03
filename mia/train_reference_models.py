@@ -6,14 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Subset
 
 from pathlib import Path
-
-BATCH_SIZE = 128
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EPOCHS = 500
-LATENT_DIM = 128
-LR = 1e-3
-NUM_REF_MODELS = 10
-SAVEDIR = "./trained_models/VAE/"
+import yaml
 
 def partitioned_train_masks(n_models, n_indices):
     '''
@@ -29,13 +22,24 @@ def partitioned_train_masks(n_models, n_indices):
         index_masks[i + 1, ~rand_mask] = True
     return index_masks
 
-def main():
-    dataset = data.CIFAR10()
+def train_ref_models(
+        dataset_name,
+        model_name,
+        batch_size,
+        device,
+        epochs,
+        latent_dim,
+        n_ref_models,
+        lr,
+        weight_decay,
+        savedir,
+    ):
+    dataset = getattr(data, dataset_name)()
     channels, height, width = dataset[0].shape
     assert height == width
-    Path(SAVEDIR).mkdir(parents=True, exist_ok=True)
-    train_masks = partitioned_train_masks(n_models=NUM_REF_MODELS, n_indices=len(dataset))
-    for i_model in range(NUM_REF_MODELS):
+    Path(savedir).mkdir(parents=True, exist_ok=True)
+    train_masks = partitioned_train_masks(n_models=n_ref_models, n_indices=len(dataset))
+    for i_model in range(n_ref_models):
         mask = train_masks[i_model]
 
         train_indices = utils.mask_to_index(mask)
@@ -45,19 +49,42 @@ def main():
 
         train_dataset = Subset(dataset, train_indices)
         val_dataset = Subset(dataset, val_indices)
-        train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-        val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-        model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=LATENT_DIM)
+        model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=latent_dim) # hardcoded for now
+        assert model.__class__.__name__ == model_name
         train.train_vae(
             model=model,
             train_dataloader=train_dataloader,
             val_dataloader=val_dataloader,
-            epochs=EPOCHS,
-            device=DEVICE,
-            lr=LR,
-            savepath=SAVEDIR+f"{dataset.__class__.__name__}_model_{i_model}.pth"
+            epochs=epochs,
+            device=device,
+            lr=lr,
+            weight_decay=weight_decay,
+            savepath=savedir+f"{dataset_name}_{model_name}_{i_model}.pth"
         )
+
+def main():
+    root = utils.get_root()
+    with open(f"{root}/mia/config_train.yaml", "r") as file:
+        config = yaml.safe_load(file)
+    _, params = next(iter(config.items()))
+    config = utils.Config(params)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    savedir = f"{root}/trained_models/{config.model}"
+    train_ref_models(
+        dataset_name=config.dataset,
+        model_name=config.model,
+        batch_size=config.batch_size,
+        device=device,
+        epochs=config.epochs,
+        latent_dim=config.latent_dim,
+        n_ref_models=config.n_ref_models,
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        savedir=savedir,
+    )
 
 if __name__ == "__main__":
     main()
