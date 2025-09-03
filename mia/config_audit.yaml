@@ -1,0 +1,12 @@
+CIFAR10-VAE:
+  dataset: "CIFAR10"
+  model: "VAE"
+  batch_size: 128
+  n_audits: 10
+  n_audit_samples: 2000
+  attacks:
+    GlobalLossAttack:
+      attack: "GlobalLossAttack"
+    UncalibratedBASE:
+      attack: "UncalibratedBASE"
+      prior: 0.5
