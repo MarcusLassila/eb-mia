@@ -41,6 +41,7 @@ def load_model(dataset: str, model_type: str, index_model: int, device: torch.de
             train_indices = checkpoint["train_indices"]
         case _:
             raise ValueError(f"Unsupported model: {model_type}")
+    model.eval()
     return model, train_indices
 
 def get_train_indices(dataset: str, model_type: str, index_model: int):

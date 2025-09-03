@@ -1,9 +1,9 @@
 CIFAR10-VAE:
   dataset: "CIFAR10"
   model: "VAE"
-  batch_size: 128
+  batch_size: 2048
   n_audits: 10
-  n_audit_samples: 2000
+  n_audit_samples: 60000
   attacks:
     GlobalLossAttack:
       attack: "GlobalLossAttack"

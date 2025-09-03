@@ -21,12 +21,14 @@ class GlobalLossAttack:
         )
         return model
 
+    @torch.inference_mode()
     def loss_signal(self, audit_loader, index_model):
         model = self.load_model(index_model)
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            sig.append(model.per_sample_loss(samples))
+            loss = model.per_sample_loss(samples).cpu()
+            sig.append(loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -54,12 +56,14 @@ class UncalibratedBASE:
         )
         return model
 
+    @torch.inference_mode()
     def loss_signal(self, audit_loader, index_model):
         model = self.load_model(index_model)
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            sig.append(model.per_sample_loss(samples))
+            loss = model.per_sample_loss(samples).cpu()
+            sig.append(loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
