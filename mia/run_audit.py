@@ -8,7 +8,9 @@ from torch.utils.data import Subset
 from tqdm.auto import tqdm
 
 from collections import defaultdict
+from pathlib import Path
 from statistics import mean, stdev
+import pickle
 import yaml
 
 def indices_of_ref_models(index_target, n_ref_models):
@@ -65,8 +67,9 @@ def run_audit(
         n_audit_samples,
         device,
     ):
+    root = utils.get_root()
+    resdir = f"{root}/mia/results/{dataset_name}-{model_type}/"
     data_population = getattr(data, dataset_name)()
-    aurocs = defaultdict(list)
     for index_target in tqdm(range(n_audits), desc="Running audit"):
         target_train_indices = utils.get_train_indices(dataset_name, model_type, index_target)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
@@ -84,10 +87,10 @@ def run_audit(
                 index_ref_models=index_ref_models,
             )
             score = attacker.run_attack(audit_samples, index_target)
-            auc = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
-            aurocs[attack].append(auc)
-    for attack, auc in aurocs.items():
-        print(f"{attack}: {mean(auc):.5f}, {stdev(auc):.5f}")
+            metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
+            Path(f"{resdir}/{attack}").mkdir(parents=True, exist_ok=True)
+            with open(f"{resdir}/{attack}/metrics_{index_target}.pkl", "wb") as f:
+                pickle.dump(metrics, f)
 
 if __name__ == "__main__":
     root = utils.get_root()
