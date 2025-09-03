@@ -1,2 +1,4 @@
 datasets/
+eb_mia.egg-info/
 __pycache__/
+trained_models/
