@@ -1,4 +1,5 @@
 from vae import vae
+import utils
 
 import torch
 
@@ -21,9 +22,13 @@ def get_root():
     except subprocess.CalledProcessError:
         return None
 
+def load_checkpoint(dataset: str, model_type: str, index_model: int, device: torch.device):
+    root = utils.get_root()
+    path = f"{root}/trained_models/{model_type}/{dataset}_model_{index_model}.pth"
+    return torch.load(path, map_location=device)
+
 def load_model(dataset: str, model_type: str, index_model: int, device: torch.device):
-    model_path = f"trained_models/{model_type}/{dataset}_model_{index_model}.pth"
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = load_checkpoint(dataset, model_type, index_model, device)
     match model_type:
         case "VAE":
             model = vae.VAE(
@@ -39,8 +44,7 @@ def load_model(dataset: str, model_type: str, index_model: int, device: torch.de
     return model, train_indices
 
 def get_train_indices(dataset: str, model_type: str, index_model: int):
-    model_path = f"trained_models/{model_type}/{dataset}_model_{index_model}.pth"
-    checkpoint = torch.load(model_path, map_location="cpu")
+    checkpoint = load_checkpoint(dataset, model_type, index_model, torch.device("cpu"))
     return checkpoint["train_indices"]
 
 def mask_to_index(mask: torch.Tensor):

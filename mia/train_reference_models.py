@@ -62,7 +62,7 @@ def train_ref_models(
             device=device,
             lr=lr,
             weight_decay=weight_decay,
-            savepath=savedir+f"{dataset_name}_{model_name}_{i_model}.pth"
+            savepath=savedir+f"{dataset_name}_model_{i_model}.pth"
         )
 
 def main():
