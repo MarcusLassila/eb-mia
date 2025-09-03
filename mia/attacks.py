@@ -26,7 +26,7 @@ class GlobalLossAttack:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            sig.append(model.loss(samples))
+            sig.append(model.per_sample_loss(samples))
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -59,8 +59,7 @@ class UncalibratedBASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss = model.loss(samples)
-            sig.append(loss)
+            sig.append(model.per_sample_loss(samples))
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig

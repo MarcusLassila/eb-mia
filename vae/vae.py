@@ -112,13 +112,17 @@ class VAE(nn.Module):
     def decode(self, z):
         return self.decoder(z)
 
-    def loss(self, x):
+    def per_sample_loss(self, x):
         enc_mean, enc_logvar = self.encoder(x)
-        kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp())
+        kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp(), dim=1)
         z = VAE.rsample(enc_mean, enc_logvar)
         y = self.decode(z)
-        nll = F.mse_loss(input=y, target=x, reduction="sum")
-        return (kl_div + nll) / x.shape[0]
+        nll = F.mse_loss(input=y, target=x, reduction="none").sum(dim=(1, 2, 3))
+        assert kl_div.shape == nll.shape == (x.shape[0],)
+        return kl_div + nll
+
+    def loss(self, x):
+        return self.per_sample_loss(x).mean()
 
     @torch.no_grad()
     def generate(self, batch_size):
