@@ -1,12 +1,15 @@
+from data import data
+import models
 import utils
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 
 class GlobalLossAttack:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=100):
+    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=10):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
@@ -28,11 +31,11 @@ class GlobalLossAttack:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            losses = []
+            loss_samples = []
             for _ in range(self.n_loss_samples):
                 loss = model.per_sample_loss(samples).cpu()
-                losses.append(loss)
-            mean_loss = torch.stack(losses).mean(dim=0)
+                loss_samples.append(loss)
+            mean_loss = torch.stack(loss_samples).mean(dim=0)
             sig.append(mean_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
@@ -44,7 +47,7 @@ class GlobalLossAttack:
 
 class UncalibratedBASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, prior=0.5, n_loss_samples=100):
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, prior=0.5, n_loss_samples=10):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
@@ -68,11 +71,11 @@ class UncalibratedBASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            losses = []
+            loss_samples = []
             for _ in range(self.n_loss_samples):
                 loss = model.per_sample_loss(samples).cpu()
-                losses.append(loss)
-            mean_loss = torch.stack(losses).mean(dim=0)
+                loss_samples.append(loss)
+            mean_loss = torch.stack(loss_samples).mean(dim=0)
             sig.append(mean_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
@@ -89,3 +92,123 @@ class UncalibratedBASE:
         sig_ref_models = torch.stack(sig_ref_models)
         score = -sig_target - torch.logsumexp(-sig_ref_models, dim=0) + np.log(self.prior / (1 - self.prior))
         return score.sigmoid()
+
+class ClassifierAttack:
+    
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=10):
+        self.dataset = getattr(data, dataset_name)() # Full dataset
+        self.dataset_name = dataset_name
+        self.model_type = model_type
+        self.batch_size = batch_size
+        self.device = device
+        self.index_ref_models = index_ref_models
+        self.n_loss_samples = n_loss_samples
+        self.attack_dataset_train, self.attack_dataset_val = self.create_attack_dataset()
+        self.attack_model = models.MLP(
+            in_features=n_loss_samples,
+            out_features=1,
+            hidden_dims=(128, 256, 128),
+        )
+        self.attack_model.to(device)
+        self.train_config = utils.Config({
+            "batch_size": 8192, # Can probably be very large since data is low dimensional
+            "epochs": 500,
+            "lr": 1e-3,
+            "early_stopping_rounds": 10
+        })
+        self.train_classifier()
+
+    def load_model(self, index):
+        model, train_indices  = utils.load_model(
+            dataset=self.dataset_name,
+            model_type=self.model_type,
+            index_model=index,
+            device=self.device,
+        )
+        return model, train_indices
+    
+    @torch.inference_mode()
+    def loss_samples(self, model, data_samples):
+        loss_samples = []
+        for _ in range(self.n_loss_samples):
+            loss = model.per_sample_loss(data_samples).cpu()
+            loss_samples.append(loss)
+        loss_samples = torch.stack(loss_samples)
+        return loss_samples
+    
+    @torch.inference_mode()
+    def create_attack_dataset(self):
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        features = []
+        labels = []
+        for index in self.index_ref_models:
+            model, train_indices = self.load_model(self, index)
+            train_mask = utils.index_to_mask(train_indices, len(self.dataset)).to(torch.long)
+            i = 0
+            for samples in dataloader:
+                samples = samples.to(self.device)
+                indices = torch.arange(i, i + samples.shape[0])
+                i += samples.shape[0]
+                loss_samples = self.loss_samples(model, samples)
+                features.append(loss_samples)
+                labels.append(train_mask[indices])
+        features = torch.stack(features)
+        labels = torch.stack(labels)
+        split_index = int(features.shape[0] * 0.8)
+        attack_dataset_train = TensorDataset(features[:split_index], labels[:split_index])
+        attack_dataset_val = TensorDataset(features[split_index:], labels[split_index:])
+        return attack_dataset_train, attack_dataset_val
+
+    def train_classifier(self):
+        config = self.train_config
+        train_loader = DataLoader(self.attack_dataset_train, batch_size=config.batch_size, shuffle=True)
+        val_loader = DataLoader(self.attack_dataset_val, batch_size=config.batch_size, shuffle=False)
+        loss_fn = nn.BCEWithLogitsLoss()
+        optimizer = torch.optim.Adam(self.attack_model.parameters(), lr=config.lr)
+        train_loss = []
+        val_loss = []
+        min_val_loss = torch.inf
+        early_stopping_counter = 0
+        for epoch in range(config.epochs):
+            self.attack_model.train()
+            acc_loss = 0.0
+            for X, y in train_loader:
+                X, y = X.to(self.device), y.to(self.device)
+                optimizer.zero_grad()
+                out = self.attack_model(X)
+                loss = loss_fn(out, y)
+                loss.backward()
+                optimizer.step()
+                acc_loss += loss.detach().item()
+            train_loss.append(acc_loss / len(train_loader))
+            self.attack_model.eval()
+            with torch.no_grad():
+                acc_loss = 0.0
+                for X, y in val_loader:
+                    X, y = X.to(self.device), y.to(self.device)
+                    out = self.attack_model(X)
+                    loss = loss_fn(out, y)
+                    acc_loss = loss.detach().item()
+                val_loss.append(acc_loss / len(val_loader))
+            if val_loss[-1] < min_val_loss:
+                min_val_loss = val_loss[-1]
+                early_stopping_counter = 0
+            else:
+                early_stopping_counter += 1
+            if early_stopping_counter == config.early_stopping_rounds:
+                print(f"Early stopping at epoch={epoch}")
+                break
+
+    @torch.inference_mode()
+    def run_attack(self, audit_samples, index_target_model):
+        target_model, _ = self.load_model(index_target_model) # don't look at the train_indices here of course
+        audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
+        scores = []
+        for samples in audit_loader:
+            samples = samples.to(self.device)
+            features = self.loss_samples(target_model, samples)
+            score = self.attack_model(features)
+            scores.append(score)
+        scores = torch.stack(scores)
+        assert scores.shape == (len(audit_samples),)
+        return scores

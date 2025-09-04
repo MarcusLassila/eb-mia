@@ -38,12 +38,22 @@ def get_audit_indices(n_audit_samples, membership_mask):
 
 def get_attacker(attack_config, dataset_name, model_type, batch_size, device, index_ref_models):
     match attack_config.attack:
+        case "ClassifierAttack":
+            attacker = attacks.ClassifierAttack(
+                dataset_name=dataset_name,
+                model_type=model_type,
+                batch_size=batch_size,
+                device=device,
+                index_ref_models=index_ref_models[:1], # just one for now
+                n_loss_samples=attack_config.n_loss_samples,
+            )
         case "GlobalLossAttack":
             attacker = attacks.GlobalLossAttack(
                 dataset_name=dataset_name,
                 model_type=model_type,
                 batch_size=batch_size,
                 device=device,
+                n_loss_samples=attack_config.n_loss_samples,
             )
         case "UncalibratedBASE":
             attacker = attacks.UncalibratedBASE(
@@ -53,6 +63,7 @@ def get_attacker(attack_config, dataset_name, model_type, batch_size, device, in
                 device=device,
                 index_ref_models=index_ref_models,
                 prior=attack_config.prior,
+                n_loss_samples=attack_config.n_loss_samples,
             )
         case _:
             raise ValueError(f"No attack:: {attack_config.attack}")
