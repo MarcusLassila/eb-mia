@@ -6,11 +6,12 @@ from torch.utils.data import DataLoader
 
 class GlobalLossAttack:
 
-    def __init__(self, dataset_name, model_type, batch_size, device):
+    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=100):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
         self.device = device
+        self.n_loss_samples = n_loss_samples
 
     def load_model(self, index):
         model, _ = utils.load_model(
@@ -27,8 +28,12 @@ class GlobalLossAttack:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss = model.per_sample_loss(samples).cpu()
-            sig.append(loss)
+            losses = []
+            for _ in range(self.n_loss_samples):
+                loss = model.per_sample_loss(samples).cpu()
+                losses.append(loss)
+            mean_loss = torch.stack(losses).mean(dim=0)
+            sig.append(mean_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -39,13 +44,14 @@ class GlobalLossAttack:
 
 class UncalibratedBASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, prior=0.5):
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, prior=0.5, n_loss_samples=100):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
         self.device = device
         self.index_ref_models = index_ref_models
         self.prior = prior
+        self.n_loss_samples = n_loss_samples
 
     def load_model(self, index):
         model, _ = utils.load_model(
@@ -62,8 +68,12 @@ class UncalibratedBASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss = model.per_sample_loss(samples).cpu()
-            sig.append(loss)
+            losses = []
+            for _ in range(self.n_loss_samples):
+                loss = model.per_sample_loss(samples).cpu()
+                losses.append(loss)
+            mean_loss = torch.stack(losses).mean(dim=0)
+            sig.append(mean_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
