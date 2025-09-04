@@ -3,20 +3,20 @@ CIFAR10-VAE:
   model: "VAE"
   batch_size: 512
   n_audits: 10
-  n_audit_samples: 60000
+  n_audit_samples: 20000
   attacks:
     GlobalLossAttack:
       attack: "GlobalLossAttack"
-      n_loss_samples: 10
+      n_loss_samples: 20
     UncalibratedBASE:
       attack: "UncalibratedBASE"
       prior: 0.5
-      n_loss_samples: 10
-    ClassifierAttack:
+      n_loss_samples: 20
+    XGBAttack:
       attack: "ClassifierAttack"
-      n_loss_samples: 10
+      n_loss_samples: 20
       classifier: "XGBoost"
-    ClassifierAttack:
+    MLPAttack:
       attack: "ClassifierAttack"
-      n_loss_samples: 10
-      classifier: "XGBoost"
+      n_loss_samples: 20
+      classifier: "MLP"

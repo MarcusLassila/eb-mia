@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-import xgboost as XGBClassifier
+from xgboost import XGBClassifier
 
 class GlobalLossAttack:
 
@@ -118,7 +118,7 @@ class ClassifierAttack:
                 "batch_size": 8192, # Can probably be very large since data is low dimensional
                 "epochs": 500,
                 "lr": 1e-3,
-                "early_stopping_rounds": 10
+                "early_stopping_rounds": 20
             })
             self.train_mlp_classifier(train_config)
         elif classifier == "XGBoost":
@@ -141,7 +141,7 @@ class ClassifierAttack:
         for _ in range(self.n_loss_samples):
             loss = model.per_sample_loss(data_samples).cpu()
             loss_samples.append(loss)
-        loss_samples = torch.stack(loss_samples, dim=1)
+        loss_samples = torch.stack(loss_samples, dim=1).sort()[0]
         return loss_samples
 
     @torch.inference_mode()
@@ -211,8 +211,15 @@ class ClassifierAttack:
     def train_xgboost_classifier(self):
         X_train, y_train =  self.train_features.numpy(), self.train_labels.numpy()
         X_val, y_val = self.val_features.numpy(), self.val_labels.numpy()
-        model = XGBClassifier(objective="binary:logistic", n_estimators=1000, random_state=42, early_stopping_rounds=10)
-        model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+        model = XGBClassifier(
+            objective="binary:logistic",
+            n_estimators=1000,
+            random_state=42,
+            early_stopping_rounds=20,
+            tree_method="hist",
+            device=self.device.type,
+        )
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         return model
 
     @torch.inference_mode()
