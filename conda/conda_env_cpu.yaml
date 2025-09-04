@@ -19,3 +19,4 @@ dependencies:
   - torchmetrics
   - tqdm
   - PyYAML
+  - xgboost

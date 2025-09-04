@@ -1,7 +1,7 @@
 import torch
 from torchvision import datasets
 from torchvision import transforms as T
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, Dataset
 
 class MNIST(Dataset):
     

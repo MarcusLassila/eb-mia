@@ -46,6 +46,7 @@ def get_attacker(attack_config, dataset_name, model_type, batch_size, device, in
                 device=device,
                 index_ref_models=index_ref_models[:1], # just one for now
                 n_loss_samples=attack_config.n_loss_samples,
+                classifier=attack_config.classifier,
             )
         case "GlobalLossAttack":
             attacker = attacks.GlobalLossAttack(
@@ -86,7 +87,7 @@ def run_audit(
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
         audit_indices = get_audit_indices(n_audit_samples, membership_mask)
         audit_samples = Subset(data_population, audit_indices)
-        index_ref_models = indices_of_ref_models(index_target, n_audits)
+        index_ref_models = indices_of_ref_models(index_target, 10)
         ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
         for attack, attack_dict in attack_config.items():
             attacker = get_attacker(

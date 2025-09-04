@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+import xgboost as XGBClassifier
+
 class GlobalLossAttack:
 
     def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=10):
@@ -94,8 +96,8 @@ class UncalibratedBASE:
         return score.sigmoid()
 
 class ClassifierAttack:
-    
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=10):
+
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=10, classifier="MLP"):
         self.dataset = getattr(data, dataset_name)() # Full dataset
         self.dataset_name = dataset_name
         self.model_type = model_type
@@ -103,20 +105,26 @@ class ClassifierAttack:
         self.device = device
         self.index_ref_models = index_ref_models
         self.n_loss_samples = n_loss_samples
-        self.attack_dataset_train, self.attack_dataset_val = self.create_attack_dataset()
-        self.attack_model = models.MLP(
-            in_features=n_loss_samples,
-            out_features=1,
-            hidden_dims=(128, 256, 128),
-        )
-        self.attack_model.to(device)
-        self.train_config = utils.Config({
-            "batch_size": 8192, # Can probably be very large since data is low dimensional
-            "epochs": 500,
-            "lr": 1e-3,
-            "early_stopping_rounds": 10
-        })
-        self.train_classifier()
+        self.classifier = classifier
+        self.train_features, self.train_labels, self.val_features, self.val_labels = self.create_attack_dataset()
+        if classifier == "MLP":
+            self.attack_model = models.MLP(
+                in_features=n_loss_samples,
+                out_features=1,
+                hidden_dims=(128, 256, 128),
+            )
+            self.attack_model.to(device)
+            train_config = utils.Config({
+                "batch_size": 8192, # Can probably be very large since data is low dimensional
+                "epochs": 500,
+                "lr": 1e-3,
+                "early_stopping_rounds": 10
+            })
+            self.train_mlp_classifier(train_config)
+        elif classifier == "XGBoost":
+            self.attack_model = self.train_xgboost_classifier()
+        else:
+            raise ValueError(f"Unsupported classifier: {classifier}")
 
     def load_model(self, index):
         model, train_indices  = utils.load_model(
@@ -126,7 +134,7 @@ class ClassifierAttack:
             device=self.device,
         )
         return model, train_indices
-    
+
     @torch.inference_mode()
     def loss_samples(self, model, data_samples):
         loss_samples = []
@@ -135,7 +143,7 @@ class ClassifierAttack:
             loss_samples.append(loss)
         loss_samples = torch.stack(loss_samples, dim=1)
         return loss_samples
-    
+
     @torch.inference_mode()
     def create_attack_dataset(self):
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -143,9 +151,9 @@ class ClassifierAttack:
         labels = []
         for index in self.index_ref_models:
             model, train_indices = self.load_model(index)
-            train_mask = utils.index_to_mask(train_indices, len(self.dataset)).to(torch.long)
+            train_mask = utils.index_to_mask(train_indices, len(self.dataset)).to(torch.float)
             i = 0
-            for samples in dataloader:
+            for i, samples in enumerate(dataloader):
                 samples = samples.to(self.device)
                 indices = torch.arange(i, i + samples.shape[0])
                 i += samples.shape[0]
@@ -153,16 +161,17 @@ class ClassifierAttack:
                 features.append(loss_samples)
                 labels.append(train_mask[indices])
         features = torch.cat(features, dim=0)
-        labels = torch.cat(labels, dim=0).to(features.dtype)
-        split_index = int(features.shape[0] * 0.8)
-        attack_dataset_train = TensorDataset(features[:split_index], labels[:split_index])
-        attack_dataset_val = TensorDataset(features[split_index:], labels[split_index:])
-        return attack_dataset_train, attack_dataset_val
+        labels = torch.cat(labels, dim=0)
+        split_index = int(features.shape[0] * 0.9)
+        train_features, train_labels = features[:split_index], labels[:split_index]
+        val_features, val_labels = features[split_index:], labels[split_index:]
+        return train_features, train_labels, val_features, val_labels
 
-    def train_classifier(self):
-        config = self.train_config
-        train_loader = DataLoader(self.attack_dataset_train, batch_size=config.batch_size, shuffle=True)
-        val_loader = DataLoader(self.attack_dataset_val, batch_size=config.batch_size, shuffle=False)
+    def train_mlp_classifier(self, config):
+        attack_dataset_train = TensorDataset(self.train_features, self.train_labels)
+        attack_dataset_val = TensorDataset(self.val_features, self.val_labels)
+        train_loader = DataLoader(attack_dataset_train, batch_size=config.batch_size, shuffle=True)
+        val_loader = DataLoader(attack_dataset_val, batch_size=config.batch_size, shuffle=False)
         loss_fn = nn.BCEWithLogitsLoss()
         optimizer = torch.optim.Adam(self.attack_model.parameters(), lr=config.lr)
         train_loss = []
@@ -199,6 +208,13 @@ class ClassifierAttack:
                 print(f"Early stopping at epoch={epoch}")
                 break
 
+    def train_xgboost_classifier(self):
+        X_train, y_train =  self.train_features.numpy(), self.train_labels.numpy()
+        X_val, y_val = self.val_features.numpy(), self.val_labels.numpy()
+        model = XGBClassifier(objective="binary:logistic", n_estimators=1000, random_state=42, early_stopping_rounds=10)
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+        return model
+
     @torch.inference_mode()
     def run_attack(self, audit_samples, index_target_model):
         target_model, _ = self.load_model(index_target_model) # don't look at the train_indices here of course
@@ -206,8 +222,11 @@ class ClassifierAttack:
         scores = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            features = self.loss_samples(target_model, samples).to(self.device)
-            score = self.attack_model(features)
+            features = self.loss_samples(target_model, samples)
+            if self.classifier == "XGBoost":
+                score = torch.tensor(self.attack_model.predict(features.numpy()))
+            else:
+                score = self.attack_model(features.to(self.device))
             scores.append(score)
         scores = torch.concat(scores, dim=0).cpu()
         assert scores.shape == (len(audit_samples),)

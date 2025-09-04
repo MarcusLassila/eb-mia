@@ -1,16 +1,22 @@
 CIFAR10-VAE:
   dataset: "CIFAR10"
   model: "VAE"
-  batch_size: 1
-  n_audits: 1
-  n_audit_samples: 20000
+  batch_size: 512
+  n_audits: 10
+  n_audit_samples: 60000
   attacks:
     GlobalLossAttack:
       attack: "GlobalLossAttack"
-      n_loss_samples: 100
+      n_loss_samples: 10
     UncalibratedBASE:
       attack: "UncalibratedBASE"
       prior: 0.5
+      n_loss_samples: 10
     ClassifierAttack:
       attack: "ClassifierAttack"
       n_loss_samples: 10
+      classifier: "XGBoost"
+    ClassifierAttack:
+      attack: "ClassifierAttack"
+      n_loss_samples: 10
+      classifier: "XGBoost"
