@@ -133,7 +133,7 @@ class ClassifierAttack:
         for _ in range(self.n_loss_samples):
             loss = model.per_sample_loss(data_samples).cpu()
             loss_samples.append(loss)
-        loss_samples = torch.stack(loss_samples)
+        loss_samples = torch.stack(loss_samples, dim=1)
         return loss_samples
     
     @torch.inference_mode()
@@ -142,7 +142,7 @@ class ClassifierAttack:
         features = []
         labels = []
         for index in self.index_ref_models:
-            model, train_indices = self.load_model(self, index)
+            model, train_indices = self.load_model(index)
             train_mask = utils.index_to_mask(train_indices, len(self.dataset)).to(torch.long)
             i = 0
             for samples in dataloader:
@@ -152,8 +152,8 @@ class ClassifierAttack:
                 loss_samples = self.loss_samples(model, samples)
                 features.append(loss_samples)
                 labels.append(train_mask[indices])
-        features = torch.stack(features)
-        labels = torch.stack(labels)
+        features = torch.cat(features, dim=0)
+        labels = torch.cat(labels, dim=0).to(features.dtype)
         split_index = int(features.shape[0] * 0.8)
         attack_dataset_train = TensorDataset(features[:split_index], labels[:split_index])
         attack_dataset_val = TensorDataset(features[split_index:], labels[split_index:])
@@ -206,9 +206,9 @@ class ClassifierAttack:
         scores = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            features = self.loss_samples(target_model, samples)
+            features = self.loss_samples(target_model, samples).to(self.device)
             score = self.attack_model(features)
             scores.append(score)
-        scores = torch.stack(scores)
+        scores = torch.concat(scores, dim=0).cpu()
         assert scores.shape == (len(audit_samples),)
         return scores

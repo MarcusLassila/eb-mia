@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class MLP:
+class MLP(nn.Module):
 
     def __init__(self, in_features, out_features, hidden_dims):
         super().__init__()
@@ -16,4 +16,4 @@ class MLP:
             x = layer(x)
             x = F.relu(x)
         x = self.layers[-1](x)
-        return x
+        return x.squeeze()
