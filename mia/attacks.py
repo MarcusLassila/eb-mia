@@ -109,7 +109,7 @@ class ClassifierAttack:
         self.train_features, self.train_labels, self.val_features, self.val_labels = self.create_attack_dataset()
         if classifier == "MLP":
             self.attack_model = models.MLP(
-                in_features=n_loss_samples,
+                in_features=self.train_features.shape[1],
                 out_features=1,
                 hidden_dims=(128, 256, 128),
             )
@@ -136,13 +136,17 @@ class ClassifierAttack:
         return model, train_indices
 
     @torch.inference_mode()
-    def loss_samples(self, model, data_samples):
+    def loss_features(self, model, data_samples):
         loss_samples = []
         for _ in range(self.n_loss_samples):
             loss = model.per_sample_loss(data_samples).cpu()
             loss_samples.append(loss)
-        loss_samples = torch.stack(loss_samples, dim=1).sort()[0]
-        return loss_samples
+        loss_samples = torch.stack(loss_samples, dim=1)
+        loss_mean = loss_samples.mean(dim=1, keepdim=True)
+        loss_std = loss_samples.std(dim=1, keepdim=True)
+        loss_features = torch.concat((loss_mean, loss_std, loss_samples.sort(dim=1)[0]), dim=1)
+        assert loss_features.shape == (len(data_samples), self.n_loss_samples + 2)
+        return loss_features
 
     @torch.inference_mode()
     def create_attack_dataset(self):
@@ -151,13 +155,14 @@ class ClassifierAttack:
         labels = []
         for index in self.index_ref_models:
             model, train_indices = self.load_model(index)
-            train_mask = utils.index_to_mask(train_indices, len(self.dataset)).to(torch.float)
-            i = 0
-            for i, samples in enumerate(dataloader):
+            train_mask = utils.index_to_mask(train_indices, len(self.dataset))
+            running_index = 0
+            for samples in dataloader:
                 samples = samples.to(self.device)
-                indices = torch.arange(i, i + samples.shape[0])
-                i += samples.shape[0]
-                loss_samples = self.loss_samples(model, samples)
+                n_samples = len(samples)
+                indices = torch.arange(running_index, running_index + len(samples))
+                running_index += len(samples)
+                loss_samples = self.loss_features(model, samples)
                 features.append(loss_samples)
                 labels.append(train_mask[indices])
         features = torch.cat(features, dim=0)
@@ -168,8 +173,8 @@ class ClassifierAttack:
         return train_features, train_labels, val_features, val_labels
 
     def train_mlp_classifier(self, config):
-        attack_dataset_train = TensorDataset(self.train_features, self.train_labels)
-        attack_dataset_val = TensorDataset(self.val_features, self.val_labels)
+        attack_dataset_train = TensorDataset(self.train_features, self.train_labels.to(torch.float))
+        attack_dataset_val = TensorDataset(self.val_features, self.val_labels.to(torch.float))
         train_loader = DataLoader(attack_dataset_train, batch_size=config.batch_size, shuffle=True)
         val_loader = DataLoader(attack_dataset_val, batch_size=config.batch_size, shuffle=False)
         loss_fn = nn.BCEWithLogitsLoss()
@@ -229,7 +234,7 @@ class ClassifierAttack:
         scores = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            features = self.loss_samples(target_model, samples)
+            features = self.loss_features(target_model, samples)
             if self.classifier == "XGBoost":
                 score = torch.tensor(self.attack_model.predict(features.numpy()))
             else:
