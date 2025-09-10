@@ -8,10 +8,16 @@ CIFAR10-VAE:
     GlobalLossAttack:
       attack: "GlobalLossAttack"
       n_loss_samples: 20
-    UncalibratedBASE:
-      attack: "UncalibratedBASE"
+    BASE:
+      attack: "BASE"
       prior: 0.5
       n_loss_samples: 20
+      calibrated: True
+    UncalibratedBASE:
+      attack: "BASE"
+      prior: 0.5
+      n_loss_samples: 20
+      calibrated: False
     XGBAttack:
       attack: "ClassifierAttack"
       n_loss_samples: 20
