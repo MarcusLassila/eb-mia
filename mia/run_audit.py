@@ -17,7 +17,7 @@ N_MODELS = 10
 def compute_partition_functions(n_models, dataset_name, model_type, device):
     data_shape = getattr(data, dataset_name)()[0].shape
     dim = torch.tensor(data_shape).prod()
-    beta_schedule = torch.linspace(0, 1, steps=1000, device=device)
+    beta_schedule = torch.linspace(0, 1, steps=500, device=device)
     partition_fns = []
     for index in range(n_models):
         model, _ = utils.load_model(

@@ -5,7 +5,7 @@ import time
 class AnnealedImportanceSampling:
     '''Hardcoded Metropolis MCMC kernel for now.'''
 
-    def __init__(self, dim, beta_schedule, log_p1, device, n_samples=2048, n_steps_per_sample=16):
+    def __init__(self, dim, beta_schedule, log_p1, device, n_samples=2048, n_steps_per_sample=20):
         self.dim = dim
         self.beta_schedule = beta_schedule
         self.n_betas = len(self.beta_schedule)
@@ -36,9 +36,8 @@ class AnnealedImportanceSampling:
         log_p0_curr = self.log_p0(X)
         log_p1_curr = self.log_p1(X)
         log_w = torch.zeros(self.n_samples, device=device)
-
+        t0 = time.time()
         for t in range(1, self.n_betas):
-            t0 = time.time()
             beta_prev = self.beta_schedule[t - 1]
             beta = self.beta_schedule[t]
             log_w += (beta - beta_prev) * (log_p1_curr - log_p0_curr)
@@ -68,7 +67,7 @@ class AnnealedImportanceSampling:
                     log_p1_curr[accept_mask] = log_p1_prop[accept_mask]
             t1 = time.time()
             accept_rate /= self.n_samples * self.n_steps_per_sample
-            log_msg = f"t: {t} | dt: {t1 - t0:.2f} | accept rate: {accept_rate:.5f}"
+            log_msg = f"t: {t} | accept rate: {accept_rate:.5f} | time: {t1 - t0:.1f}"
             print(log_msg, flush=True)
 
         # log(Z) = log(Z0) + LogSumExp(log_w) - log(n_samples) but log(Z0) = 0 since p0 is already normalized
@@ -81,6 +80,9 @@ class AnnealedImportanceSampling:
 def unnormalized_log_prob(loss_fn, shape):
     def wrapper(x):
         x = x.view(x.shape[0], *shape)
-        loss = loss_fn(x)
+        loss = []
+        for _ in range(10):
+            loss.append(loss_fn(x))
+        loss = torch.stack(loss).mean(dim=0)
         return -loss
     return wrapper
