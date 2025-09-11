@@ -14,35 +14,8 @@ import yaml
 
 N_MODELS = 10
 
-def compute_partition_functions(n_models, dataset_name, model_type, device):
-    data_shape = getattr(data, dataset_name)()[0].shape
-    dim = torch.tensor(data_shape).prod()
-    beta_schedule = torch.linspace(0, 1, steps=500, device=device)
-    partition_fns = []
-    for index in range(n_models):
-        model, _ = utils.load_model(
-            dataset=dataset_name,
-            model_type=model_type,
-            index_model=index,
-            device=device,
-        )
-        log_p1 = ais.unnormalized_log_prob(model.per_sample_loss, data_shape)
-        sampler = ais.AnnealedImportanceSampling(
-            dim=dim,
-            beta_schedule=beta_schedule,
-            log_p1=log_p1,
-            device=device,
-        )
-        log_Z = sampler.run()["log_Z"]
-        partition_fns.append(log_Z)
-    savedir = f"{utils.get_root()}/trained_models/partition_functions/{model_type}"
-    Path(savedir).mkdir(parents=True, exist_ok=True)
-    with open(f"{savedir}/{dataset_name}_partition_functions.pkl", "wb") as f:
-        pickle.dump(partition_fns, f)
-    print("Partition functions computed:")
-    for i, log_Z in enumerate(partition_fns):
-        print(f"{i}: {log_Z}")
-    return partition_fns
+def load_partition_fns(dataset_name, model_type, device):
+    return [0.0 for _ in range(N_MODELS)]
 
 def indices_of_ref_models(index_target, n_ref_models):
     assert 0 <= index_target < n_ref_models
@@ -114,7 +87,7 @@ def run_audit(
     root = utils.get_root()
     resdir = f"{root}/mia/results/{dataset_name}-{model_type}/"
     data_population = getattr(data, dataset_name)()
-    partition_fns = compute_partition_functions(N_MODELS, dataset_name, model_type, device)
+    partition_fns = load_partition_fns(dataset_name, model_type, device)
     for index_target in tqdm(range(n_audits), desc="Running audit"):
         target_train_indices = utils.get_train_indices(dataset_name, model_type, index_target)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))

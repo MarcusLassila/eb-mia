@@ -85,12 +85,13 @@ class Decoder(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, in_ch, in_dim, latent_dim):
+    def __init__(self, in_ch, in_dim, latent_dim, n_rsamples=1):
         super().__init__()
         assert in_dim % 8 == 0
         self.in_ch = in_ch
         self.in_dim = in_dim
         self.latent_dim = latent_dim
+        self.n_rsamples = n_rsamples
         self.encoder = Encoder(
             in_ch=in_ch,
             in_dim=in_dim,
@@ -115,9 +116,12 @@ class VAE(nn.Module):
     def per_sample_loss(self, x):
         enc_mean, enc_logvar = self.encoder(x)
         kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp(), dim=1)
-        z = VAE.rsample(enc_mean, enc_logvar)
-        y = self.decode(z)
-        nll = F.mse_loss(input=y, target=x, reduction="none").sum(dim=(1, 2, 3))
+        nll = torch.zeros(x.shape[0], device=x.device)
+        for _ in range(self.n_rsamples):
+            z = VAE.rsample(enc_mean, enc_logvar)
+            y = self.decode(z)
+            nll += F.mse_loss(input=y, target=x, reduction="none").sum(dim=(1, 2, 3))
+        nll /= self.n_rsamples
         assert kl_div.shape == nll.shape == (x.shape[0],)
         return kl_div + nll
 

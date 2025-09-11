@@ -27,7 +27,7 @@ def load_checkpoint(dataset: str, model_type: str, index_model: int, device: tor
     path = f"{root}/trained_models/{model_type}/{dataset}_model_{index_model}.pth"
     return torch.load(path, map_location=device)
 
-def load_model(dataset: str, model_type: str, index_model: int, device: torch.device):
+def load_model(dataset: str, model_type: str, index_model: int, device: torch.device, n_loss_samples: int = 20):
     checkpoint = load_checkpoint(dataset, model_type, index_model, device)
     match model_type:
         case "VAE":
@@ -36,6 +36,7 @@ def load_model(dataset: str, model_type: str, index_model: int, device: torch.de
                 in_dim=checkpoint["in_dim"],
                 latent_dim=checkpoint["latent_dim"],
             )
+            model.n_rsamples = n_loss_samples
             model.to(device)
             model.load_state_dict(checkpoint["model_state_dict"])
             train_indices = checkpoint["train_indices"]

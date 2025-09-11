@@ -11,7 +11,7 @@ from xgboost import XGBClassifier
 
 class GlobalLossAttack:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=10):
+    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=1):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
@@ -24,6 +24,7 @@ class GlobalLossAttack:
             model_type=self.model_type,
             index_model=index,
             device=self.device,
+            n_loss_samples=self.n_loss_samples,
         )
         return model
 
@@ -33,12 +34,8 @@ class GlobalLossAttack:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss_samples = []
-            for _ in range(self.n_loss_samples):
-                loss = model.per_sample_loss(samples).cpu()
-                loss_samples.append(loss)
-            mean_loss = torch.stack(loss_samples).mean(dim=0)
-            sig.append(mean_loss)
+            loss = model.per_sample_loss(samples).cpu()
+            sig.append(loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -49,7 +46,7 @@ class GlobalLossAttack:
 
 class BASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, partition_fns, prior=0.5, n_loss_samples=10):
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, partition_fns, prior=0.5, n_loss_samples=1):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
@@ -57,7 +54,7 @@ class BASE:
         self.index_ref_models = index_ref_models
         self.partition_fns = partition_fns
         self.prior = prior
-        self.n_loss_samples = n_loss_samples
+        self.n_loss_samples=n_loss_samples
 
     def load_model(self, index):
         model, _ = utils.load_model(
@@ -65,6 +62,7 @@ class BASE:
             model_type=self.model_type,
             index_model=index,
             device=self.device,
+            n_loss_samples=self.n_loss_samples,
         )
         return model
 
@@ -74,13 +72,9 @@ class BASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss_samples = []
-            for _ in range(self.n_loss_samples):
-                loss = model.per_sample_loss(samples).cpu()
-                loss_samples.append(loss)
-            mean_loss = torch.stack(loss_samples).mean(dim=0)
+            loss = model.per_sample_loss(samples).cpu()
             log_Z = self.partition_fns[index_model]
-            sig.append(mean_loss + log_Z)
+            sig.append(loss + log_Z)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -99,7 +93,7 @@ class BASE:
 
 class ClassifierAttack:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=10, classifier="MLP"):
+    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=20, classifier="MLP"):
         self.dataset = getattr(data, dataset_name)() # Full dataset
         self.dataset_name = dataset_name
         self.model_type = model_type
@@ -135,6 +129,7 @@ class ClassifierAttack:
             index_model=index,
             device=self.device,
         )
+        model.n_rsamples = 1 # Sample multiple loss values as attack features
         return model, train_indices
 
     @torch.inference_mode()
