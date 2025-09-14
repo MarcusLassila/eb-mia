@@ -114,7 +114,7 @@ def compute_partition_functions(model_indices, dataset_name, model_type, device)
         log_Z = sampler.run()["log_Z"]
         print(f"log(Z{index}) = {log_Z}")
         partition_fns.append(log_Z)
-    with open(f"{savedir}/{dataset_name}_logZ_{'-'.join(map(str, model_indices))}.pkl", "wb") as f:
+    with open(f"{savedir}/{dataset_name}_logZ_{''.join(map(str, model_indices))}.pkl", "wb") as f:
         pickle.dump(partition_fns, f)
 
 if __name__ == "__main__":

@@ -9,13 +9,29 @@ from torch.utils.data import Subset
 from tqdm.auto import tqdm
 
 from pathlib import Path
+import re
+import glob
 import pickle
 import yaml
 
 N_MODELS = 10
 
 def load_partition_fns(dataset_name, model_type, device):
-    return [0.0 for _ in range(N_MODELS)]
+    savedir = f"{utils.get_root()}/trained_models/partition_functions/{model_type}"
+    partition_fns = []
+    for path in glob.glob(f"{savedir}/*.pkl"):
+        m = re.search(r"(\d+)\.pkl$", path)
+        if m is None:
+            continue
+        indices = list(map(int, m[1]))
+        with open(path, "rb") as f:
+            log_Zs = pickle.load(f)
+        assert len(indices) == len(log_Zs)
+        log_Zs = [x for _, x in sorted(zip(indices, log_Zs))]
+        partition_fns.extend(zip(indices, log_Zs))
+    partition_fns = [x for _, x in sorted(partition_fns)]
+    print(f"Partition functions loaded (log(Z)): {partition_fns}")
+    return partition_fns
 
 def indices_of_ref_models(index_target, n_ref_models):
     assert 0 <= index_target < n_ref_models
