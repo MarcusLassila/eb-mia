@@ -1,5 +1,6 @@
 from data import data
-from vae import train, vae
+from tractable_ebm import bmm
+from vae import vae, train as train_vae
 import utils
 
 import torch
@@ -23,23 +24,16 @@ def partitioned_train_masks(n_models, n_indices):
     return index_masks
 
 def train_ref_models(
-        dataset_name,
-        model_name,
-        batch_size,
+        config,
         device,
-        epochs,
-        latent_dim,
-        n_ref_models,
-        lr,
-        weight_decay,
         savedir,
     ):
-    dataset = getattr(data, dataset_name)()
+    dataset = getattr(data, config.dataset)()
     channels, height, width = dataset[0].shape
     assert height == width
     Path(savedir).mkdir(parents=True, exist_ok=True)
-    train_masks = partitioned_train_masks(n_models=n_ref_models, n_indices=len(dataset))
-    for i_model in range(n_ref_models):
+    train_masks = partitioned_train_masks(n_models=config.n_ref_models, n_indices=len(dataset))
+    for i_model in range(config.n_ref_models):
         mask = train_masks[i_model]
 
         train_indices = utils.mask_to_index(mask)
@@ -49,21 +43,35 @@ def train_ref_models(
 
         train_dataset = Subset(dataset, train_indices)
         val_dataset = Subset(dataset, val_indices)
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+        val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
 
-        model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=latent_dim) # hardcoded for now
-        assert model.__class__.__name__ == model_name
-        train.train_vae(
-            model=model,
-            train_dataloader=train_dataloader,
-            val_dataloader=val_dataloader,
-            epochs=epochs,
-            device=device,
-            lr=lr,
-            weight_decay=weight_decay,
-            savepath=savedir+f"{dataset_name}_model_{i_model}.pth"
-        )
+        if config.model == "VAE":
+            model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim) # hardcoded for now
+            assert model.__class__.__name__ == "VAE"
+            train_vae.train_vae(
+                model=model,
+                train_dataloader=train_dataloader,
+                val_dataloader=val_dataloader,
+                epochs=config.epochs,
+                device=device,
+                lr=config.lr,
+                weight_decay=config.weight_decay,
+                savepath=savedir+f"/VAE_model_{i_model}.pth"
+            )
+        elif config.model == "BMM":
+            model = bmm.BernoulliMixtureModel(in_dim=(channels, height, width), n_mixtures=config.n_mixtures)
+            bmm.train_bmm(
+                model=model,
+                train_dataloader=train_dataloader,
+                val_dataloader=val_dataloader,
+                epochs=config.epochs,
+                device=device,
+                savepath=savedir+f"/BMM_model_{i_model}.pth",
+                lr=config.lr,
+            )
+        else:
+            raise ValueError(f"Unavailable model: {config.model}")
 
 def main():
     root = utils.get_root()
@@ -74,15 +82,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     savedir = f"{root}/trained_models/{config.model}"
     train_ref_models(
-        dataset_name=config.dataset,
-        model_name=config.model,
-        batch_size=config.batch_size,
+        config=config,
         device=device,
-        epochs=config.epochs,
-        latent_dim=config.latent_dim,
-        n_ref_models=config.n_ref_models,
-        lr=config.lr,
-        weight_decay=config.weight_decay,
         savedir=savedir,
     )
 
