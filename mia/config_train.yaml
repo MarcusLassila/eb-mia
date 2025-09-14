@@ -11,7 +11,7 @@ MNIST-BMM:
   batch_size: 128
   dataset: "BinaryMNIST"
   epochs: 200
-  lr: 0.001
+  lr: 0.01
   model: "BMM"
-  n_mixtures: 300
+  n_mixtures: 256
   n_ref_models: 10

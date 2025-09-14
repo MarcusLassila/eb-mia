@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm.auto import tqdm
+import time
 
 class BernoulliMixtureModel(nn.Module):
 
@@ -48,6 +49,7 @@ def train_bmm(model, train_dataloader, val_dataloader, epochs, device, savepath,
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     train_loss = []
     val_loss = []
+    t0 = time.time()
     for epoch in range(1, epochs + 1):
         model.train()
         acc_train_loss = 0.0
@@ -67,7 +69,8 @@ def train_bmm(model, train_dataloader, val_dataloader, epochs, device, savepath,
                 loss = model.loss(x)
                 acc_val_loss += loss.item()
             val_loss.append(acc_val_loss / len(val_dataloader))
-        log_msg = f"epoch: {epoch}/{epochs} | train loss: {train_loss[-1]:.5f} | val loss: {val_loss[-1]:.5f}"
+        t1 = time.time()
+        log_msg = f"epoch: {epoch}/{epochs} | train loss: {train_loss[-1]:.5f} | val loss: {val_loss[-1]:.5f} | time: {t1 - t0:.1f}"
         print(log_msg, flush=True)
         model_checkpoint = {
             "model_state_dict": model.state_dict(),
