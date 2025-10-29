@@ -103,7 +103,13 @@ def run_audit(
     root = utils.get_root()
     resdir = f"{root}/mia/results/{dataset_name}-{model_type}/"
     data_population = getattr(data, dataset_name)()
-    partition_fns = load_partition_fns(dataset_name, model_type, device)
+    if model_type == "BMM":
+        partition_fns = []
+        for index in range(N_MODELS):
+            model, _ = utils.load_model(dataset_name, model_type, index, device)
+            partition_fns.append(model.regularizer())
+    else:
+        partition_fns = load_partition_fns(dataset_name, model_type, device)
     for index_target in tqdm(range(n_audits), desc="Running audit"):
         target_train_indices = utils.get_train_indices(dataset_name, model_type, index_target)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))

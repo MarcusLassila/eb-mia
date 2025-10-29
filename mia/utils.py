@@ -1,4 +1,5 @@
 from vae import vae
+from tractable_ebm import bmm
 import utils
 
 import torch
@@ -37,6 +38,14 @@ def load_model(dataset: str, model_type: str, index_model: int, device: torch.de
                 latent_dim=checkpoint["latent_dim"],
             )
             model.n_rsamples = n_loss_samples
+            model.to(device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            train_indices = checkpoint["train_indices"]
+        case "BMM":
+            model = bmm.BernoulliMixtureModel(
+                in_dim=checkpoint["in_dim"],
+                n_mixtures=checkpoint["n_mixtures"],
+            )
             model.to(device)
             model.load_state_dict(checkpoint["model_state_dict"])
             train_indices = checkpoint["train_indices"]

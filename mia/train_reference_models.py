@@ -47,7 +47,7 @@ def train_ref_models(
         val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
 
         if config.model == "VAE":
-            model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim) # hardcoded for now
+            model = vae.VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim)
             assert model.__class__.__name__ == "VAE"
             train_vae.train_vae(
                 model=model,
@@ -57,7 +57,7 @@ def train_ref_models(
                 device=device,
                 lr=config.lr,
                 weight_decay=config.weight_decay,
-                savepath=savedir+f"/VAE_model_{i_model}.pth"
+                savepath=savedir+f"/{config.dataset}_model_{i_model}.pth"
             )
         elif config.model == "BMM":
             model = bmm.BernoulliMixtureModel(in_dim=(channels, height, width), n_mixtures=config.n_mixtures)
@@ -67,7 +67,7 @@ def train_ref_models(
                 val_dataloader=val_dataloader,
                 epochs=config.epochs,
                 device=device,
-                savepath=savedir+f"/BMM_model_{i_model}.pth",
+                savepath=savedir+f"/{config.dataset}_model_{i_model}.pth",
                 lr=config.lr,
             )
         else:
