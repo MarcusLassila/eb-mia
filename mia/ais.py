@@ -89,48 +89,55 @@ def unnormalized_log_prob(loss_fn, shape):
         return -loss
     return wrapper
 
-def compute_partition_functions(model_indices, dataset_name, model_type, device):
+def compute_partition_functions(path, dataset_name, model_type, device):
     data_shape = getattr(data, dataset_name)()[0].shape
     dim = torch.tensor(data_shape).prod()
     beta_schedule = torch.linspace(0, 1, steps=500, device=device)
-    savedir = f"{utils.get_root()}/trained_models/partition_functions/{model_type}"
-    Path(savedir).mkdir(parents=True, exist_ok=True)
-    partition_fns = []
-    for index in model_indices:
-        model, _ = utils.load_model(
-            dataset=dataset_name,
-            model_type=model_type,
-            index_model=index,
-            device=device,
-            n_loss_samples=20,
-        )
-        log_p1 = unnormalized_log_prob(model.per_sample_loss, data_shape)
-        sampler = AnnealedImportanceSampling(
-            dim=dim,
-            beta_schedule=beta_schedule,
-            log_p1=log_p1,
-            device=device,
-        )
-        log_Z = sampler.run()["log_Z"]
-        print(f"log(Z{index}) = {log_Z}")
-        partition_fns.append(log_Z)
-    with open(f"{savedir}/{dataset_name}_logZ_{''.join(map(str, model_indices))}.pkl", "wb") as f:
-        pickle.dump(partition_fns, f)
+    model, _ = utils.load_model(
+        path=path,
+        model_type=model_type,
+        device=device,
+        n_loss_samples=20,
+    )
+    log_p1 = unnormalized_log_prob(model.per_sample_loss, data_shape)
+    sampler = AnnealedImportanceSampling(
+        dim=dim,
+        beta_schedule=beta_schedule,
+        log_p1=log_p1,
+        device=device,
+    )
+    log_Z = sampler.run()["log_Z"]
+    print(f"log(Z) = {log_Z}")
+    savedir = path.parent / Path("partition-functions")
+    savedir.mkdir(parents=True, exists=True)
+    savepath = savedir / path.name
+    with open(savepath, "wb") as f:
+        pickle.dump(log_Z, f)
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--indices",
-        nargs="+",
-        type=int,
+        "--model",
+        type=str,
         required=True,
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--path",
+        type=str,
+        required=True,
+        help="Path to model"
     )
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     compute_partition_functions(
-        model_indices=args.indices,
-        dataset_name="CIFAR10",
-        model_type="VAE",
+        path=args.path,
+        dataset_name=args.dataset,
+        model_type=args.model,
         device=device,
     )

@@ -9,17 +9,17 @@ class ResBlockDown(nn.Module):
         self.residual_connection = nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=1, stride=2, padding=0)
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=32, num_channels=out_ch),
-            nn.SiLU(),
+            nn.BatchNorm2d(num_features=out_ch),
+            nn.ReLU(),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=32, num_channels=out_ch),
-            nn.SiLU(),
+            nn.BatchNorm2d(num_features=out_ch),
+            nn.ReLU(),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, stride=2, padding=1) # Downsample
         )
 
     def forward(self, x):
         x = self.conv_block(x) + self.residual_connection(x)
-        return x
+        return F.relu(x)
 
 class ResBlockUp(nn.Module):
     
@@ -31,17 +31,17 @@ class ResBlockUp(nn.Module):
         )
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=32, num_channels=out_ch),
-            nn.SiLU(),
+            nn.BatchNorm2d(num_features=out_ch),
+            nn.ReLU(),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=32, num_channels=out_ch),
-            nn.SiLU(),
+            nn.BatchNorm2d(num_features=out_ch),
+            nn.ReLU(),
             nn.Upsample(scale_factor=2, mode="nearest"),
         )
 
     def forward(self, x):
         x = self.conv_block(x) + self.residual_connection(x)
-        return x
+        return F.relu(x)
 
 class Encoder(nn.Module):
 
@@ -83,7 +83,7 @@ class Decoder(nn.Module):
         h = self.latent_proj(x).view(x.shape[0], 256, self.pre_deconv_size, self.pre_deconv_size)
         return self.residual_block(h)
 
-class VAE(nn.Module):
+class VAE_2(nn.Module):
 
     def __init__(self, in_ch, in_dim, latent_dim, n_rsamples=1):
         super().__init__()

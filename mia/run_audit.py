@@ -1,5 +1,4 @@
 from data import data
-import ais
 import attacks
 import evaluation
 import utils
@@ -9,29 +8,17 @@ from torch.utils.data import Subset
 from tqdm.auto import tqdm
 
 from pathlib import Path
-import re
-import glob
 import pickle
 import yaml
 
 N_MODELS = 10
 
-def load_partition_fns(dataset_name, model_type, device):
-    savedir = f"{utils.get_root()}/trained_models/partition_functions/{model_type}"
-    partition_fns = []
-    for path in glob.glob(f"{savedir}/*.pkl"):
-        m = re.search(r"(\d+)\.pkl$", path)
-        if m is None:
-            continue
-        indices = list(map(int, m[1]))
-        with open(path, "rb") as f:
-            log_Zs = pickle.load(f)
-        assert len(indices) == len(log_Zs)
-        log_Zs = [x for _, x in sorted(zip(indices, log_Zs))]
-        partition_fns.extend(zip(indices, log_Zs))
-    partition_fns = [x for _, x in sorted(partition_fns)]
-    print(f"Partition functions loaded (log(Z)): {partition_fns}")
-    return partition_fns
+def load_partition_fn(model_path):
+    pathdir = model_path.parent / Path("partition-functions")
+    pathname = model_path.name
+    with open(pathdir / pathname, "rb") as f:
+        log_Z = pickle.load(f)
+    return log_Z
 
 def indices_of_ref_models(index_target, n_ref_models):
     assert 0 <= index_target < n_ref_models
@@ -56,18 +43,18 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
-def get_attacker(attack_config, dataset_name, model_type, batch_size, device, index_ref_models, partition_fns):
+def get_attacker(attack_config, dataset_name, model_type, batch_size, device, ref_model_paths, partition_fns):
     match attack_config.attack:
-        case "ClassifierAttack":
-            attacker = attacks.ClassifierAttack(
-                dataset_name=dataset_name,
-                model_type=model_type,
-                batch_size=batch_size,
-                device=device,
-                index_ref_models=index_ref_models[:1], # just one for now
-                n_loss_samples=attack_config.n_loss_samples,
-                classifier=attack_config.classifier,
-            )
+        # case "ClassifierAttack":
+        #     attacker = attacks.ClassifierAttack(
+        #         dataset_name=dataset_name,
+        #         model_type=model_type,
+        #         batch_size=batch_size,
+        #         device=device,
+        #         index_ref_models=index_ref_models[:1], # just one for now
+        #         n_loss_samples=attack_config.n_loss_samples,
+        #         classifier=attack_config.classifier,
+        #     )
         case "GlobalLossAttack":
             attacker = attacks.GlobalLossAttack(
                 dataset_name=dataset_name,
@@ -82,55 +69,44 @@ def get_attacker(attack_config, dataset_name, model_type, batch_size, device, in
                 model_type=model_type,
                 batch_size=batch_size,
                 device=device,
-                index_ref_models=index_ref_models,
-                partition_fns=partition_fns if attack_config.calibrated else [0.0 for _ in range(N_MODELS)],
+                ref_model_paths=ref_model_paths,
+                partition_fns=partition_fns,
                 prior=attack_config.prior,
                 n_loss_samples=attack_config.n_loss_samples,
             )
         case _:
-            raise ValueError(f"No attack:: {attack_config.attack}")
+            raise ValueError(f"No attack: {attack_config.attack}")
     return attacker
 
-def run_audit(
-        dataset_name,
-        model_type,
-        attack_config,
-        batch_size,
-        n_audits,
-        n_audit_samples,
-        device,
-    ):
+def run_audit(config, device):
     root = utils.get_root()
-    resdir = f"{root}/mia/results/{dataset_name}-{model_type}/"
-    data_population = getattr(data, dataset_name)()
-    if model_type == "BMM":
-        partition_fns = []
-        for index in range(N_MODELS):
-            model, _ = utils.load_model(dataset_name, model_type, index, device)
-            partition_fns.append(model.regularizer())
-    else:
-        partition_fns = load_partition_fns(dataset_name, model_type, device)
-    for index_target in tqdm(range(n_audits), desc="Running audit"):
-        target_train_indices = utils.get_train_indices(dataset_name, model_type, index_target)
+    resdir = f"{root}/mia/results/{config.dataset}-{config.model_type}/"
+    data_population = getattr(data, config.dataset_name)()
+    partition_fns = {}
+    for model_path in config.target_model_paths + config.ref_model_paths:
+        log_Z = load_partition_fn(model_path)
+        partition_fns[model_path] = log_Z
+    for target_model_path in tqdm(config.target_model_paths, desc="Running audit"):
+        target_train_indices = utils.get_train_indices(target_model_path, config.model_type)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
-        audit_indices = get_audit_indices(n_audit_samples, membership_mask)
+        audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
         audit_samples = Subset(data_population, audit_indices)
-        index_ref_models = indices_of_ref_models(index_target, N_MODELS)
         ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
-        for attack, attack_dict in attack_config.items():
+        for attack, attack_dict in config.attacks.items():
             attacker = get_attacker(
                 attack_config=utils.Config(attack_dict),
-                dataset_name=dataset_name,
-                model_type=model_type,
-                batch_size=batch_size,
+                dataset_name=config.dataset_name,
+                model_type=config.model_type,
+                batch_size=config.batch_size,
                 device=device,
-                index_ref_models=index_ref_models,
+                ref_model_paths=config.ref_model_paths,
                 partition_fns=partition_fns,
             )
-            score = attacker.run_attack(audit_samples, index_target)
+            score = attacker.run_attack(audit_samples, target_model_path)
             metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
             Path(f"{resdir}/{attack}").mkdir(parents=True, exist_ok=True)
-            with open(f"{resdir}/{attack}/metrics_{index_target}.pkl", "wb") as f:
+            model_id = target_model_path.stem
+            with open(f"{resdir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
                 pickle.dump(metrics, f)
 
 if __name__ == "__main__":
@@ -142,11 +118,6 @@ if __name__ == "__main__":
     print(config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     run_audit(
-        dataset_name=config.dataset,
-        model_type=config.model,
-        attack_config=config.attacks,
-        batch_size=config.batch_size,
-        n_audits=config.n_audits,
-        n_audit_samples=config.n_audit_samples,
+        config=config,
         device=device,
     )

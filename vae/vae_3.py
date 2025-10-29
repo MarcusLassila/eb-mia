@@ -50,11 +50,10 @@ class Encoder(nn.Module):
         self.conv_emb = nn.Sequential(
             nn.Conv2d(in_channels=in_ch, out_channels=64, kernel_size=3, stride=1, padding=1),
             ResBlockDown(in_ch=64, out_ch=128),
-            ResBlockDown(in_ch=128, out_ch=128),
             ResBlockDown(in_ch=128, out_ch=256),
             nn.Flatten(),
         )
-        hidden_dim = 256 * (in_dim // 8) ** 2
+        hidden_dim = 256 * (in_dim // 4) ** 2
         self.lin_mean = nn.Linear(hidden_dim, latent_dim)
         self.lin_logvar = nn.Linear(hidden_dim, latent_dim)
 
@@ -68,12 +67,11 @@ class Decoder(nn.Module):
 
     def __init__(self, out_ch, latent_dim, out_dim):
         super().__init__()
-        self.pre_deconv_size = out_dim // 8
+        self.pre_deconv_size = out_dim // 4
         hidden_dim = 256 * self.pre_deconv_size ** 2
         self.latent_proj = nn.Linear(latent_dim, hidden_dim)
         self.residual_block = nn.Sequential(
             ResBlockUp(in_ch=256, out_ch=128),
-            ResBlockUp(in_ch=128, out_ch=128),
             ResBlockUp(in_ch=128, out_ch=64),
             nn.Conv2d(in_channels=64, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
             nn.Sigmoid(),
@@ -83,7 +81,7 @@ class Decoder(nn.Module):
         h = self.latent_proj(x).view(x.shape[0], 256, self.pre_deconv_size, self.pre_deconv_size)
         return self.residual_block(h)
 
-class VAE(nn.Module):
+class VAE_3(nn.Module):
 
     def __init__(self, in_ch, in_dim, latent_dim, n_rsamples=1):
         super().__init__()

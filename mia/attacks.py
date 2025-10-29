@@ -46,46 +46,45 @@ class GlobalLossAttack:
 
 class BASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, partition_fns, prior=0.5, n_loss_samples=1):
+    def __init__(self, dataset_name, model_type, batch_size, device, ref_model_paths, partition_fns, prior=0.5, n_loss_samples=1):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
         self.device = device
-        self.index_ref_models = index_ref_models
+        self.ref_model_paths = ref_model_paths
         self.partition_fns = partition_fns
         self.prior = prior
         self.n_loss_samples=n_loss_samples
 
-    def load_model(self, index):
+    def load_model(self, path):
         model, _ = utils.load_model(
-            dataset=self.dataset_name,
+            path=path,
             model_type=self.model_type,
-            index_model=index,
             device=self.device,
             n_loss_samples=self.n_loss_samples,
         )
         return model
 
     @torch.inference_mode()
-    def loss_signal(self, audit_loader, index_model):
-        model = self.load_model(index_model)
+    def loss_signal(self, audit_loader, model_path):
+        model = self.load_model(model_path)
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
             loss = model.per_sample_loss(samples).cpu()
-            log_Z = self.partition_fns[index_model]
+            log_Z = self.partition_fns[model_path.name]
             sig.append(loss + log_Z)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
 
-    def run_attack(self, audit_samples, index_target_model):
-        assert index_target_model not in self.index_ref_models, "Should not attack the reference models"
+    def run_attack(self, audit_samples, target_model_path):
+        assert target_model_path not in self.ref_model_paths, "Should not attack the reference models"
         audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
-        sig_target = self.loss_signal(audit_loader, index_target_model)
+        sig_target = self.loss_signal(audit_loader, target_model_path)
         sig_ref_models = []
-        for idx in self.index_ref_models:
-            sig = self.loss_signal(audit_loader, idx)
+        for model_path in self.ref_model_paths:
+            sig = self.loss_signal(audit_loader, model_path)
             sig_ref_models.append(sig)
         sig_ref_models = torch.stack(sig_ref_models)
         score = -sig_target - torch.logsumexp(-sig_ref_models, dim=0) + np.log(self.prior / (1 - self.prior))

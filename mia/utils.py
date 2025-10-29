@@ -1,4 +1,6 @@
-from vae import vae
+from vae.vae import VAE
+from vae.vae_2 import VAE_2
+from vae.vae_3 import VAE_3
 from tractable_ebm import bmm
 import utils
 
@@ -23,16 +25,14 @@ def get_root():
     except subprocess.CalledProcessError:
         return None
 
-def load_checkpoint(dataset: str, model_type: str, index_model: int, device: torch.device):
-    root = utils.get_root()
-    path = f"{root}/trained_models/{model_type}/{dataset}_model_{index_model}.pth"
+def load_checkpoint(path: str, device: torch.device):
     return torch.load(path, map_location=device)
 
-def load_model(dataset: str, model_type: str, index_model: int, device: torch.device, n_loss_samples: int = 20):
-    checkpoint = load_checkpoint(dataset, model_type, index_model, device)
+def load_model(path: str, model_type: str, device: torch.device, n_loss_samples: int = 20):
+    checkpoint = load_checkpoint(path, device)
     match model_type:
-        case "VAE":
-            model = vae.VAE(
+        case ("VAE" | "VAE_2" | "VAE_3"):
+            model = globals[model_type](
                 in_ch=checkpoint["in_channels"],
                 in_dim=checkpoint["in_dim"],
                 latent_dim=checkpoint["latent_dim"],
@@ -54,8 +54,8 @@ def load_model(dataset: str, model_type: str, index_model: int, device: torch.de
     model.eval()
     return model, train_indices
 
-def get_train_indices(dataset: str, model_type: str, index_model: int):
-    checkpoint = load_checkpoint(dataset, model_type, index_model, torch.device("cpu"))
+def get_train_indices(path: str, model_type: str):
+    checkpoint = load_checkpoint(path, model_type, torch.device("cpu"))
     return checkpoint["train_indices"]
 
 def mask_to_index(mask: torch.Tensor):
