@@ -59,7 +59,6 @@ class BASE:
     def load_model(self, path):
         model, _ = utils.load_model(
             path=path,
-            model_type=self.model_type,
             device=self.device,
             n_loss_samples=self.n_loss_samples,
         )
@@ -72,7 +71,7 @@ class BASE:
         for samples in audit_loader:
             samples = samples.to(self.device)
             loss = model.per_sample_loss(samples).cpu()
-            log_Z = self.partition_fns[model_path.name]
+            log_Z = self.partition_fns[str(model_path)]
             sig.append(loss + log_Z)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)

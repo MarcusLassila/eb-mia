@@ -89,7 +89,9 @@ def unnormalized_log_prob(loss_fn, shape):
         return -loss
     return wrapper
 
-def compute_partition_functions(path, dataset_name, model_type, device):
+def compute_partition_functions(path, device):
+    path = Path(path)
+    dataset_name, model_type, _ = path.stem.split("-")
     data_shape = getattr(data, dataset_name)()[0].shape
     dim = torch.tensor(data_shape).prod()
     beta_schedule = torch.linspace(0, 1, steps=500, device=device)
@@ -109,7 +111,7 @@ def compute_partition_functions(path, dataset_name, model_type, device):
     log_Z = sampler.run()["log_Z"]
     print(f"log(Z) = {log_Z}")
     savedir = path.parent / Path("partition-functions")
-    savedir.mkdir(parents=True, exists=True)
+    savedir.mkdir(parents=True, exist_ok=True)
     savepath = savedir / path.name
     with open(savepath, "wb") as f:
         pickle.dump(log_Z, f)
@@ -118,26 +120,14 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
         "--path",
         type=str,
         required=True,
-        help="Path to model"
+        help="Path to model checkpoint. Should be saved in the format dataset-model_type-otherstuff.pth"
     )
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     compute_partition_functions(
         path=args.path,
-        dataset_name=args.dataset,
-        model_type=args.model,
         device=device,
     )

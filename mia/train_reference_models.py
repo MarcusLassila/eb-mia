@@ -19,7 +19,6 @@ def train_ref_model_pair(
     dataset = getattr(data, config.dataset)()
     channels, height, width = dataset[0].shape
     assert height == width
-    Path(savedir).mkdir(parents=True, exist_ok=True)
     n_indices = len(dataset)
     train_mask = torch.rand(n_indices) > 0.5
     for i, mask in (0, train_mask), (1, ~train_mask):
@@ -39,7 +38,7 @@ def train_ref_model_pair(
             epochs=config.epochs,
             device=device,
             lr=config.lr,
-            savepath=savedir+f"/{config.dataset}_{config.model}_{i}.pth",
+            savepath=savedir/Path(f"{config.dataset}_{config.model}_{i}.pth"),
             weight_decay=config.weight_decay,
         )
 
@@ -50,7 +49,8 @@ def main():
     _, params = next(iter(config.items()))
     config = utils.Config(params)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    savedir = f"{root}/trained_models"
+    savedir = Path(f"{root}/trained_models/ref_models")
+    savedir.mkdir(parents=True, exist_ok=True)
     train_ref_model_pair(
         config=config,
         device=device,

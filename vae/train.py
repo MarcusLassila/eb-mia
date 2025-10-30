@@ -65,7 +65,6 @@ def train_vae(model, train_dataloader, val_dataloader, epochs, device, lr, savep
                 "train_loss": train_loss,
                 "val_loss": val_loss,
             }
-            Path("./trained_models").mkdir(parents=True, exist_ok=True)
             torch.save(model_checkpoint, savepath)
         else:
             early_stopping_counter += 1

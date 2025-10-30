@@ -81,13 +81,15 @@ def get_attacker(attack_config, dataset_name, model_type, batch_size, device, re
 def run_audit(config, device):
     root = utils.get_root()
     resdir = f"{root}/mia/results/{config.dataset}-{config.model_type}/"
-    data_population = getattr(data, config.dataset_name)()
+    data_population = getattr(data, config.dataset)()
+    target_model_paths = list(map(Path, config.target_model_paths))
+    ref_model_paths = list(map(Path, config.ref_model_paths))
     partition_fns = {}
-    for model_path in config.target_model_paths + config.ref_model_paths:
+    for model_path in target_model_paths + ref_model_paths:
         log_Z = load_partition_fn(model_path)
-        partition_fns[model_path] = log_Z
-    for target_model_path in tqdm(config.target_model_paths, desc="Running audit"):
-        target_train_indices = utils.get_train_indices(target_model_path, config.model_type)
+        partition_fns[str(model_path)] = log_Z
+    for target_path in tqdm(target_model_paths, desc="Running audit"):
+        target_train_indices = utils.get_train_indices(target_path)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
         audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
         audit_samples = Subset(data_population, audit_indices)
@@ -95,17 +97,17 @@ def run_audit(config, device):
         for attack, attack_dict in config.attacks.items():
             attacker = get_attacker(
                 attack_config=utils.Config(attack_dict),
-                dataset_name=config.dataset_name,
+                dataset_name=config.dataset,
                 model_type=config.model_type,
                 batch_size=config.batch_size,
                 device=device,
-                ref_model_paths=config.ref_model_paths,
+                ref_model_paths=ref_model_paths,
                 partition_fns=partition_fns,
             )
-            score = attacker.run_attack(audit_samples, target_model_path)
+            score = attacker.run_attack(audit_samples, target_path)
             metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
             Path(f"{resdir}/{attack}").mkdir(parents=True, exist_ok=True)
-            model_id = target_model_path.stem
+            model_id = target_path.stem
             with open(f"{resdir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
                 pickle.dump(metrics, f)
 

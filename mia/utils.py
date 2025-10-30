@@ -6,6 +6,7 @@ import utils
 
 import torch
 
+from pathlib import Path
 import subprocess
 import yaml
 
@@ -28,12 +29,13 @@ def get_root():
 def load_checkpoint(path: str, device: torch.device):
     return torch.load(path, map_location=device)
 
-def load_model(path: str, model_type: str, device: torch.device, n_loss_samples: int = 20):
+def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
     checkpoint = load_checkpoint(path, device)
+    model_type = Path(path).stem.split("-")[1] # Assumes model checkpoint is saved as dataset-model_type-otherstuff.pth
     match model_type:
         case ("VAE" | "VAE_2" | "VAE_3"):
-            model = globals[model_type](
-                in_ch=checkpoint["in_channels"],
+            model = globals()[model_type](
+                in_ch=checkpoint["in_ch"],
                 in_dim=checkpoint["in_dim"],
                 latent_dim=checkpoint["latent_dim"],
             )
@@ -54,8 +56,8 @@ def load_model(path: str, model_type: str, device: torch.device, n_loss_samples:
     model.eval()
     return model, train_indices
 
-def get_train_indices(path: str, model_type: str):
-    checkpoint = load_checkpoint(path, model_type, torch.device("cpu"))
+def get_train_indices(path: str):
+    checkpoint = load_checkpoint(path, torch.device("cpu"))
     return checkpoint["train_indices"]
 
 def mask_to_index(mask: torch.Tensor):
