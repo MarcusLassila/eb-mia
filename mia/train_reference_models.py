@@ -1,8 +1,6 @@
 from data import data
 from vae.train import train_vae
 from vae.vae import VAE
-from vae.vae_2 import VAE_2
-from vae.vae_3 import VAE_3
 import utils
 
 import torch
@@ -21,7 +19,7 @@ def train_ref_model_pair(
     assert height == width
     n_indices = len(dataset)
     train_mask = torch.rand(n_indices) > 0.5
-    for i, mask in (0, train_mask), (1, ~train_mask):
+    for i, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
         train_indices = utils.mask_to_index(mask)
         nontrain_indices = utils.mask_to_index(~mask)
         val_size = int(config.val_frac * len(dataset))
@@ -38,16 +36,17 @@ def train_ref_model_pair(
             epochs=config.epochs,
             device=device,
             lr=config.lr,
-            savepath=savedir/Path(f"{config.dataset}_{config.model}_{i}.pth"),
+            savepath=savedir/Path(f"{config.dataset}-{config.model}-{i}.pth"),
             weight_decay=config.weight_decay,
         )
 
-def main():
+def main(id_):
     root = utils.get_root()
     with open(f"{root}/mia/config_train.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)
+    config.id = id_
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     savedir = Path(f"{root}/trained_models/ref_models")
     savedir.mkdir(parents=True, exist_ok=True)
@@ -58,4 +57,12 @@ def main():
     )
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--id",
+        type=int,
+        required=True,
+    )
+    args = parser.parse_args()
+    main(args.id)

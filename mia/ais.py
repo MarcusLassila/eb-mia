@@ -91,13 +91,12 @@ def unnormalized_log_prob(loss_fn, shape):
 
 def compute_partition_functions(path, device):
     path = Path(path)
-    dataset_name, model_type, _ = path.stem.split("-")
+    dataset_name, *_ = path.stem.split("-")
     data_shape = getattr(data, dataset_name)()[0].shape
     dim = torch.tensor(data_shape).prod()
     beta_schedule = torch.linspace(0, 1, steps=500, device=device)
     model, _ = utils.load_model(
         path=path,
-        model_type=model_type,
         device=device,
         n_loss_samples=20,
     )

@@ -46,7 +46,7 @@ class GlobalLossAttack:
 
 class BASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, ref_model_paths, partition_fns, prior=0.5, n_loss_samples=1):
+    def __init__(self, dataset_name, model_type, batch_size, device, ref_model_paths, partition_fns, prior=0.5, n_loss_samples=1, calibrated=True):
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
@@ -55,6 +55,8 @@ class BASE:
         self.partition_fns = partition_fns
         self.prior = prior
         self.n_loss_samples=n_loss_samples
+        self.calibrated = calibrated
+        print("BASE initialized. Calibrated:", self.calibrated)
 
     def load_model(self, path):
         model, _ = utils.load_model(
@@ -71,7 +73,10 @@ class BASE:
         for samples in audit_loader:
             samples = samples.to(self.device)
             loss = model.per_sample_loss(samples).cpu()
-            log_Z = self.partition_fns[str(model_path)]
+            if self.calibrated:
+                log_Z = self.partition_fns[str(model_path)]
+            else:
+                log_Z = 0.0
             sig.append(loss + log_Z)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)

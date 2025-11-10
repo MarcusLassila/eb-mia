@@ -11,7 +11,6 @@ from pathlib import Path
 import pickle
 import yaml
 
-N_MODELS = 10
 
 def load_partition_fn(model_path):
     pathdir = model_path.parent / Path("partition-functions")
@@ -73,6 +72,7 @@ def get_attacker(attack_config, dataset_name, model_type, batch_size, device, re
                 partition_fns=partition_fns,
                 prior=attack_config.prior,
                 n_loss_samples=attack_config.n_loss_samples,
+                calibrated=attack_config.calibrated,
             )
         case _:
             raise ValueError(f"No attack: {attack_config.attack}")

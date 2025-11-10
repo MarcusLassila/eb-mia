@@ -1,6 +1,4 @@
 from vae.vae import VAE
-from vae.vae_2 import VAE_2
-from vae.vae_3 import VAE_3
 from tractable_ebm import bmm
 import utils
 
@@ -33,7 +31,7 @@ def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
     checkpoint = load_checkpoint(path, device)
     model_type = Path(path).stem.split("-")[1] # Assumes model checkpoint is saved as dataset-model_type-otherstuff.pth
     match model_type:
-        case ("VAE" | "VAE_2" | "VAE_3"):
+        case "VAE":
             model = globals()[model_type](
                 in_ch=checkpoint["in_ch"],
                 in_dim=checkpoint["in_dim"],

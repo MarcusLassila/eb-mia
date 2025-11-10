@@ -4,23 +4,10 @@ CIFAR10-VAE:
   batch_size: 512
   n_audit_samples: 30000
   target_model_paths:
-  - "./trained_models/target_models/CIFAR10-VAE-0.pth"
-  - "./trained_models/target_models/CIFAR10-VAE-1.pth"
-  - "./trained_models/target_models/CIFAR10-VAE-2.pth"
-  - "./trained_models/target_models/CIFAR10-VAE-3.pth"
-  - "./trained_models/target_models/CIFAR10-VAE-4.pth"
-  - "./trained_models/target_models/CIFAR10-VAE-5.pth"
+  - ""
   ref_model_paths:
-  - "./trained_models/ref_models/CIFAR10-VAE-0.pth"
-  - "./trained_models/ref_models/CIFAR10-VAE-1.pth"
-  - "./trained_models/ref_models/CIFAR10-VAE_2-0.pth"
-  - "./trained_models/ref_models/CIFAR10-VAE_2-1.pth"
-  - "./trained_models/ref_models/CIFAR10-VAE_3-0.pth"
-  - "./trained_models/ref_models/CIFAR10-VAE_3-1.pth"
+  - ""
   attacks:
-    #GlobalLossAttack:
-      #attack: "GlobalLossAttack"
-      #n_loss_samples: 20
     BASE:
       attack: "BASE"
       prior: 0.5
@@ -31,11 +18,3 @@ CIFAR10-VAE:
       prior: 0.5
       n_loss_samples: 20
       calibrated: False
-    # XGBAttack:
-    #   attack: "ClassifierAttack"
-    #   n_loss_samples: 20
-    #   classifier: "XGBoost"
-    # MLPAttack:
-    #   attack: "ClassifierAttack"
-    #   n_loss_samples: 20
-    #   classifier: "MLP"
