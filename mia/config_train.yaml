@@ -1,8 +1,9 @@
 CelebAHQ-DDPM:
   batch_size: 16
   simul_batch_size: 64
+  torch_compile: false
   dataset: "CelebAHQ"
-  data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
+  data_dir: "./datasets"
   epochs: 5
   epochs_per_checkpoint: 2
   lr: 0.00002

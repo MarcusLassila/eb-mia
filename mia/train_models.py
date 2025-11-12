@@ -1,3 +1,4 @@
+from accelerate.accelerate import AcceleratorLite
 from data import data
 from ddpm.ddpm import DDPM
 from vae.train import train_vae
@@ -11,7 +12,7 @@ from torchvision import transforms as T
 from pathlib import Path
 import yaml
 
-def train_model(config, device, savedir, dataset, train_mask, id_):
+def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     channels, height, width = dataset[0].shape
     assert height == width
     train_indices = utils.mask_to_index(train_mask)
@@ -30,7 +31,7 @@ def train_model(config, device, savedir, dataset, train_mask, id_):
                 base_channels=config.base_channels,
                 dropout=config.dropout,
                 resample_with_conv=True,
-                do_compile=False,
+                accelerator=accelerator,
             )
             model.train(
                 train_dataset=train_dataset,
@@ -52,17 +53,15 @@ def train_model(config, device, savedir, dataset, train_mask, id_):
                 train_dataloader=train_dataloader,
                 val_dataloader=val_dataloader,
                 epochs=config.epochs,
-                device=device,
+                device=accelerator.device,
                 lr=config.lr,
                 savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
                 weight_decay=config.weight_decay,
             )
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
 
 def train_model_pair(
+        accelerator,
         config,
-        device,
         savedir,
     ):
     if config.model == "DDPM":
@@ -77,7 +76,7 @@ def train_model_pair(
     n_indices = len(dataset)
     train_mask = torch.rand(n_indices) > 0.5
     for id_, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
-        train_model(config, device, savedir, dataset, mask, id_)
+        train_model(accelerator, config, savedir, dataset, mask, id_)
 
 def main(config_file, id_):
     root = utils.get_root()
@@ -86,12 +85,12 @@ def main(config_file, id_):
     _, params = next(iter(config.items()))
     config = utils.Config(params)
     config.id = id_
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    accelerator = AcceleratorLite(torch_compile=config.torch_compile)
     savedir = Path(f"{root}/trained_models")
     savedir.mkdir(parents=True, exist_ok=True)
     train_model_pair(
+        accelerator=accelerator,
         config=config,
-        device=device,
         savedir=savedir,
     )
 

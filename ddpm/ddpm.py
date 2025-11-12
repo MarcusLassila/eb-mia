@@ -1,4 +1,5 @@
-from . import accelerate, models, utils
+from . import models, utils
+from accelerate.accelerate import AcceleratorLite
 
 import torch
 import torch.distributed as dist
@@ -14,18 +15,23 @@ from statistics import mean
 
 class DDPM:
 
-    def __init__(self,
-                 beta,
-                 channel_mult,
-                 image_dim,
-                 base_channels=128,
-                 dropout=0.0,
-                 resample_with_conv=True,
-                 do_compile=False,
-        ):
+    def __init__(
+        self,
+        beta,
+        channel_mult,
+        image_dim,
+        base_channels=128,
+        dropout=0.0,
+        resample_with_conv=True,
+        accelerator=None,
+        torch_compile=False,
+    ):
         self.image_dim = image_dim
         assert self.image_dim[1] == self.image_dim[2], "Only square images are supported"
-        self.accelerator = accelerate.AcceleratorLite(do_compile=do_compile)
+        if accelerator is None:
+            self.accelerator = AcceleratorLite(torch_compile=torch_compile)
+        else:
+            self.accelerator = accelerator
         self.device = self.accelerator.device
         if not torch.is_tensor(beta):
             beta = torch.tensor(beta)
