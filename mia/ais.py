@@ -11,7 +11,7 @@ from pathlib import Path
 class AnnealedImportanceSampling:
     '''Hardcoded Metropolis MCMC kernel for now.'''
 
-    def __init__(self, dim, beta_schedule, log_p1, device, n_samples=2048, n_steps_per_sample=20):
+    def __init__(self, dim, beta_schedule, log_p1, device, n_samples=2048, n_steps_per_sample=100):
         self.dim = dim
         self.beta_schedule = beta_schedule
         self.n_betas = len(self.beta_schedule)
@@ -124,6 +124,38 @@ def compute_partition_functions(path, steps, n_loss_samples, device, data_dir):
     with open(savepath, "wb") as f:
         pickle.dump(log_Z, f)
 
+@torch.inference_mode()
+def test_multinormal_partition_fn(steps, device):
+    dim = 50
+    mean = torch.normal(mean=10.0, std=3.0, size=(dim,), device=device)
+    rand_mat = torch.normal(mean=2.0, std=5.0, size=(dim, dim), device=device)
+    cov = rand_mat @ rand_mat.t() + torch.eye(dim, device=device) * 1e-3
+    L = torch.linalg.cholesky(cov)
+
+    def log_p(x):
+        ''' Unnormalized log pdf '''
+        d = x - mean
+        # Cholesky solve: LL^T z = d
+        z = torch.cholesky_solve(d.unsqueeze(dim=-1), L).squeeze(dim=-1)
+        p = -0.5 * torch.sum(d * z, dim=1)
+        assert p.shape == (x.shape[0],)
+        return p
+
+    beta_schedule = torch.linspace(0, 1, steps=steps, device=device)
+    sampler = AnnealedImportanceSampling(
+        dim=dim,
+        beta_schedule=beta_schedule,
+        log_p1=log_p,
+        device=device,
+    )
+    log_Z_est = sampler.run()["log_Z"]
+    sign, logdet = torch.slogdet(cov)
+    assert torch.all(sign > 0)
+    log_Z_true = 0.5 * dim * np.log(2 * np.pi) + 0.5 * logdet
+    print(f"logZ est: {log_Z_est}")
+    print(f"logZ true: {log_Z_true}")
+    print(f"difference: {log_Z_est - log_Z_true}")
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -135,7 +167,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path",
         type=str,
-        required=True,
+        required=False,
         help="Path to model checkpoint. Should be saved in the format dataset-model_type-otherstuff.pth"
     )
     parser.add_argument(
@@ -150,10 +182,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    compute_partition_functions(
-        path=args.path,
-        steps=args.steps,
-        n_loss_samples=args.n_loss_samples,
-        device=device,
-        data_dir=args.data_dir,
-    )
+    # compute_partition_functions(
+    #     path=args.path,
+    #     steps=args.steps,
+    #     n_loss_samples=args.n_loss_samples,
+    #     device=device,
+    #     data_dir=args.data_dir,
+    # )
+    test_multinormal_partition_fn(args.steps, device=device)
