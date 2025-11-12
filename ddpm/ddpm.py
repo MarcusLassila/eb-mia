@@ -54,14 +54,14 @@ class DDPM:
         z = torch.sqrt(alpha_bar_t) * x + torch.sqrt(1 - alpha_bar_t) * eps
         with autocast_context:
             noise_pred = self.model(z, t)
-            loss = F.mse_loss(input=noise_pred, target=eps, reduction="none").sum(dim=(1, 2, 3))
+            loss = F.mse_loss(input=noise_pred, target=eps, reduction="none").mean(dim=(1, 2, 3))
         return loss
     
     def loss(self, x, autocast_context=nullcontext()):
         t = torch.randint(low=0, high=self.T, size=(x.shape[0],)).to(self.device)
         return self.per_sample_loss(x, t, autocast_context).mean()
 
-    def train(self, train_dataset, val_dataset, batch_size, lr, n_epochs, savepath, simul_batch_size=64, grad_clip=1.0, steps_per_print=50):
+    def train(self, train_dataset, val_dataset, batch_size, lr, n_epochs, savepath, simul_batch_size=64, grad_clip=1.0, epochs_per_checkpoint=200):
         accelerator = self.accelerator
         input_dim = train_dataset[0].shape
         assert input_dim == self.image_dim == val_dataset[0].shape
@@ -127,24 +127,13 @@ class DDPM:
                 log_dict["grad_norm"].append(norm.item())
                 log_dict["im_per_sec"].append(im_per_sec)
                 log_dict["step_time"].append(t1 - t0)
-                if step % steps_per_print == 0:
-                    assert len(log_dict["accum_loss"]) == steps_per_print
-                    log_msg = (
-                        f"step: {step} "
-                        f"| loss: {mean(log_dict['accum_loss']):.6f} "
-                        f"| grad norm: {mean(log_dict['grad_norm']):.2f} "
-                        f"| images per sec: {mean(log_dict['im_per_sec']):.1f} "
-                        f"| time per step: {mean(log_dict['step_time']):.4f}"
-                    )
-                    accelerator.print(log_msg, flush=True)
-                    log_dict = defaultdict(list)
                 accum_loss = 0.0
                 t0 = time.time()
 
             model.eval()
             with torch.no_grad():
                 accum_loss = 0.0
-                n_batches = torch.tensor([0], dtype=torch.int64) 
+                n_batches = torch.tensor([0], dtype=torch.int64, device=self.device)
                 for x in val_dataloader:
                     loss = self.loss(x, autocast_context)
                     accum_loss += loss
@@ -153,9 +142,23 @@ class DDPM:
                     dist.all_reduce(accum_loss, op=dist.ReduceOp.SUM)
                     dist.all_reduce(n_batches, op=dist.ReduceOp.SUM)
                 val_loss = (accum_loss / n_batches).item()
-                print(f"Epoch: {epoch} | validation loss: {val_loss:.6f}")
 
-            if epoch % 10 == 0 or epoch == n_epochs:
+            log_msg = (
+                f"epoch: {epoch} "
+                f"| step: {step} "
+                f"| train loss: {mean(log_dict['accum_loss']):.6f} "
+                f"| val loss: {val_loss:.6f}"
+                f"| grad norm: {mean(log_dict['grad_norm']):.2f} "
+                f"| images per sec: {mean(log_dict['im_per_sec']):.1f} "
+                f"| time per step: {mean(log_dict['step_time']):.4f}"
+            )
+            accelerator.print(log_msg, flush=True)
+            log_dict = defaultdict(list)
+
+            if epoch % epochs_per_checkpoint == 0 or epoch == n_epochs:
+                savepath = Path(savepath)
+                name = savepath.stem + f"-ep{epoch}" + savepath.suffix
+                current_epoch_savepath = savepath.parent / name
                 checkpoint = {
                     "epoch": epoch,
                     "model_state_dict": raw_model.state_dict(),
@@ -168,7 +171,7 @@ class DDPM:
                     "dropout": self.dropout,
                     "resample_with_conv": self.resample_with_conv,
                 }
-                torch.save(checkpoint, savepath)
+                torch.save(checkpoint, current_epoch_savepath)
 
     def load(self, state_dict):
         state_dict = {k: v.to(self.device) for k, v in state_dict.items()}

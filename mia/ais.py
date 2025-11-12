@@ -3,6 +3,7 @@ import utils
 
 import numpy as np
 import torch
+import torchvision.transforms as T
 import time
 import pickle
 from pathlib import Path
@@ -89,16 +90,24 @@ def unnormalized_log_prob(loss_fn, shape):
         return -loss
     return wrapper
 
-def compute_partition_functions(path, device):
+def compute_partition_functions(path, steps, n_loss_samples, device, data_dir):
     path = Path(path)
-    dataset_name, *_ = path.stem.split("-")
-    data_shape = getattr(data, dataset_name)()[0].shape
+    dataset_name, model_type, *_ = path.stem.split("-")
+    if model_type == "DDPM":
+        transform = T.Concat([
+            T.RandomHorizontalFlip(p=0.5),
+            T.ToTensor(),
+            T.Lambda(lambda x: x * 2.0 - 1.0),
+        ])
+    else:
+        transform = T.ToTensor()
+    data_shape = getattr(data, dataset_name)(transform=transform, data_dir=data_dir)[0].shape
     dim = torch.tensor(data_shape).prod()
-    beta_schedule = torch.linspace(0, 1, steps=500, device=device)
+    beta_schedule = torch.linspace(0, 1, steps=steps, device=device)
     model, _ = utils.load_model(
         path=path,
         device=device,
-        n_loss_samples=20,
+        n_loss_samples=n_loss_samples,
     )
     log_p1 = unnormalized_log_prob(model.per_sample_loss, data_shape)
     sampler = AnnealedImportanceSampling(
@@ -119,14 +128,32 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="./datasets",
+    )
+    parser.add_argument(
         "--path",
         type=str,
         required=True,
         help="Path to model checkpoint. Should be saved in the format dataset-model_type-otherstuff.pth"
     )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=500,
+    )
+    parser.add_argument(
+        "--n-loss-samples",
+        type=int,
+        default=20,
+    )
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     compute_partition_functions(
         path=args.path,
+        steps=args.steps,
+        n_loss_samples=args.n_loss_samples,
         device=device,
+        data_dir=args.data_dir,
     )

@@ -11,6 +11,55 @@ from torchvision import transforms as T
 from pathlib import Path
 import yaml
 
+def train_model(config, device, savedir, dataset, train_mask, id_):
+    channels, height, width = dataset[0].shape
+    assert height == width
+    train_indices = utils.mask_to_index(train_mask)
+    nontrain_indices = utils.mask_to_index(~train_mask)
+    val_size = int(config.val_frac * len(dataset))
+    val_indices = nontrain_indices[torch.randperm(n=nontrain_indices.shape[0])[:val_size]]
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
+    match config.model:
+        case "DDPM":
+            beta = torch.linspace(start=1e-4, end=0.02, steps=1000)
+            model = DDPM(
+                beta=beta,
+                channel_mult=config.channel_mult,
+                image_dim=dataset[0].shape,
+                base_channels=config.base_channels,
+                dropout=config.dropout,
+                resample_with_conv=True,
+                do_compile=False,
+            )
+            model.train(
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                batch_size=config.batch_size,
+                lr=config.lr,
+                n_epochs=config.epochs,
+                savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
+                simul_batch_size=config.simul_batch_size,
+                grad_clip=1.0,
+                epochs_per_checkpoint=config.epochs_per_checkpoint,
+            )
+        case "VAE":
+            train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+            val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+            model = VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim)
+            train_vae(
+                model=model,
+                train_dataloader=train_dataloader,
+                val_dataloader=val_dataloader,
+                epochs=config.epochs,
+                device=device,
+                lr=config.lr,
+                savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
+                weight_decay=config.weight_decay,
+            )
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
 def train_model_pair(
         config,
         device,
@@ -24,59 +73,15 @@ def train_model_pair(
         ])
     else:
         transform = T.ToTensor()
-    dataset = getattr(data, config.dataset)(transform=transform)
-    channels, height, width = dataset[0].shape
-    assert height == width
+    dataset = getattr(data, config.dataset)(transform=transform, data_dir=config.data_dir)
     n_indices = len(dataset)
     train_mask = torch.rand(n_indices) > 0.5
-    for i, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
-        train_indices = utils.mask_to_index(mask)
-        nontrain_indices = utils.mask_to_index(~mask)
-        val_size = int(config.val_frac * len(dataset))
-        val_indices = nontrain_indices[torch.randperm(n=nontrain_indices.shape[0])[:val_size]]
-        train_dataset = Subset(dataset, train_indices)
-        val_dataset = Subset(dataset, val_indices)
-        match config.model:
-            case "DDPM":
-                beta = torch.linspace(start=1e-4, end=0.02, steps=1000)
-                model = DDPM(
-                    beta=beta,
-                    channel_mult=config.channel_mult,
-                    image_dim=dataset[0].shape,
-                    base_channels=config.base_channels,
-                    dropout=config.dropout,
-                    resample_with_conv=True,
-                    do_compile=False,
-                )
-                model.train(
-                    train_dataset=train_dataset,
-                    val_dataset=val_dataset,
-                    batch_size=config.batch_size,
-                    lr=config.lr,
-                    n_epochs=config.epochs,
-                    savepath=savedir/Path(f"{config.dataset}-{config.model}-{i}.pth"),
-                    simul_batch_size=config.simul_batch_size,
-                    grad_clip=1.0,
-                    steps_per_print=100,
-                )
-            case "VAE":
-                train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-                val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-                model = VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim)
-                train_vae(
-                    model=model,
-                    train_dataloader=train_dataloader,
-                    val_dataloader=val_dataloader,
-                    epochs=config.epochs,
-                    device=device,
-                    lr=config.lr,
-                    savepath=savedir/Path(f"{config.dataset}-{config.model}-{i}.pth"),
-                    weight_decay=config.weight_decay,
-                )
+    for id_, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
+        train_model(config, device, savedir, dataset, mask, id_)
 
-def main(id_):
+def main(config_file, id_):
     root = utils.get_root()
-    with open(f"{root}/mia/config_train.yaml", "r") as file:
+    with open(f"{root}/mia/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)
@@ -99,5 +104,10 @@ if __name__ == "__main__":
         type=int,
         required=True,
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config_train",
+    )
     args = parser.parse_args()
-    main(args.id)
+    main(args.config, args.id)

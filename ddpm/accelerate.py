@@ -39,7 +39,7 @@ class AcceleratorLite:
         if self.running_ddp:
             model = DDP(model, device_ids=[self.local_rank])
             train_sampler = DistributedSampler(train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=True)
-            val_sampler = DistributedSampler(train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False)
+            val_sampler = DistributedSampler(val_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False)
             train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True)
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, pin_memory=True)
         else:

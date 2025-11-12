@@ -1,15 +1,19 @@
-CIFAR10-DDPM:
-  batch_size: 128
-  simul_batch_size: 512
-  dataset: "CIFAR10"
-  epochs: 5000
-  lr: 0.0002
-  val_frac: 0.02
+CelebAHQ-DDPM:
+  batch_size: 16
+  simul_batch_size: 64
+  dataset: "CelebAHQ"
+  data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
+  epochs: 5
+  epochs_per_checkpoint: 2
+  lr: 0.00002
+  val_frac: 0.05
   model: "DDPM"
   base_channels: 128
   channel_mult:
   - 1
+  - 1
   - 2
   - 2
-  - 2
-  dropout: 0.1
+  - 4
+  - 4
+  dropout: 0.0

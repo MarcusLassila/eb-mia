@@ -6,11 +6,11 @@ from torch.utils.data import ConcatDataset, Dataset
 
 class MNIST(Dataset):
     
-    def __init__(self, transform):
+    def __init__(self, transform, data_dir):
         self.transform = transform
         self.dataset = ConcatDataset([
-            datasets.MNIST(root='./datasets', train=True, download=True, transform=self.transform),
-            datasets.MNIST(root='./datasets', train=False, download=True, transform=self.transform),
+            datasets.MNIST(root=data_dir, train=True, download=True, transform=self.transform),
+            datasets.MNIST(root=data_dir, train=False, download=True, transform=self.transform),
         ])
 
     def __getitem__(self, index):
@@ -22,11 +22,11 @@ class MNIST(Dataset):
 
 class CIFAR10(Dataset):
 
-    def __init__(self, transform):
+    def __init__(self, transform, data_dir):
         self.transform = transform
         self.dataset = ConcatDataset([
-            datasets.CIFAR10(root='./datasets', train=True, download=True, transform=self.transform),
-            datasets.CIFAR10(root='./datasets', train=False, download=True, transform=self.transform),
+            datasets.CIFAR10(root=data_dir, train=True, download=True, transform=self.transform),
+            datasets.CIFAR10(root=data_dir, train=False, download=True, transform=self.transform),
         ])
 
     def __getitem__(self, index):
@@ -38,15 +38,15 @@ class CIFAR10(Dataset):
     
 class CelebAHQ(Dataset):
 
-    def __init__(self, transform):
+    def __init__(self, transform, data_dir="./datasets"):
         self.transform = transform
         self.dataset = ConcatDataset([
-            load_dataset("korexyz/celeba-hq-256x256", split="train"),
-            load_dataset("korexyz/celeba-hq-256x256", split="validation"),
+            load_dataset("korexyz/celeba-hq-256x256", split="train", cache_dir=data_dir),
+            load_dataset("korexyz/celeba-hq-256x256", split="validation", cache_dir=data_dir),
         ])
 
     def __getitem__(self, index):
-        image = self.dataset[index]["image"]
+        image = self.dataset[int(index)]["image"]
         image = self.transform(image)
         return image
 
@@ -55,9 +55,9 @@ class CelebAHQ(Dataset):
 
 class Flowers(Dataset):
 
-    def __init__(self, transform):
+    def __init__(self, transform, data_dir="./datasets"):
         self.transform = transform
-        self.dataset = load_dataset("huggan/flowers-102-categories")["train"]
+        self.dataset = load_dataset("huggan/flowers-102-categories", cache_dir=data_dir)["train"]
 
     def __getitem__(self, index):
         image = self.dataset[index]["image"]
