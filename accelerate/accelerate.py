@@ -1,3 +1,5 @@
+import random
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -26,6 +28,7 @@ class AcceleratorLite:
             self.world_size = 1
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.is_master_process = self.rank == 0
+        self.set_seed(self.rank)
 
     def __del__(self):
         if self.running_ddp:
@@ -53,11 +56,20 @@ class AcceleratorLite:
         if self.is_master_process:
             print(*args, **kwargs)
 
+    def set_seed(self, rank, base_seed=42):
+        print("Setting seed: {seed}")
+        seed = base_seed + rank
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
 class DataLoaderOnDevice:
     '''Wrapper to place batches on device.'''
 
     def __init__(self, dataloader, device):
         self.dataloader = dataloader
+        self.sampler = dataloader.sampler
         self.device = device
 
     def __iter__(self):

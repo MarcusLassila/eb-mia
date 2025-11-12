@@ -67,7 +67,7 @@ class DDPM:
         t = torch.randint(low=0, high=self.T, size=(x.shape[0],)).to(self.device)
         return self.per_sample_loss(x, t, autocast_context).mean()
 
-    def train(self, train_dataset, val_dataset, batch_size, lr, n_epochs, savepath, simul_batch_size=64, grad_clip=1.0, epochs_per_checkpoint=200):
+    def train(self, train_dataset, val_dataset, batch_size, lr, n_epochs, savepath, simul_batch_size=64, grad_clip=1.0, epochs_per_checkpoint=200, autocast_dtype="bfloat16"):
         accelerator = self.accelerator
         input_dim = train_dataset[0].shape
         assert input_dim == self.image_dim == val_dataset[0].shape
@@ -80,8 +80,8 @@ class DDPM:
             accelerator.print(f"Gradient accumulation steps: {grad_accum_steps}")
 
         if self.device.type == "cuda":
-            autocast_context = torch.autocast(device_type="cuda", dtype=torch.bfloat16)
-            scaler = torch.GradScaler(device="cuda")
+            autocast_context = torch.autocast(device_type="cuda", dtype=getattr(torch, autocast_dtype))
+            scaler = torch.GradScaler(device="cuda", enabled=autocast_dtype=="float16") # Only use gradscaler for float16
         else:
             autocast_context = nullcontext()
             scaler = torch.GradScaler(device="cpu", enabled=False)
@@ -100,6 +100,8 @@ class DDPM:
         step = 0
         log_dict = defaultdict(list)
         for epoch in range(1, n_epochs + 1):
+            if accelerator.running_ddp:
+                train_dataloader.sampler.set_epoch(epoch)
             model.train()
             optimizer.zero_grad()
             accum_loss = 0.0
@@ -161,7 +163,7 @@ class DDPM:
             accelerator.print(log_msg, flush=True)
             log_dict = defaultdict(list)
 
-            if epoch % epochs_per_checkpoint == 0 or epoch == n_epochs:
+            if accelerator.is_master_process and (epoch % epochs_per_checkpoint == 0 or epoch == n_epochs):
                 savepath = Path(savepath)
                 name = savepath.stem + f"-ep{epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
