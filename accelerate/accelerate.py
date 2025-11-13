@@ -57,7 +57,6 @@ class AcceleratorLite:
             print(*args, **kwargs)
 
     def set_seed(self, rank, base_seed=42):
-        print("Setting seed: {seed}")
         seed = base_seed + rank
         random.seed(seed)
         np.random.seed(seed)

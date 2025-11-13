@@ -98,74 +98,63 @@ class DDPM:
         optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr, fused=use_fused)
 
         step = 0
-        log_dict = defaultdict(list)
         for epoch in range(1, n_epochs + 1):
+            t0 = time.time()
             if accelerator.running_ddp:
                 train_dataloader.sampler.set_epoch(epoch)
             model.train()
             optimizer.zero_grad()
-            accum_loss = 0.0
-            t0 = time.time()
+            train_accum_loss = 0.0
+            accum_grad_norm = 0.0
+            n_steps = torch.zeros((), dtype=torch.float32, device=self.device)
             for i, x in enumerate(train_dataloader):
                 final_grad_accum_step = (i + 1) % grad_accum_steps == 0
                 loss = self.loss(x, autocast_context)
                 loss /= grad_accum_steps
-                accum_loss += loss.detach()
+                train_accum_loss += loss.detach()
                 if accelerator.running_ddp:
                     model.require_backward_grad_sync = final_grad_accum_step
                 scaler.scale(loss).backward()
                 if not final_grad_accum_step:
                     continue # Keep accumulating gradients
 
-                # Gradient accumulation done, update parameters and log
-                if accelerator.running_ddp:
-                    dist.all_reduce(accum_loss, op=dist.ReduceOp.AVG)
                 if grad_clip != 0.0:
                     scaler.unscale_(optimizer)
                     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                    accum_grad_norm += norm
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize() # Syncronize processes before measuring t1
-                t1 = time.time()
                 step += 1
-                im_per_sec = x.shape[0] * accelerator.world_size / (t1 - t0)
-                log_dict["accum_loss"].append(accum_loss.item())
-                log_dict["grad_norm"].append(norm.item())
-                log_dict["im_per_sec"].append(im_per_sec)
-                log_dict["step_time"].append(t1 - t0)
-                accum_loss = 0.0
-                t0 = time.time()
+                n_steps += 1
 
             model.eval()
             with torch.no_grad():
-                accum_loss = 0.0
-                n_batches = torch.tensor([0], dtype=torch.int64, device=self.device)
+                val_accum_loss = 0.0
+                n_val_batches = torch.zeros((), dtype=torch.float32, device=self.device)
                 for x in val_dataloader:
-                    loss = self.loss(x, autocast_context)
-                    accum_loss += loss
-                    n_batches += 1
-                if accelerator.running_ddp:
-                    dist.all_reduce(accum_loss, op=dist.ReduceOp.SUM)
-                    dist.all_reduce(n_batches, op=dist.ReduceOp.SUM)
-                val_loss = (accum_loss / n_batches).item()
+                    val_accum_loss += self.loss(x, autocast_context)
+                    n_val_batches += 1
 
+            if accelerator.running_ddp:
+                for x in train_accum_loss, val_accum_loss, accum_grad_norm, n_steps, n_val_batches:
+                    dist.all_reduce(x, op=dist.ReduceOp.SUM)
+            if accelerator.device.type == "cuda":
+                torch.cuda.synchronize()
+            t1 = time.time()
             log_msg = (
                 f"epoch: {epoch} "
                 f"| step: {step} "
-                f"| train loss: {mean(log_dict['accum_loss']):.6f} "
-                f"| val loss: {val_loss:.6f}"
-                f"| grad norm: {mean(log_dict['grad_norm']):.2f} "
-                f"| images per sec: {mean(log_dict['im_per_sec']):.1f} "
-                f"| time per step: {mean(log_dict['step_time']):.4f}"
+                f"| train loss: {(train_accum_loss / n_steps).item():.6f} "
+                f"| val loss: {(val_accum_loss / n_val_batches).item():.6f}"
+                + (f"| grad norm: {(accum_grad_norm / n_steps).item():.3f} " if grad_clip != 0 else "")
+                + f"| dt: {t1 - t0:.1f}"
             )
             accelerator.print(log_msg, flush=True)
-            log_dict = defaultdict(list)
 
             if accelerator.is_master_process and (epoch % epochs_per_checkpoint == 0 or epoch == n_epochs):
                 savepath = Path(savepath)
-                name = savepath.stem + f"-ep{epoch}" + savepath.suffix
+                name = savepath.stem + f"-epoch{epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {
                     "epoch": epoch,
