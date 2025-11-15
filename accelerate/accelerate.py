@@ -38,6 +38,7 @@ class AcceleratorLite:
     def prepare(self, model, train_dataset, val_dataset, batch_size):
         model.to(self.device)
         if torch.cuda.is_available() and self.torch_compile:
+            self.print(f"torch compile model")
             model = torch.compile(model)
         if self.running_ddp:
             model = DDP(model, device_ids=[self.local_rank])

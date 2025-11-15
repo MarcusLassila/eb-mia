@@ -48,9 +48,12 @@ class AnnealedImportanceSampling:
             beta = self.beta_schedule[t]
             log_w += (beta - beta_prev) * (log_p1_curr - log_p0_curr)
 
-            X_c = X - X.mean(dim=0, keepdim=True)
-            cov = X_c.t() @ X_c / (self.n_samples - 1)
-            S = self.cov_scale_factor * (cov + 1e-5 * torch.eye(self.dim, device=device))
+            #X_c = X - X.mean(dim=0, keepdim=True)
+            #cov = X_c.t() @ X_c / (self.n_samples - 1)
+            #cov = 0.5 * (cov + cov.t())
+            #S = self.cov_scale_factor * (cov + 1e-5 * torch.eye(self.dim, device=device))
+            diag = torch.var(X, dim=0, unbiased=True) + 1e-6
+            S = (2.38**2 / X.shape[1]) * torch.diag(diag)
             L = torch.linalg.cholesky(S)
 
             accept_rate = 0.0
@@ -125,7 +128,7 @@ def compute_partition_functions(path, steps, n_loss_samples, device, data_dir):
         pickle.dump(log_Z, f)
 
 @torch.inference_mode()
-def test_multinormal_partition_fn(steps, device):
+def test_multinormal_partition_fn(steps, n_steps_per_sample, device):
     dim = 50
     mean = torch.normal(mean=10.0, std=3.0, size=(dim,), device=device)
     rand_mat = torch.normal(mean=2.0, std=5.0, size=(dim, dim), device=device)
@@ -147,14 +150,51 @@ def test_multinormal_partition_fn(steps, device):
         beta_schedule=beta_schedule,
         log_p1=log_p,
         device=device,
+        n_steps_per_sample=n_steps_per_sample,
     )
-    log_Z_est = sampler.run()["log_Z"]
+    logZ_est = sampler.run()["log_Z"]
     sign, logdet = torch.slogdet(cov)
     assert torch.all(sign > 0)
-    log_Z_true = 0.5 * dim * np.log(2 * np.pi) + 0.5 * logdet
-    print(f"logZ est: {log_Z_est}")
-    print(f"logZ true: {log_Z_true}")
-    print(f"difference: {log_Z_est - log_Z_true}")
+    logZ_true = 0.5 * dim * np.log(2 * np.pi) + 0.5 * logdet
+    print(f"logZ est: {logZ_est}")
+    print(f"logZ true: {logZ_true}")
+    print(f"difference: {logZ_est - logZ_true}")
+
+def test_mixture_of_multinormal(steps, n_steps_per_sample, device):
+    dim = 100
+    n_mixtures = 10
+    mean = torch.normal(mean=0.0, std=50.0, size=(n_mixtures, dim), device=device)
+    L = torch.randn(n_mixtures, dim, dim, device=device)
+    L = torch.tril(L)
+    L.diagonal(dim1=1, dim2=2).abs_().add_(1.0)
+    mixture_coeffs = torch.rand(n_mixtures, device=device)
+    mixture_coeffs /= mixture_coeffs.sum()
+    log_mixture_coeffs = mixture_coeffs.log()
+    logdet = 2 * L.diagonal(dim1=1, dim2=2).log().sum(dim=1)
+    logZ_true = torch.logsumexp(log_mixture_coeffs + 0.5 * dim * np.log(2 * np.pi) + 0.5 * logdet, dim=0)
+
+    def log_p(x):
+        ''' Unnormalized log pdf '''
+        d = x.unsqueeze(dim=1) - mean
+        z = torch.cholesky_solve(d.unsqueeze(dim=-1), L).squeeze(dim=-1)
+        p = -0.5 * torch.sum(d * z, dim=2)
+        p += log_mixture_coeffs
+        assert p.shape == (x.shape[0], n_mixtures)
+        p = torch.logsumexp(p, dim=1)
+        return p
+
+    beta_schedule = torch.linspace(0, 1, steps=steps, device=device)
+    sampler = AnnealedImportanceSampling(
+        dim=dim,
+        beta_schedule=beta_schedule,
+        log_p1=log_p,
+        device=device,
+        n_steps_per_sample=n_steps_per_sample,
+    )
+    logZ_est = sampler.run()["logZ"]
+    print(f"logZ est: {logZ_est}")
+    print(f"logZ true: {logZ_true}")
+    print(f"difference: {logZ_est - logZ_true}")
 
 if __name__ == "__main__":
     import argparse
@@ -180,6 +220,11 @@ if __name__ == "__main__":
         type=int,
         default=20,
     )
+    parser.add_argument(
+        "--n-steps-per-sample",
+        type=int,
+        default=50,
+    )
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # compute_partition_functions(
@@ -189,4 +234,4 @@ if __name__ == "__main__":
     #     device=device,
     #     data_dir=args.data_dir,
     # )
-    test_multinormal_partition_fn(args.steps, device=device)
+    test_mixture_of_multinormal(args.steps, args.n_steps_per_sample, device=device)
