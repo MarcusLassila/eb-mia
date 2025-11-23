@@ -118,12 +118,9 @@ class UNet(nn.Module):
                  resample_with_conv=True,
         ):
         super().__init__()
-        if image_size == 32:
-            rescalings_to_16_res = 1
-        elif image_size == 256:
-            rescalings_to_16_res = 4
-        else:
-            raise ValueError("Only image size 32x32 and 256x256 are supported")
+        assert np.log2(image_size) % 1 == 0
+        assert np.log2(image_size) > 4
+        rescalings_to_16_res = np.log2(image_size) - 4
         n_res_blocks = 2
 
         self.dropout = dropout

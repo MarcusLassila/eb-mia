@@ -53,6 +53,11 @@ class CelebA(Dataset):
         if transform is None:
             self.transform = T.Compose([
                 T.CenterCrop((178, 178)),
+                T.Resize(
+                    (128, 128),  # The DDPM implementation used requires height == width == 2^n for some n > 4
+                    interpolation=T.InterpolationMode.BICUBIC,
+                    antialias=True,
+                ),
                 T.RandomHorizontalFlip(p=0.5),
                 TRANSFORM,
             ])
@@ -113,9 +118,9 @@ class Flowers(Dataset):
 
 
 if __name__ == "__main__":
-    transform = T.ToTensor()
-    dataset = CelebA(transform)
+    dataset = CelebA()
     sample = dataset[1]
+    sample = 0.5 * (sample + 1.0)
     print(len(dataset))
     print(sample.shape)
     import matplotlib.pyplot as plt
