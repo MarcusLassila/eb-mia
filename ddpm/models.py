@@ -118,9 +118,9 @@ class UNet(nn.Module):
                  resample_with_conv=True,
         ):
         super().__init__()
-        assert np.log2(image_size) % 1 == 0
-        assert np.log2(image_size) > 4
-        rescalings_to_16_res = np.log2(image_size) - 4
+        assert math.log2(image_size) % 1 == 0
+        assert math.log2(image_size) > 4
+        rescalings_to_16_res = math.log2(image_size) - 4
         n_res_blocks = 2
 
         self.dropout = dropout

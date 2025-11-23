@@ -25,12 +25,16 @@ def get_root():
     except subprocess.CalledProcessError:
         return None
 
+def get_dataset_and_model_from_path(path):
+    dataset, model, *_ = Path(path).stem.split("-") # Assumes model checkpoint is saved as dataset-model-otherstuff.pth
+    return dataset, model
+
 def load_checkpoint(path: str, device: torch.device):
     return torch.load(path, map_location=device)
 
 def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
     checkpoint = load_checkpoint(path, device)
-    model_type = Path(path).stem.split("-")[1] # Assumes model checkpoint is saved as dataset-model_type-otherstuff.pth
+    _, model_type = get_dataset_and_model_from_path(path)
     match model_type:
         case "VAE":
             model = globals()[model_type](

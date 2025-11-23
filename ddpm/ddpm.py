@@ -167,6 +167,8 @@ class DDPM:
                     "image_dim": self.image_dim,
                     "dropout": self.dropout,
                     "resample_with_conv": self.resample_with_conv,
+                    "train_indices": train_dataset.indices,
+                    "val_indices": val_dataset.indices,
                 }
                 torch.save(checkpoint, current_epoch_savepath)
 
