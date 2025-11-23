@@ -113,7 +113,7 @@ def run_audit(config, device):
 
 if __name__ == "__main__":
     root = utils.get_root()
-    with open(f"{root}/mia/config_audit.yaml", "r") as file:
+    with open(f"{root}/mia/configs/config_audit.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)

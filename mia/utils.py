@@ -2,6 +2,7 @@ from vae.vae import VAE
 from tractable_ebm import bmm
 import utils
 
+import numpy as np
 import torch
 
 from pathlib import Path

@@ -107,6 +107,7 @@ class VAE(nn.Module):
         return self.decode(self.encode(x))
 
     def encode(self, x):
+        x = (x + 1.0) / 2.0  # Assmes data in [-1,1]
         mean, logvar = self.encoder(x)
         return self.rsample(mean, logvar)
     

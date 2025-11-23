@@ -4,10 +4,18 @@ from torchvision import datasets
 from torchvision import transforms as T
 from torch.utils.data import ConcatDataset, Dataset
 
+TRANSFORM = T.Compose([
+    T.ToTensor(),
+    T.Lambda(lambda x: x * 2.0 - 1.0),
+])
+
 class MNIST(Dataset):
     
-    def __init__(self, transform, data_dir):
-        self.transform = transform
+    def __init__(self, data_dir="./datasets", transform=None):
+        if transform is None:
+            self.transform = TRANSFORM
+        else:
+            self.transform = transform
         self.dataset = ConcatDataset([
             datasets.MNIST(root=data_dir, train=True, download=True, transform=self.transform),
             datasets.MNIST(root=data_dir, train=False, download=True, transform=self.transform),
@@ -22,8 +30,11 @@ class MNIST(Dataset):
 
 class CIFAR10(Dataset):
 
-    def __init__(self, transform, data_dir):
-        self.transform = transform
+    def __init__(self, data_dir="./datasets", transform=None):
+        if transform is None:
+            self.transform = TRANSFORM
+        else:
+            self.transform = transform
         self.dataset = ConcatDataset([
             datasets.CIFAR10(root=data_dir, train=True, download=True, transform=self.transform),
             datasets.CIFAR10(root=data_dir, train=False, download=True, transform=self.transform),
@@ -35,11 +46,38 @@ class CIFAR10(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-    
+
+class CelebA(Dataset):
+
+    def __init__(self, data_dir="./datasets", transform=None):
+        if transform is None:
+            self.transform = T.Compose([
+                T.CenterCrop((178, 178)),
+                T.RandomHorizontalFlip(p=0.5),
+                TRANSFORM,
+            ])
+        else:
+            self.transform = transform
+        self.dataset = load_dataset("nielsr/CelebA-faces", split="train", cache_dir=data_dir)
+
+    def __getitem__(self, index):
+        image = self.dataset[int(index)]["image"]
+        image = self.transform(image)
+        return image
+
+    def __len__(self):
+        return len(self.dataset)
+
 class CelebAHQ(Dataset):
 
-    def __init__(self, transform, data_dir="./datasets"):
-        self.transform = transform
+    def __init__(self, data_dir="./datasets", transform=None):
+        if transform is None:
+            self.transform = T.Compose([
+                T.RandomHorizontalFlip(p=0.5),
+                TRANSFORM,
+            ])
+        else:
+            self.transform = transform
         self.dataset = ConcatDataset([
             load_dataset("korexyz/celeba-hq-256x256", split="train", cache_dir=data_dir),
             load_dataset("korexyz/celeba-hq-256x256", split="validation", cache_dir=data_dir),
@@ -55,8 +93,14 @@ class CelebAHQ(Dataset):
 
 class Flowers(Dataset):
 
-    def __init__(self, transform, data_dir="./datasets"):
-        self.transform = transform
+    def __init__(self, data_dir="./datasets", transform=None):
+        if transform is None:
+            self.transform = T.Compose([
+                T.RandomHorizontalFlip(p=0.5),
+                TRANSFORM,
+            ])
+        else:
+            self.transform = transform
         self.dataset = load_dataset("huggan/flowers-102-categories", cache_dir=data_dir)["train"]
 
     def __getitem__(self, index):
@@ -70,8 +114,8 @@ class Flowers(Dataset):
 
 if __name__ == "__main__":
     transform = T.ToTensor()
-    dataset = CIFAR10(transform)
-    sample = dataset[0]
+    dataset = CelebA(transform)
+    sample = dataset[1]
     print(len(dataset))
     print(sample.shape)
     import matplotlib.pyplot as plt

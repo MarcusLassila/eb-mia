@@ -64,15 +64,7 @@ def train_model_pair(
         config,
         savedir,
     ):
-    if config.model == "DDPM":
-        transform = T.Compose([
-            T.RandomHorizontalFlip(p=0.5),
-            T.ToTensor(),
-            T.Lambda(lambda x: x * 2.0 - 1.0), # Scale data to values in [-1,1]
-        ])
-    else:
-        transform = T.ToTensor()
-    dataset = getattr(data, config.dataset)(transform=transform, data_dir=config.data_dir)
+    dataset = getattr(data, config.dataset)(data_dir=config.data_dir, transform=None)  # Use default transforms
     n_indices = len(dataset)
     train_mask = torch.rand(n_indices) > 0.5
     for id_, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
@@ -80,7 +72,7 @@ def train_model_pair(
 
 def main(config_file, id_):
     root = utils.get_root()
-    with open(f"{root}/mia/{config_file}.yaml", "r") as file:
+    with open(f"{root}/mia/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)
