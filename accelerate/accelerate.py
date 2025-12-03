@@ -11,7 +11,7 @@ import os
 class AcceleratorLite:
     '''Lightweight Accelerator (Huggingface) like class to handle device placement and distributed training.'''
 
-    def __init__(self, torch_compile=False):
+    def __init__(self, torch_compile=False, base_seed=42):
         self.torch_compile = torch_compile
         self.running_ddp = "RANK" in os.environ
         if self.running_ddp:
@@ -28,7 +28,7 @@ class AcceleratorLite:
             self.world_size = 1
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.is_master_process = self.rank == 0
-        self.set_seed(self.rank)
+        self.set_seed(self.rank, base_seed=base_seed)
 
     def __del__(self):
         if self.running_ddp:
@@ -57,7 +57,7 @@ class AcceleratorLite:
         if self.is_master_process:
             print(*args, **kwargs)
 
-    def set_seed(self, rank, base_seed=42):
+    def set_seed(self, rank, base_seed):
         seed = base_seed + rank
         random.seed(seed)
         np.random.seed(seed)

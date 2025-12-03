@@ -96,6 +96,7 @@ class DDPM:
         use_fused = "fused" in inspect.signature(torch.optim.AdamW).parameters and self.device.type == "cuda"
         accelerator.print(f"Using fused AdamW: {use_fused}")
         optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr, fused=use_fused)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
 
         step = 0
         for epoch in range(1, n_epochs + 1):
@@ -128,6 +129,9 @@ class DDPM:
                 step += 1
                 n_steps += 1
 
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()[0]
+
             model.eval()
             with torch.no_grad():
                 val_accum_loss = 0.0
@@ -146,7 +150,8 @@ class DDPM:
                 f"epoch: {epoch} "
                 f"| step: {step} "
                 f"| train loss: {(train_accum_loss / n_steps).item():.6f} "
-                f"| val loss: {(val_accum_loss / n_val_batches).item():.6f}"
+                f"| val loss: {(val_accum_loss / n_val_batches).item():.6f} "
+                f"| lr: {current_lr:.7f}"
                 + (f"| grad norm: {(accum_grad_norm / n_steps).item():.3f} " if grad_clip != 0 else "")
                 + f"| dt: {t1 - t0:.1f}"
             )

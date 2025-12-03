@@ -1,0 +1,20 @@
+CelebA-DDPM:
+  batch_size: 32
+  simul_batch_size: 128
+  torch_compile: false
+  dataset: "CelebA"
+  data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
+  epochs: 1000
+  epochs_per_checkpoint: 250
+  lr: 0.0001
+  val_frac: 0.02
+  model: "DDPM"
+  base_channels: 128
+  channel_mult:
+  - 1
+  - 1
+  - 2
+  - 2
+  - 4
+  - 4
+  dropout: 0.0

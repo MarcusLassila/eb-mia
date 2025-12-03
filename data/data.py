@@ -13,7 +13,10 @@ class MNIST(Dataset):
     
     def __init__(self, data_dir="./datasets", transform=None):
         if transform is None:
-            self.transform = TRANSFORM
+            self.transform = T.Compose([
+                T.Resize(32),  # Resize to 32 for architectural convenience
+                TRANSFORM,
+            ])
         else:
             self.transform = transform
         self.dataset = ConcatDataset([

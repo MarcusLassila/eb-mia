@@ -1,0 +1,11 @@
+MNIST-VAE:
+  batch_size: 128
+  dataset: "MNIST"
+  data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
+  latent_dim: 128
+  epochs: 1000
+  lr: 0.0002
+  weight_decay: 0.01
+  val_frac: 0.02
+  model: "VAE"
+  torch_compile: false
