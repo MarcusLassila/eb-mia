@@ -1,20 +1,14 @@
-CIFAR10-VAE:
-  dataset: "CIFAR10"
-  model_type: "VAE"
+CelebA-DDPM:
+  dataset: "CelebA"
+  model_type: "DDPM"
   batch_size: 512
   n_audit_samples: 30000
   target_model_paths:
   - ""
-  ref_model_paths:
+  shadow_model_paths:
   - ""
   attacks:
     BASE:
       attack: "BASE"
       prior: 0.5
-      n_loss_samples: 20
-      calibrated: True
-    UncalibratedBASE:
-      attack: "BASE"
-      prior: 0.5
-      n_loss_samples: 20
-      calibrated: False
+      n_loss_samples: 10

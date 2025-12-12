@@ -9,54 +9,15 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from xgboost import XGBClassifier
 
-class GlobalLossAttack:
-
-    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=1):
-        self.dataset_name = dataset_name
-        self.model_type = model_type
-        self.batch_size = batch_size
-        self.device = device
-        self.n_loss_samples = n_loss_samples
-
-    def load_model(self, index):
-        model, _ = utils.load_model(
-            dataset=self.dataset_name,
-            model_type=self.model_type,
-            index_model=index,
-            device=self.device,
-            n_loss_samples=self.n_loss_samples,
-        )
-        return model
-
-    @torch.inference_mode()
-    def loss_signal(self, audit_loader, index_model):
-        model = self.load_model(index_model)
-        sig = []
-        for samples in audit_loader:
-            samples = samples.to(self.device)
-            loss = model.per_sample_loss(samples).cpu()
-            sig.append(loss)
-        sig = torch.concat(sig, dim=0)
-        assert sig.shape == (len(audit_loader.dataset),)
-        return sig
-
-    def run_attack(self, audit_samples, index_target_model):
-        audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
-        return -self.loss_signal(audit_loader, index_target_model)
 
 class BASE:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, ref_model_paths, partition_fns, prior=0.5, n_loss_samples=1, calibrated=True):
-        self.dataset_name = dataset_name
-        self.model_type = model_type
+    def __init__(self, batch_size, device, shadow_model_paths, prior=0.5, n_loss_samples=1):
         self.batch_size = batch_size
         self.device = device
-        self.ref_model_paths = ref_model_paths
-        self.partition_fns = partition_fns
+        self.shadow_model_paths = shadow_model_paths
         self.prior = prior
-        self.n_loss_samples=n_loss_samples
-        self.calibrated = calibrated
-        print("BASE initialized. Calibrated:", self.calibrated)
+        self.n_loss_samples = n_loss_samples
 
     def load_model(self, path):
         model, _ = utils.load_model(
@@ -72,37 +33,43 @@ class BASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            loss = model.per_sample_loss(samples).cpu()
-            if self.calibrated:
-                log_Z = self.partition_fns[str(model_path)]
-            else:
-                log_Z = 0.0
-            sig.append(loss + log_Z)
+            avg_loss = []
+            for _ in range(self.n_loss_samples):
+                t = torch.randint(900, 999, size=samples.shape[0], device=self.device)
+                loss = model.per_sample_loss(samples, t).cpu()
+                avg_loss.append(loss)
+            avg_loss = torch.stack(avg_loss).mean()
+            sig.append(avg_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
 
     def run_attack(self, audit_samples, target_model_path):
-        assert target_model_path not in self.ref_model_paths, "Should not attack the reference models"
+        assert target_model_path not in self.shadow_model_paths, "Should not attack the reference models"
         audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
         sig_target = self.loss_signal(audit_loader, target_model_path)
-        sig_ref_models = []
-        for model_path in self.ref_model_paths:
+        sig_shadow_models = []
+        for model_path in self.shadow_model_paths:
             sig = self.loss_signal(audit_loader, model_path)
-            sig_ref_models.append(sig)
-        sig_ref_models = torch.stack(sig_ref_models)
-        score = -sig_target - torch.logsumexp(-sig_ref_models, dim=0) + np.log(self.prior / (1 - self.prior))
+            sig_shadow_models.append(sig)
+        sig_shadow_models = torch.stack(sig_shadow_models)
+        score = -sig_target - torch.logsumexp(-sig_shadow_models, dim=0) + np.log(self.prior / (1 - self.prior))
         return score.sigmoid()
+
+
+#########################################################################
+########## Classifier and naive loss attack that does not work ########## 
+#########################################################################
 
 class ClassifierAttack:
 
-    def __init__(self, dataset_name, model_type, batch_size, device, index_ref_models, n_loss_samples=20, classifier="MLP"):
+    def __init__(self, dataset_name, model_type, batch_size, device, index_shadow_models, n_loss_samples=20, classifier="MLP"):
         self.dataset = getattr(data, dataset_name)() # Full dataset
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size
         self.device = device
-        self.index_ref_models = index_ref_models
+        self.index_shadow_models = index_shadow_models
         self.n_loss_samples = n_loss_samples
         self.classifier = classifier
         self.train_features, self.train_labels, self.val_features, self.val_labels = self.create_attack_dataset()
@@ -153,7 +120,7 @@ class ClassifierAttack:
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         features = []
         labels = []
-        for index in self.index_ref_models:
+        for index in self.index_shadow_models:
             model, train_indices = self.load_model(index)
             train_mask = utils.index_to_mask(train_indices, len(self.dataset))
             running_index = 0
@@ -243,3 +210,38 @@ class ClassifierAttack:
         scores = torch.concat(scores, dim=0).cpu()
         assert scores.shape == (len(audit_samples),)
         return scores
+
+class GlobalLossAttack:
+
+    def __init__(self, dataset_name, model_type, batch_size, device, n_loss_samples=1):
+        self.dataset_name = dataset_name
+        self.model_type = model_type
+        self.batch_size = batch_size
+        self.device = device
+        self.n_loss_samples = n_loss_samples
+
+    def load_model(self, index):
+        model, _ = utils.load_model(
+            dataset=self.dataset_name,
+            model_type=self.model_type,
+            index_model=index,
+            device=self.device,
+            n_loss_samples=self.n_loss_samples,
+        )
+        return model
+
+    @torch.inference_mode()
+    def loss_signal(self, audit_loader, index_model):
+        model = self.load_model(index_model)
+        sig = []
+        for samples in audit_loader:
+            samples = samples.to(self.device)
+            loss = model.per_sample_loss(samples).cpu()
+            sig.append(loss)
+        sig = torch.concat(sig, dim=0)
+        assert sig.shape == (len(audit_loader.dataset),)
+        return sig
+
+    def run_attack(self, audit_samples, index_target_model):
+        audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
+        return -self.loss_signal(audit_loader, index_target_model)

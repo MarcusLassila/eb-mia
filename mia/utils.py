@@ -1,5 +1,5 @@
+from ddpm.ddpm import DDPM
 from vae.vae import VAE
-from tractable_ebm import bmm
 import utils
 
 import numpy as np
@@ -36,6 +36,18 @@ def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
     checkpoint = load_checkpoint(path, device)
     _, model_type = get_dataset_and_model_from_path(path)
     match model_type:
+        case "DDPM":
+            model = DDPM(
+                beta=checkpoint["beta"],
+                channel_mult=checkpoint["channel_mult"],
+                image_dim=checkpoint["image_dim"],
+                base_channels=checkpoint["base_channels"],
+                dropout=checkpoint["dropout"],
+                resample_with_conv=checkpoint["resample_with_conv"],
+            )
+            model.to(device)
+            model.load(checkpoint["model_state_dict"])
+            train_indices = checkpoint["train_indices"]
         case "VAE":
             model = globals()[model_type](
                 in_ch=checkpoint["in_ch"],
@@ -43,14 +55,6 @@ def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
                 latent_dim=checkpoint["latent_dim"],
             )
             model.n_rsamples = n_loss_samples
-            model.to(device)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            train_indices = checkpoint["train_indices"]
-        case "BMM":
-            model = bmm.BernoulliMixtureModel(
-                in_dim=checkpoint["in_dim"],
-                n_mixtures=checkpoint["n_mixtures"],
-            )
             model.to(device)
             model.load_state_dict(checkpoint["model_state_dict"])
             train_indices = checkpoint["train_indices"]
