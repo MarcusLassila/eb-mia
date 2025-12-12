@@ -1,0 +1,56 @@
+from accelerate.accelerate import AcceleratorLite
+from ddpm.ddpm import DDPM
+
+import torch
+import matplotlib.pyplot as plt
+import argparse
+from pathlib import Path
+
+def plot_images(images, name="temp_image"):
+    # Create the 4x4 grid
+    fig, axes = plt.subplots(4, 4, figsize=(6, 6))
+    axes = axes.flatten()
+
+    for img, ax in zip(images, axes):
+        img = img.permute(1, 2, 0)
+        img = img.clamp(0, 1)
+        ax.imshow(img)
+        ax.axis("off")
+
+    plt.tight_layout()
+    Path("./images").mkdir(parents=True, exist_ok=True)
+    plt.savefig(f"./images/{name}.png")
+    plt.close(fig)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batch-size", default=16, type=int)
+    parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--seed", default=42, type=int)
+    parser.add_argument("--save-raw-data", action="store_true")
+    args = parser.parse_args()
+
+    accelerator = AcceleratorLite(torch_compile=False, base_seed=args.seed)
+
+    checkpoint = torch.load(f"/mimer/NOBACKUP/groups/e2e_comms/lassila/genai_models/{args.model}.pth", map_location="cpu")
+    fixed_state = {}
+    for k, v in checkpoint["model_state_dict"].items():
+        new_key = k.replace("_orig_mod.", "", 1)
+        fixed_state[new_key] = v
+    model = DDPM(
+        beta=checkpoint["beta"],
+        channel_mult=checkpoint["channel_mult"],
+        image_dim=checkpoint["image_dim"],
+        base_channels=checkpoint["base_channels"],
+        dropout=checkpoint["dropout"],
+        resample_with_conv=checkpoint["resample_with_conv"],
+        accelerator=accelerator,
+    )
+    model.load(fixed_state)
+    batch_size = args.batch_size
+    gen_batch = model.sample(batch_size).cpu() 
+    if args.save_raw_data:
+        Path("./images").mkdir(parents=True, exist_ok=True)
+        torch.save(gen_batch, "./images/image_batch.pth")
+    else:
+        plot_images(gen_batch, name=f"{args.model}_images")

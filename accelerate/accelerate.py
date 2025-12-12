@@ -35,6 +35,9 @@ class AcceleratorLite:
             self.print("destroying process group")
             dist.destroy_process_group()
 
+    def broadcast(self, tensor, src=0):
+        dist.broadcast(tensor, src=src)
+
     def prepare(self, model, train_dataset, val_dataset, batch_size):
         model.to(self.device)
         if torch.cuda.is_available() and self.torch_compile:
@@ -69,6 +72,7 @@ class DataLoaderOnDevice:
 
     def __init__(self, dataloader, device):
         self.dataloader = dataloader
+        self.dataset = dataloader.dataset
         self.sampler = dataloader.sampler
         self.device = device
 

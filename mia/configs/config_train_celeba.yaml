@@ -4,8 +4,8 @@ CelebA-DDPM:
   torch_compile: false
   dataset: "CelebA"
   data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
-  epochs: 1000
-  epochs_per_checkpoint: 250
+  epochs: 800
+  epochs_per_checkpoint: 400
   lr: 0.0001
   val_frac: 0.02
   model: "DDPM"

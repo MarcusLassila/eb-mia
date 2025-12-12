@@ -18,7 +18,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     train_indices = utils.mask_to_index(train_mask)
     nontrain_indices = utils.mask_to_index(~train_mask)
     val_size = int(config.val_frac * len(dataset))
-    val_indices = nontrain_indices[torch.randperm(n=nontrain_indices.shape[0])[:val_size]]
+    val_indices = nontrain_indices[:val_size]
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
     match config.model:
@@ -66,7 +66,11 @@ def train_model_pair(
     ):
     dataset = getattr(data, config.dataset)(data_dir=config.data_dir, transform=None)  # Use default transforms
     n_indices = len(dataset)
-    train_mask = torch.rand(n_indices) > 0.5
+    if accelerator.is_master_process:
+        train_mask = torch.rand(n_indices, device=accelerator.device) > 0.5
+    else:
+        train_mask = torch.empty(n_indices, dtype=torch.bool, device=accelerator.device)
+    accelerator.broadcast(train_mask)
     for id_, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
         train_model(accelerator, config, savedir, dataset, mask, id_)
 
@@ -77,8 +81,8 @@ def main(config_file, id_):
     _, params = next(iter(config.items()))
     config = utils.Config(params)
     config.id = id_
-    accelerator = AcceleratorLite(torch_compile=config.torch_compile)
-    savedir = Path(f"{root}/trained_models")
+    accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_)
+    savedir = Path(f"/mimer/NOBACKUP/groups/e2e_comms/lassila/genai_models")
     savedir.mkdir(parents=True, exist_ok=True)
     train_model_pair(
         accelerator=accelerator,

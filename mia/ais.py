@@ -18,7 +18,7 @@ class AIS_MALA:
         self.n_particles = n_particles
         self.n_steps_per_beta = n_steps_per_beta
         self.device = torch.device(device)
-        self.eps = 0.05
+        self.eps = 0.01
         self.jitter = 1e-9
         self.mass_weight = 0.9
 
@@ -90,9 +90,9 @@ class AIS_MALA:
 
             accept_rate /= self.n_particles * self.n_steps_per_beta
             if accept_rate > 0.6:
-                self.eps *= 1.1
-            elif accept_rate < 0.4:
-                self.eps *= 0.9
+                self.eps *= 1.05
+            elif accept_rate < 0.42:
+                self.eps *= 0.95
 
             t1 = time.time()
             log_msg = f"step: {step} | beta: {beta:.5f} | eps: {self.eps:.5f} | accept rate: {accept_rate:.5f} | time: {t1 - t0:.1f} "
