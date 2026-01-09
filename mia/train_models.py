@@ -66,6 +66,7 @@ def train_model_pair(
     ):
     dataset = getattr(data, config.dataset)(data_dir=config.data_dir, transform=None)  # Use default transforms
     n_indices = len(dataset)
+
     if accelerator.is_master_process:
         train_mask = torch.rand(n_indices, device=accelerator.device) > 0.5
     else:
@@ -82,7 +83,7 @@ def main(config_file, id_):
     config = utils.Config(params)
     config.id = id_
     accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_)
-    savedir = Path(f"/mimer/NOBACKUP/groups/e2e_comms/lassila/genai_models")
+    savedir = Path(f"./trained_models")
     savedir.mkdir(parents=True, exist_ok=True)
     train_model_pair(
         accelerator=accelerator,
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="config_train",
+        default="config_train_celeba",
     )
     args = parser.parse_args()
     main(args.config, args.id)

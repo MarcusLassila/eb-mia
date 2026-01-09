@@ -1,5 +1,6 @@
-from . import models, utils
+from . import utils
 from accelerate.accelerate import AcceleratorLite
+from unet.unet import UNet
 
 import torch
 import torch.distributed as dist
@@ -8,10 +9,9 @@ from tqdm.auto import tqdm
 
 import inspect
 import time
-from collections import defaultdict
 from contextlib import nullcontext
 from pathlib import Path
-from statistics import mean
+
 
 class DDPM:
 
@@ -42,7 +42,7 @@ class DDPM:
         self.channel_mult = channel_mult
         self.dropout = dropout
         self.resample_with_conv = resample_with_conv
-        self.model = models.UNet(
+        self.model = UNet(
             image_size=self.image_dim[1],
             in_channels=self.image_dim[0],
             out_channels=self.image_dim[0],

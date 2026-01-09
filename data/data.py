@@ -1,5 +1,5 @@
 import torch
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from torchvision import datasets
 from torchvision import transforms as T
 from torch.utils.data import ConcatDataset, Dataset
@@ -57,16 +57,16 @@ class CelebA(Dataset):
             self.transform = T.Compose([
                 T.CenterCrop((178, 178)),
                 T.Resize(
-                    (128, 128),  # The DDPM implementation used requires height == width == 2^n for some n > 4
+                    (128, 128),
                     interpolation=T.InterpolationMode.BICUBIC,
                     antialias=True,
                 ),
-                T.RandomHorizontalFlip(p=0.5),
                 TRANSFORM,
             ])
         else:
             self.transform = transform
-        self.dataset = load_dataset("nielsr/CelebA-faces", split="train", cache_dir=data_dir)
+        ds = load_dataset("flwrlabs/celeba", cache_dir="./datasets")
+        self.dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
 
     def __getitem__(self, index):
         image = self.dataset[int(index)]["image"]

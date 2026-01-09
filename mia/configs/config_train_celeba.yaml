@@ -3,7 +3,7 @@ CelebA-DDPM:
   simul_batch_size: 128
   torch_compile: false
   dataset: "CelebA"
-  data_dir: "/mimer/NOBACKUP/groups/e2e_comms/lassila/data"
+  data_dir: "./datasets"
   epochs: 800
   epochs_per_checkpoint: 400
   lr: 0.0001

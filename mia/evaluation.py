@@ -51,5 +51,5 @@ def plot_average_roc_curves(resdir, low_exponent=-4):
     plt.savefig(f"{resdir}/average_roc_curves.png")
 
 if __name__ == "__main__":
-    resdir = f"{utils.get_root()}/mia/results/CIFAR10-VAE"
+    resdir = f"{utils.get_root()}/mia/results/CelebA-DDPM"
     plot_average_roc_curves(resdir)

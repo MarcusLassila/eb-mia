@@ -36,7 +36,8 @@ class AcceleratorLite:
             dist.destroy_process_group()
 
     def broadcast(self, tensor, src=0):
-        dist.broadcast(tensor, src=src)
+        if self.running_ddp:
+            dist.broadcast(tensor, src=src)
 
     def prepare(self, model, train_dataset, val_dataset, batch_size):
         model.to(self.device)
