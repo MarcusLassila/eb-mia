@@ -41,32 +41,55 @@ def zero_params(module):
 
 class AttentionBlock(nn.Module):
 
-    def __init__(self, channels):
+    def __init__(self, channels, n_heads, use_sdpa=True):
         super().__init__()
+        assert channels % n_heads == 0
         self.channels = channels
+        self.n_heads = n_heads
+        self.channels_per_head = channels // n_heads
         self.norm = group_norm(channels)
-        self.attn = NIN(in_channels=channels, out_channels=3*channels)
-        self.proj_out = zero_params(NIN(in_channels=channels, out_channels=channels))
+        self.qkv = NIN(dim=1, in_channels=channels, out_channels=3*channels)
+        self.proj_out = zero_params(NIN(dim=1, in_channels=channels, out_channels=channels))
+        self.use_sdpa = use_sdpa
 
     def forward(self, x):
-        B, C, H, W = x.shape
-        y = self.norm(x)
-        q, k, v = self.attn(y).split(self.channels, dim=1)
-        q = q.view(B, C, H * W).transpose(1, 2)
-        k = k.view(B, C, H * W)
-        v = v.view(B, C, H * W).transpose(1, 2)
-        # Maybe use flash attention?
-        w = torch.bmm(q, k) * (C ** -0.5)
-        w = F.softmax(w, dim=-1)
-        y = torch.bmm(w, v).transpose(1, 2).contiguous().view(B, C, H, W)
-        y = self.proj_out(y)
-        return x + y
+        B, C, *spatial = x.shape
+        T = math.prod(spatial)
+        x = x.reshape(B, C, T)
+        h = self.norm(x)
+        q, k, v = tuple(
+            w.view(B, self.n_heads, self.channels_per_head, T).transpose(2, 3)
+            for w in self.qkv(h).chunk(3, dim=1)
+        )
+        if self.use_sdpa:
+            h = F.scaled_dot_product_attention(q, k, v, is_causal=False).transpose(2, 3).contiguous().view(B, C, T)
+        else:
+            scale = self.channels_per_head ** -0.25
+            qk = torch.einsum(
+                "bhct,bhcs->bhts",
+                q * scale,
+                k * scale,
+            )
+            attn_coef = torch.softmax(qk.float(), dim=-1).type(qk.dtype) # apply softmax on float32 for numerical stability
+            h = torch.einsum(
+                "bhts,bhcs->bhct",
+                attn_coef,
+                v,
+            ).contiguous().view(B, C, T)
+        h = self.proj_out(h)
+        return (x + h).reshape(B, C, *spatial)
 
 class NIN(nn.Module):
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, dim, in_channels, out_channels):
         super().__init__()
-        self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+        self.dim = dim
+        if dim == 1:
+            self.layer = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+        elif dim == 2:
+            self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+        else:
+            raise ValueError("NIN only supports 1 and 2 dimensions!")
 
     def forward(self, x):
         return self.layer(x)
@@ -100,37 +123,37 @@ class ResBlock(nn.Module):
 
     def __init__(self, in_channels, out_channels, t_emb_dim, dropout=0.0, conv_shortcut=False):
         super().__init__()
+        self.norm_1 = group_norm(in_channels)
         self.layer_1 = nn.Sequential(
-            group_norm(in_channels),
             nn.SiLU(),
             nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1),
         )
+        self.norm_2 = group_norm(out_channels)
         self.layer_2 = nn.Sequential(
-            group_norm(out_channels),
             nn.SiLU(),
             nn.Dropout(p=dropout),
             zero_params(nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1)),
         )
         self.t_emb_proj = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(in_features=t_emb_dim, out_features=out_channels),
+            nn.Linear(in_features=t_emb_dim, out_features=2*out_channels),
         )
         if in_channels == out_channels:
             self.res_connection = nn.Identity()
         elif conv_shortcut:
             self.res_connection = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1)
         else:
-            self.res_connection = NIN(in_channels=in_channels, out_channels=out_channels)
+            self.res_connection = NIN(dim=2, in_channels=in_channels, out_channels=out_channels)
 
     def forward(self, x, t_emb):
-        h = self.layer_1(x)
+        h = self.layer_1(self.norm_1(x))
         t_emb_out = self.t_emb_proj(t_emb)
         while len(t_emb_out.shape) < len(h.shape):
             t_emb_out = t_emb_out.unsqueeze(-1)
-        h = h + t_emb_out
+        scale, shift = torch.chunk(t_emb_out, 2, axis=1)
+        h = self.norm_2(h) * (1 + scale) + shift
         h = self.layer_2(h)
-        h = h + self.res_connection(x)
-        return h
+        return h + self.res_connection(x)
 
 class UNet(nn.Module):
 
@@ -140,15 +163,17 @@ class UNet(nn.Module):
                  out_channels,
                  base_channels,
                  channel_mult,
+                 n_attention_heads=1,
                  attention_resolutions=(16,),
                  dropout=0.0,
                  resample_with_conv=True,
                  continuous_time=False,
+                 use_sdpa=True, # to use F.scaled_dot_product_attention
         ):
         super().__init__()
         assert image_size.bit_count() == 1
         assert all(x.bit_count() == 1 for x in attention_resolutions)
-        attention_levels = [math.log2(image_size) - math.log2(x) for x in attention_resolutions]
+        attention_levels = [int(math.log2(image_size) - math.log2(x)) for x in attention_resolutions]
         n_res_blocks = 2
 
         self.image_size = image_size
@@ -156,17 +181,20 @@ class UNet(nn.Module):
         self.out_channels = out_channels
         self.base_channels = base_channels
         self.channel_mult = channel_mult
+        self.n_attention_heads = n_attention_heads
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.resample_with_conv = resample_with_conv
         self.continuous_time = continuous_time
+        self.use_sdpa = use_sdpa
 
         t_emb_dim = 4 * base_channels
+        t_emb_dim_in = t_emb_dim if self.continuous_time else base_channels
         if continuous_time:
-            self.gaussian_fourier_emb = GaussianFourierEmbedding(emb_dim=t_emb_dim)
+            self.gaussian_fourier_emb = GaussianFourierEmbedding(emb_dim=t_emb_dim_in)
 
         self.t_emb_proj = nn.Sequential(
-            nn.Linear(base_channels, t_emb_dim),
+            nn.Linear(t_emb_dim_in, t_emb_dim),
             nn.SiLU(),
             nn.Linear(t_emb_dim, t_emb_dim)
         )
@@ -192,7 +220,13 @@ class UNet(nn.Module):
                 self.encoder_modules.append(res_block)
                 prev_channels = curr_channels
                 if rescale_counter in attention_levels:
-                    self.encoder_modules.append(AttentionBlock(curr_channels))
+                    self.encoder_modules.append(
+                        AttentionBlock(
+                            channels=curr_channels,
+                            n_heads=self.n_attention_heads,
+                            use_sdpa=self.use_sdpa,
+                        )
+                    )
             if lvl < len(channel_mult) - 1:
                 self.encoder_modules.append(Downsample(curr_channels, use_conv=resample_with_conv))
                 channel_stack.append(curr_channels)
@@ -205,7 +239,11 @@ class UNet(nn.Module):
                 t_emb_dim=t_emb_dim,
                 dropout=dropout,
             ),
-            AttentionBlock(channels=curr_channels),
+            AttentionBlock(
+                channels=curr_channels,
+                n_heads=self.n_attention_heads,
+                use_sdpa=self.use_sdpa,
+            ),
             ResBlock(
                 in_channels=curr_channels,
                 out_channels=curr_channels,
@@ -229,7 +267,13 @@ class UNet(nn.Module):
                 self.decoder_modules.append(res_block)
                 prev_channels = curr_channels
                 if rescale_counter == attention_levels:
-                    self.decoder_modules.append(AttentionBlock(curr_channels))
+                    self.decoder_modules.append(
+                        AttentionBlock(
+                            channels=curr_channels,
+                            n_heads=self.n_attention_heads,
+                            use_sdpa=self.use_sdpa,
+                        )
+                    )
             if lvl < len(channel_mult) - 1:
                 self.decoder_modules.append(Upsample(curr_channels, use_conv=resample_with_conv))
                 rescale_counter -= 1
