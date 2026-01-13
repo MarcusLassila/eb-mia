@@ -51,8 +51,10 @@ class CIFAR10(Dataset):
         return len(self.dataset)
 
 class CelebA(Dataset):
+    '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int). Returns: None.'''
 
-    def __init__(self, data_dir="./datasets", transform=None):
+    def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0):
+        '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), min_celeb_samples (int). Returns: None.'''
         if transform is None:
             self.transform = T.Compose([
                 T.CenterCrop((178, 178)),
@@ -65,15 +67,34 @@ class CelebA(Dataset):
             ])
         else:
             self.transform = transform
-        ds = load_dataset("flwrlabs/celeba", cache_dir="./datasets")
-        self.dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
+        ds = load_dataset("flwrlabs/celeba", cache_dir=data_dir)
+        dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
+        celeb_ids = torch.tensor(dataset["celeb_id"], dtype=torch.long)
+        if min_celeb_samples > 1:
+            unique_ids, counts = torch.unique(celeb_ids, return_counts=True)
+            keep_ids = set(unique_ids[counts >= min_celeb_samples].tolist())
+            celeb_ids_list = celeb_ids.tolist()
+            keep_indices = [
+                index
+                for index, celeb_id in enumerate(celeb_ids_list)
+                if celeb_id in keep_ids
+            ]
+            dataset = dataset.select(keep_indices)
+            celeb_ids = torch.tensor(
+                [celeb_id for celeb_id in celeb_ids_list if celeb_id in keep_ids],
+                dtype=torch.long,
+            )
+        self.dataset = dataset
+        self.celeb_ids = celeb_ids
 
     def __getitem__(self, index):
+        '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''
         image = self.dataset[int(index)]["image"]
         image = self.transform(image)
         return image
 
     def __len__(self):
+        '''Return dataset size. Args: None. Returns: int.'''
         return len(self.dataset)
 
 class CelebAHQ(Dataset):

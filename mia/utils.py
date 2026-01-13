@@ -1,6 +1,5 @@
 from ddpm.ddpm import DDPM
 from vae.vae import VAE
-import utils
 
 import numpy as np
 import torch

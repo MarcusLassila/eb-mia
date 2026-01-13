@@ -3,7 +3,8 @@ from data import data
 from ddpm.ddpm import DDPM
 from vae.train import train_vae
 from vae.vae import VAE
-import utils
+from . import train_split
+from . import utils
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -13,6 +14,7 @@ from pathlib import Path
 import yaml
 
 def train_model(accelerator, config, savedir, dataset, train_mask, id_):
+    '''Train a single model on a masked dataset split. Args: accelerator, config, savedir (Path), dataset, train_mask (torch.BoolTensor), id_ (int). Returns: None.'''
     channels, height, width = dataset[0].shape
     assert height == width
     train_indices = utils.mask_to_index(train_mask)
@@ -59,23 +61,23 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
                 weight_decay=config.weight_decay,
             )
 
-def train_model_pair(
+
+def train_model_from_indices_file(
         accelerator,
         config,
         savedir,
+        train_indices_path,
+        id_,
     ):
+    '''Train a model from explicit training indices. Args: accelerator, config, savedir (Path), train_indices_path (Path), id_ (int). Returns: None.'''
     dataset = getattr(data, config.dataset)(data_dir=config.data_dir, transform=None)  # Use default transforms
-    n_indices = len(dataset)
+    train_indices = torch.tensor(train_split.load_indices(train_indices_path), dtype=torch.long)
+    train_mask = utils.index_to_mask(train_indices, len(dataset))
+    train_model(accelerator, config, savedir, dataset, train_mask, id_)
 
-    if accelerator.is_master_process:
-        train_mask = torch.rand(n_indices, device=accelerator.device) > 0.5
-    else:
-        train_mask = torch.empty(n_indices, dtype=torch.bool, device=accelerator.device)
-    accelerator.broadcast(train_mask)
-    for id_, mask in (config.id, train_mask), (config.id + 1, ~train_mask):
-        train_model(accelerator, config, savedir, dataset, mask, id_)
 
 def main(config_file, id_):
+    '''Load config and train a model from explicit indices. Args: config_file (str), id_ (int). Returns: None.'''
     root = utils.get_root()
     with open(f"{root}/mia/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
@@ -85,10 +87,18 @@ def main(config_file, id_):
     accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_)
     savedir = Path(f"./trained_models")
     savedir.mkdir(parents=True, exist_ok=True)
-    train_model_pair(
+    train_indices_path = getattr(config, "train_indices_path", None)
+    if train_indices_path is None:
+        raise ValueError("must provide a path to the train indices.")
+    train_indices_path = Path(train_indices_path)
+    if not train_indices_path.is_absolute() and root is not None:
+        train_indices_path = Path(root) / train_indices_path
+    train_model_from_indices_file(
         accelerator=accelerator,
         config=config,
         savedir=savedir,
+        train_indices_path=train_indices_path,
+        id_=id_,
     )
 
 if __name__ == "__main__":
