@@ -1,6 +1,7 @@
 from accelerate.accelerate import AcceleratorLite
 from data import data
 from ddpm.ddpm import DDPM
+from training.train_loop import TrainConfig, TrainLoop
 from vae.train import train_vae
 from vae.vae import VAE
 from . import train_split
@@ -8,10 +9,23 @@ from . import utils
 
 import torch
 from torch.utils.data import DataLoader, Subset
-from torchvision import transforms as T
 
 from pathlib import Path
 import yaml
+
+def get_train_config(config):
+    return TrainConfig(
+        batch_size=config.batch_size,
+        simul_batch_size=config.simul_batch_size,
+        epochs=config.epochs,
+        epochs_per_checkpoint=config.epochs_per_checkpoint,
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        ema_decay=config.ema_decay,
+        grad_clip=config.grad_clip,
+        autocast_dtype=config.autocast_dtype,
+        lr_scheduler=config.lr_scheduler,
+    )
 
 def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     '''Train a single model on a masked dataset split. Args: accelerator, config, savedir (Path), dataset, train_mask (torch.BoolTensor), id_ (int). Returns: None.'''
@@ -26,26 +40,26 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     match config.model:
         case "DDPM":
             beta = torch.linspace(start=1e-4, end=0.02, steps=1000)
-            model = DDPM(
-                beta=beta,
-                channel_mult=config.channel_mult,
-                image_dim=dataset[0].shape,
-                base_channels=config.base_channels,
-                dropout=config.dropout,
-                resample_with_conv=True,
-                accelerator=accelerator,
-            )
-            model.train(
+            model_config = {
+                "beta": beta,
+                "channel_mult": config.channel_mult,
+                "image_dim": dataset[0].shape,
+                "base_channels": config.base_channels,
+                "dropout": config.dropout,
+                "resample_with_conv": True,
+            }
+            model = DDPM(**model_config)
+            train_config = get_train_config(config)
+            savepath = savedir / Path(f"{config.dataset}-{config.model}-{id_}.pth")
+            TrainLoop(
+                model=model,
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
-                batch_size=config.batch_size,
-                lr=config.lr,
-                n_epochs=config.epochs,
-                savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
-                simul_batch_size=config.simul_batch_size,
-                grad_clip=1.0,
-                epochs_per_checkpoint=config.epochs_per_checkpoint,
-            )
+                train_config=train_config,
+                model_config=model_config,
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
         case "VAE":
             train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
             val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
@@ -60,7 +74,6 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
                 savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
                 weight_decay=config.weight_decay,
             )
-
 
 def train_model_from_indices_file(
         accelerator,

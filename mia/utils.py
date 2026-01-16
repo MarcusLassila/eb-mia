@@ -36,16 +36,9 @@ def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
     _, model_type = get_dataset_and_model_from_path(path)
     match model_type:
         case "DDPM":
-            model = DDPM(
-                beta=checkpoint["beta"],
-                channel_mult=checkpoint["channel_mult"],
-                image_dim=checkpoint["image_dim"],
-                base_channels=checkpoint["base_channels"],
-                dropout=checkpoint["dropout"],
-                resample_with_conv=checkpoint["resample_with_conv"],
-            )
+            model = DDPM(**checkpoint["model_config"])
             model.to(device)
-            model.load(checkpoint["model_state_dict"])
+            model.load_state_dict(checkpoint["model_state_dict"])
             train_indices = checkpoint["train_indices"]
         case "VAE":
             model = globals()[model_type](
@@ -73,3 +66,8 @@ def index_to_mask(index: torch.Tensor, n_indices):
     mask = torch.zeros(n_indices, dtype=torch.bool)
     mask[index] = True
     return mask
+
+def count_params(model):
+    n_params = sum(p.numel() for p in model.parameters())
+    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return {'n_params': n_params, 'n_trainable_params': n_trainable}
