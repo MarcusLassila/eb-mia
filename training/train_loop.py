@@ -154,6 +154,8 @@ class TrainLoop:
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
+                if self.use_ema:
+                    checkpoint["ema_model_state_dict"] = self.ema_model.state_dict()
                 torch.save(checkpoint, current_epoch_savepath)
 
     def _ema_create(self):

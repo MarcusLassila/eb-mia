@@ -157,7 +157,11 @@ class TestDDPMTrain(unittest.TestCase):
             self.assertIn("ema_model_state_dict", checkpoint)
             raw_state = checkpoint["raw_model_state_dict"]
             ema_state = checkpoint["ema_model_state_dict"]
+            model_state = checkpoint["model_state_dict"]
             self.assertEqual(raw_state.keys(), ema_state.keys())
+            self.assertEqual(model_state.keys(), ema_state.keys())
+            for key, model_tensor in model_state.items():
+                self.assertTrue(torch.equal(model_tensor, ema_state[key]))
             for key, raw_tensor in raw_state.items():
                 ema_tensor = ema_state[key]
                 self.assertTrue(torch.equal(ema_tensor, raw_tensor))
