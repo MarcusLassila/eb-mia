@@ -35,10 +35,10 @@ class BASE:
             samples = samples.to(self.device)
             avg_loss = []
             for _ in range(self.n_loss_samples):
-                t = torch.randint(900, 999, size=samples.shape[0], device=self.device)
+                t = torch.randint(1, 100, size=(samples.shape[0],), device=self.device)
                 loss = model.per_sample_loss(samples, t).cpu()
                 avg_loss.append(loss)
-            avg_loss = torch.stack(avg_loss).mean()
+            avg_loss = torch.stack(avg_loss).mean(dim=0)
             sig.append(avg_loss)
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)

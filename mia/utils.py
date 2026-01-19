@@ -41,11 +41,7 @@ def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
             model.load_state_dict(checkpoint["model_state_dict"])
             train_indices = checkpoint["train_indices"]
         case "VAE":
-            model = globals()[model_type](
-                in_ch=checkpoint["in_ch"],
-                in_dim=checkpoint["in_dim"],
-                latent_dim=checkpoint["latent_dim"],
-            )
+            model = VAE(**checkpoint["model_config"])
             model.n_rsamples = n_loss_samples
             model.to(device)
             model.load_state_dict(checkpoint["model_state_dict"])

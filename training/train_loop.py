@@ -146,6 +146,7 @@ class TrainLoop:
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {
                     "epoch": epoch,
+                    "model_state_dict": self.ema_model.state_dict() if self.use_ema else self.raw_model.state_dict(),
                     "raw_model_state_dict": self.raw_model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
@@ -153,8 +154,6 @@ class TrainLoop:
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
-                if self.use_ema:
-                    checkpoint["ema_model_state_dict"] = self.ema_model.state_dict()
                 torch.save(checkpoint, current_epoch_savepath)
 
     def _ema_create(self):

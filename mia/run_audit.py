@@ -18,13 +18,19 @@ def load_partition_fn(model_path):
         log_Z = pickle.load(f)
     return log_Z
 
-def indices_of_shadow_models(index_target, n_shadow_models):
-    assert 0 <= index_target < n_shadow_models
+def indices_of_shadow_models(index_target, n_models):
+    '''
+    Return the indices of the shadow models under round robin auditing.
+    Due to the way models are trained on pairs of disjoint and complementing data splits,
+    the "complement" model to the target model should be filtered out
+    since a realistic adversary cannot obtain such a complement model.
+    '''
+    assert 0 <= index_target < n_models
     if index_target % 2 == 0:
         excluded_indices = {index_target, index_target + 1}
     else:
         excluded_indices = {index_target - 1, index_target}
-    index_shadow_models = sorted(set(range(n_shadow_models)) - excluded_indices)
+    index_shadow_models = sorted(set(range(n_models)) - excluded_indices)
     return index_shadow_models
 
 def get_audit_indices(n_audit_samples, membership_mask):
@@ -60,8 +66,14 @@ def run_audit(config, device):
     resdir = f"{root}/mia/results/{config.dataset}-{config.model_type}/"
     data_population = getattr(data, config.dataset)()
     target_model_paths = list(map(Path, config.target_model_paths))
-    shadow_model_paths = list(map(Path, config.shadow_model_paths))
-    for target_path in tqdm(target_model_paths, desc="Running audit"):
+    if not config.round_robin:
+        shadow_model_paths = list(map(Path, config.shadow_model_paths))
+    for target_idx, target_path in tqdm(enumerate(target_model_paths), total=len(target_model_paths), desc="Running audit"):
+        if config.round_robin:
+            shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
+            shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
+        print("target path:", target_path)
+        print("shadow paths:", shadow_model_paths)
         target_train_indices = utils.get_train_indices(target_path)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
         audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
