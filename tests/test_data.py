@@ -59,6 +59,7 @@ class TestData(unittest.TestCase):
                 )
                 self.assertEqual(len(dataset), 4)
                 self.assertEqual(dataset.celeb_ids.tolist(), [0, 0, 2, 2])
+                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 2, 2])
 
 
 if __name__ == "__main__":

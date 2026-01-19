@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 import torch
 from datasets import concatenate_datasets, load_dataset
 from torchvision import datasets
@@ -8,6 +10,13 @@ TRANSFORM = T.Compose([
     T.ToTensor(),
     T.Lambda(lambda x: x * 2.0 - 1.0),
 ])
+
+class Entity(Dataset, ABC):
+
+    @property
+    @abstractmethod
+    def entity_ids(self):
+        raise NotImplementedError
 
 class MNIST(Dataset):
     
@@ -50,7 +59,7 @@ class CIFAR10(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-class CelebA(Dataset):
+class CelebA(Entity):
     '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int). Returns: None.'''
 
     def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0):
@@ -87,6 +96,10 @@ class CelebA(Dataset):
         self.dataset = dataset
         self.celeb_ids = celeb_ids
 
+    @property
+    def entity_ids(self):
+        return self.celeb_ids
+
     def __getitem__(self, index):
         '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''
         image = self.dataset[int(index)]["image"]
@@ -96,6 +109,13 @@ class CelebA(Dataset):
     def __len__(self):
         '''Return dataset size. Args: None. Returns: int.'''
         return len(self.dataset)
+
+class CelebA2(CelebA):
+    '''CelebA dataset filtered to celeb_ids with at least 2 samples. Args: data_dir (str), transform (callable|None). Returns: None.'''
+
+    def __init__(self, data_dir="./datasets", transform=None):
+        '''Initialize CelebA2 dataset. Args: data_dir (str), transform (callable|None). Returns: None.'''
+        super().__init__(data_dir=data_dir, transform=transform, min_celeb_samples=2)
 
 class CelebAHQ(Dataset):
 

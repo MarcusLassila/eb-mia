@@ -108,6 +108,60 @@ class TestDDPMTrain(unittest.TestCase):
                 savepath=savepath,
             ).train()
 
+    def test_train_runs_with_ema_enabled(self):
+        '''Ensure EMA checkpoints are saved and match raw weights when decay is zero.'''
+        torch.manual_seed(0)
+        data = torch.randn(8, 1, 4, 4)
+        dataset = _TensorImageDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 6))
+        val_dataset = Subset(dataset, indices=torch.arange(6, 8))
+
+        beta = torch.linspace(start=1e-4, end=0.02, steps=10)
+        model_config = {
+            "beta": beta,
+            "channel_mult": (1,),
+            "image_dim": (1, 4, 4),
+            "base_channels": 32,
+            "dropout": 0.0,
+            "resample_with_conv": True,
+        }
+        model = DDPM(**model_config)
+
+        train_config = TrainConfig(
+            batch_size=2,
+            simul_batch_size=2,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            use_ema=True,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="float16",
+            lr_scheduler="none",
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "ddpm_test.pth"
+            TrainLoop(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config=model_config,
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            checkpoint_path = Path(tmpdir) / "ddpm_test-epoch1.pth"
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            self.assertIn("ema_model_state_dict", checkpoint)
+            raw_state = checkpoint["raw_model_state_dict"]
+            ema_state = checkpoint["ema_model_state_dict"]
+            self.assertEqual(raw_state.keys(), ema_state.keys())
+            for key, raw_tensor in raw_state.items():
+                ema_tensor = ema_state[key]
+                self.assertTrue(torch.equal(ema_tensor, raw_tensor))
+
 
 if __name__ == "__main__":
     unittest.main()

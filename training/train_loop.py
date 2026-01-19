@@ -15,11 +15,12 @@ class TrainConfig:
     epochs: int
     epochs_per_checkpoint: int
     lr: float
-    weight_decay: float
-    ema_decay: float
-    grad_clip: float
-    autocast_dtype: str
-    lr_scheduler: str
+    weight_decay: float = 0.0
+    use_ema: bool = False
+    ema_decay: float = 0.9999
+    grad_clip: float = 0.0
+    autocast_dtype: str = "bfloat16"
+    lr_scheduler: str = "none"
 
 class TrainLoop:
     
@@ -65,8 +66,9 @@ class TrainLoop:
             self.raw_model = self.model.module
         else:
             self.raw_model = self.model
-            
-        # self.ema_params = self._ema_create(self.raw_model.parameters())
+
+        if self.use_ema:
+            self.ema_model = self._ema_create()
 
         # Use fused AdamW (Adam with weight decay)
         use_fused = "fused" in inspect.signature(torch.optim.AdamW).parameters and self.device.type == "cuda"
@@ -86,8 +88,8 @@ class TrainLoop:
             train_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
             accum_grad_norm = torch.zeros((), dtype=torch.float32, device=self.device)
             n_steps = torch.zeros((), dtype=torch.float32, device=self.device)
-            for i, x in enumerate(self.train_dataloader):
-                final_grad_accum_step = (i + 1) % self.grad_accum_steps == 0 or i + 1 == len(self.train_dataloader)
+            for i, x in enumerate(self.train_dataloader, start=1):
+                final_grad_accum_step = i % self.grad_accum_steps == 0 or i == len(self.train_dataloader)
                 loss = self.model.loss(x, self.autocast_context)
                 loss /= self.grad_accum_steps
                 train_accum_loss += loss.detach()
@@ -103,20 +105,22 @@ class TrainLoop:
                     accum_grad_norm += norm
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                if self.use_ema:
+                    self._ema_update()
                 self.optimizer.zero_grad()
-                # self._ema_update(self.model.parameters())
                 step += 1
                 n_steps += 1
 
             self.scheduler.step()
             current_lr = self.scheduler.get_last_lr()[0]
 
-            self.model.eval()
+            eval_model = self.ema_model if self.use_ema else self.model
+            eval_model.eval()
             with torch.no_grad():
                 val_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
                 n_val_batches = torch.zeros((), dtype=torch.float32, device=self.device)
                 for x in self.val_dataloader:
-                    val_accum_loss += self.model.loss(x, self.autocast_context)
+                    val_accum_loss += eval_model.loss(x, self.autocast_context)
                     n_val_batches += 1
 
             if accelerator.running_ddp:
@@ -142,27 +146,28 @@ class TrainLoop:
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {
                     "epoch": epoch,
-                    "model_state_dict": self.raw_model.state_dict(),
+                    "raw_model_state_dict": self.raw_model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
                     "model_config": self.model_config,
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
+                if self.use_ema:
+                    checkpoint["ema_model_state_dict"] = self.ema_model.state_dict()
                 torch.save(checkpoint, current_epoch_savepath)
 
-    def _ema_create(self, raw_params):
-        ema_params = copy.deepcopy(raw_params)
-        ema_params.requires_grad_(False)
-        return ema_params
+    def _ema_create(self):
+        ema_model = copy.deepcopy(self.raw_model)
+        ema_model.requires_grad_(False)
+        return ema_model
 
     @torch.no_grad()
     def _ema_update(self):
-        for ema_p, raw_p in zip(self.ema_params, self.raw_model.parameters()):
+        for ema_p, raw_p in zip(self.ema_model.parameters(), self.raw_model.parameters()):
             ema_p.mul_(self.ema_decay).add_(raw_p, alpha=1-self.ema_decay)
-            
-    def _load_params(self, params):
-        pass
+        for ema_b, raw_b in zip(self.ema_model.buffers(), self.raw_model.buffers()):
+            ema_b.copy_(raw_b)
 
     def _get_lr_scheduler(self, optimizer):
         match self.lr_scheduler:

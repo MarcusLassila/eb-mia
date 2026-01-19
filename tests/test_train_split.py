@@ -30,58 +30,58 @@ class TestTrainSplit(unittest.TestCase):
         self.assertEqual(complement, [1, 3, 4])
 
     def test_complement_subset_filename_contains_source(self):
-        name = train_split.complement_subset_filename("cifar-random-frac0p5-n10-seed1.pkl", 10)
+        name = train_split.complement_subset_filename("cifar-random-frac0p5-seed1.pkl")
         self.assertIn("complement", name)
-        self.assertIn("cifar-random-frac0p5-n10-seed1", name)
+        self.assertIn("cifar-random-frac0p5-seed1", name)
 
     def test_random_subset_filename_structure(self):
-        name = train_split.random_subset_filename("MNIST", 100, 0.25, seed=7)
+        name = train_split.random_subset_filename("MNIST", 0.25, seed=7)
         self.assertIn("MNIST", name)
         self.assertIn("random", name)
         self.assertIn("frac0p25", name)
         self.assertIn("seed7", name)
 
-    def test_celeb_subset_indices_deterministic(self):
-        celeb_ids = [1, 1, 2, 2, 3, 3, 4, 4]
-        indices_a = train_split.sample_celeb_fraction_indices(
-            celeb_ids=celeb_ids,
-            celeb_fraction=0.5,
-            per_celeb_fraction=0.5,
+    def test_entity_subset_indices_deterministic(self):
+        entity_ids = [1, 1, 2, 2, 3, 3, 4, 4]
+        indices_a = train_split.sample_entity_fraction_indices(
+            entity_ids=entity_ids,
+            entity_fraction=0.5,
+            per_entity_fraction=0.5,
             seed=42,
         )
-        indices_b = train_split.sample_celeb_fraction_indices(
-            celeb_ids=celeb_ids,
-            celeb_fraction=0.5,
-            per_celeb_fraction=0.5,
+        indices_b = train_split.sample_entity_fraction_indices(
+            entity_ids=entity_ids,
+            entity_fraction=0.5,
+            per_entity_fraction=0.5,
             seed=42,
         )
         self.assertEqual(indices_a, indices_b)
         self.assertEqual(len(indices_a), 2)
-        self.assertTrue(all(0 <= index < len(celeb_ids) for index in indices_a))
-        selected_celeb_ids = {celeb_ids[index] for index in indices_a}
-        self.assertEqual(len(selected_celeb_ids), 2)
+        self.assertTrue(all(0 <= index < len(entity_ids) for index in indices_a))
+        selected_entity_ids = {entity_ids[index] for index in indices_a}
+        self.assertEqual(len(selected_entity_ids), 2)
 
-    def test_celeb_subset_indices_min_one_per_celeb(self):
-        celeb_ids = [10, 11, 12, 13]
-        indices = train_split.sample_celeb_fraction_indices(
-            celeb_ids=celeb_ids,
-            celeb_fraction=1.0,
-            per_celeb_fraction=0.5,
+    def test_entity_subset_indices_min_one_per_entity(self):
+        entity_ids = [10, 11, 12, 13]
+        indices = train_split.sample_entity_fraction_indices(
+            entity_ids=entity_ids,
+            entity_fraction=1.0,
+            per_entity_fraction=0.5,
             seed=99,
         )
-        selected_celeb_ids = {celeb_ids[index] for index in indices}
-        self.assertEqual(len(selected_celeb_ids), 4)
+        selected_entity_ids = {entity_ids[index] for index in indices}
+        self.assertEqual(len(selected_entity_ids), 4)
         self.assertEqual(len(indices), 4)
 
-    def test_celeb_subset_filename_structure(self):
-        name = train_split.celeb_subset_filename("CelebA", 200, 0.5, 0.25, seed=9)
+    def test_entity_subset_filename_structure(self):
+        name = train_split.entity_subset_filename("CelebA", 0.5, 0.25, seed=9)
         self.assertIn("CelebA", name)
-        self.assertIn("celeb", name)
+        self.assertIn("entity", name)
         self.assertIn("frac0p5", name)
         self.assertIn("per0p25", name)
         self.assertIn("seed9", name)
 
-    def test_celeb_subset_save_load_matches_dataset(self):
+    def test_entity_subset_save_load_matches_dataset(self):
         class FakeSplit:
             def __init__(self, celeb_ids):
                 self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
@@ -122,29 +122,29 @@ class TestTrainSplit(unittest.TestCase):
                 side_effect=fake_concatenate_datasets,
             ):
                 dataset = data_module.CelebA(data_dir=tmpdir, transform=None)
-                path = train_split.create_celeb_subset(
+                path = train_split.create_entity_subset(
                     dataset_name="CelebA",
-                    celeb_ids=dataset.celeb_ids,
-                    celeb_fraction=0.5,
-                    per_celeb_fraction=0.5,
+                    entity_ids=dataset.entity_ids,
+                    entity_fraction=0.5,
+                    per_entity_fraction=0.5,
                     seed=123,
                     output_dir=tmpdir,
                 )
                 indices = train_split.load_indices(path)
 
-        celeb_ids = dataset.celeb_ids.tolist()
-        unique_celeb_ids = sorted(set(celeb_ids))
-        selected_celeb_ids = {celeb_ids[index] for index in indices}
-        expected_celeb_count = int(round(len(unique_celeb_ids) * 0.5))
-        self.assertEqual(len(selected_celeb_ids), expected_celeb_count)
+        entity_ids = dataset.entity_ids.tolist()
+        unique_entity_ids = sorted(set(entity_ids))
+        selected_entity_ids = {entity_ids[index] for index in indices}
+        expected_entity_count = int(len(unique_entity_ids) * 0.5)
+        self.assertEqual(len(selected_entity_ids), expected_entity_count)
 
-        total_counts = Counter(celeb_ids)
-        selected_counts = Counter(celeb_ids[index] for index in indices)
-        for celeb_id in unique_celeb_ids:
-            expected = int(round(total_counts[celeb_id] * 0.5))
-            if celeb_id not in selected_celeb_ids:
+        total_counts = Counter(entity_ids)
+        selected_counts = Counter(entity_ids[index] for index in indices)
+        for entity_id in unique_entity_ids:
+            expected = int(total_counts[entity_id] * 0.5)
+            if entity_id not in selected_entity_ids:
                 expected = 0
-            self.assertEqual(selected_counts.get(celeb_id, 0), expected)
+            self.assertEqual(selected_counts.get(entity_id, 0), expected)
 
     def test_cli_random_and_complement(self):
         class FakeDataset:
@@ -188,7 +188,7 @@ class TestTrainSplit(unittest.TestCase):
                 combined = set(random_indices) | set(complement_indices)
                 self.assertEqual(combined, set(range(10)))
 
-    def test_cli_celeb_mode(self):
+    def test_cli_entity_mode(self):
         class FakeSplit:
             def __init__(self, celeb_ids):
                 self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
@@ -216,7 +216,7 @@ class TestTrainSplit(unittest.TestCase):
         train_ids = [0, 0, 0, 0, 1, 1, 1, 1]
         valid_ids = [2, 2, 2, 2]
         test_ids = [3, 3, 3, 3]
-        celeb_ids = train_ids + valid_ids + test_ids
+        entity_ids = train_ids + valid_ids + test_ids
 
         def fake_load_dataset(*args, **kwargs):
             return {
@@ -241,24 +241,24 @@ class TestTrainSplit(unittest.TestCase):
                     "--seed",
                     "7",
                     "--mode",
-                    "celeb",
-                    "--celeb-fraction",
+                    "entity",
+                    "--entity-fraction",
                     "0.5",
-                    "--per-celeb-fraction",
+                    "--per-entity-fraction",
                     "0.5",
                 ])
                 indices = train_split.load_indices(path)
-                unique_celeb_ids = sorted(set(celeb_ids))
-                selected_celeb_ids = {celeb_ids[index] for index in indices}
-                expected_celeb_count = int(round(len(unique_celeb_ids) * 0.5))
-                self.assertEqual(len(selected_celeb_ids), expected_celeb_count)
-                total_counts = Counter(celeb_ids)
-                selected_counts = Counter(celeb_ids[index] for index in indices)
-                for celeb_id in unique_celeb_ids:
-                    expected = int(round(total_counts[celeb_id] * 0.5))
-                    if celeb_id not in selected_celeb_ids:
+                unique_entity_ids = sorted(set(entity_ids))
+                selected_entity_ids = {entity_ids[index] for index in indices}
+                expected_entity_count = int(len(unique_entity_ids) * 0.5)
+                self.assertEqual(len(selected_entity_ids), expected_entity_count)
+                total_counts = Counter(entity_ids)
+                selected_counts = Counter(entity_ids[index] for index in indices)
+                for entity_id in unique_entity_ids:
+                    expected = int(total_counts[entity_id] * 0.5)
+                    if entity_id not in selected_entity_ids:
                         expected = 0
-                    self.assertEqual(selected_counts.get(celeb_id, 0), expected)
+                    self.assertEqual(selected_counts.get(entity_id, 0), expected)
 
 
 if __name__ == "__main__":

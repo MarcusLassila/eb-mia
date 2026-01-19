@@ -2,7 +2,6 @@ from accelerate.accelerate import AcceleratorLite
 from data import data
 from ddpm.ddpm import DDPM
 from training.train_loop import TrainConfig, TrainLoop
-from vae.train import train_vae
 from vae.vae import VAE
 from . import train_split
 from . import utils
@@ -37,6 +36,8 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     val_indices = nontrain_indices[:val_size]
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
+    train_config = get_train_config(config)
+    savepath = savedir / Path(f"{config.dataset}-{config.model}-{id_}.pth")
     match config.model:
         case "DDPM":
             beta = torch.linspace(start=1e-4, end=0.02, steps=1000)
@@ -49,31 +50,22 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
                 "resample_with_conv": True,
             }
             model = DDPM(**model_config)
-            train_config = get_train_config(config)
-            savepath = savedir / Path(f"{config.dataset}-{config.model}-{id_}.pth")
-            TrainLoop(
-                model=model,
-                train_dataset=train_dataset,
-                val_dataset=val_dataset,
-                train_config=train_config,
-                model_config=model_config,
-                accelerator=accelerator,
-                savepath=savepath,
-            ).train()
         case "VAE":
-            train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-            val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-            model = VAE(in_ch=channels, in_dim=height, latent_dim=config.latent_dim)
-            train_vae(
-                model=model,
-                train_dataloader=train_dataloader,
-                val_dataloader=val_dataloader,
-                epochs=config.epochs,
-                device=accelerator.device,
-                lr=config.lr,
-                savepath=savedir/Path(f"{config.dataset}-{config.model}-{id_}.pth"),
-                weight_decay=config.weight_decay,
-            )
+            model_config = {
+                "in_ch": channels,
+                "in_dim": height,
+                "latent_dim": config.latent_dim,
+            }
+            model = VAE(**model_config)
+    TrainLoop(
+        model=model,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        train_config=train_config,
+        model_config=model_config,
+        accelerator=accelerator,
+        savepath=savepath,
+    ).train()
 
 def train_model_from_indices_file(
         accelerator,
