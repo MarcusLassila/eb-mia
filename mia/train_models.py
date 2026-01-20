@@ -1,8 +1,8 @@
 from accelerate.accelerate import AcceleratorLite
 from data import data
-from ddpm.ddpm import DDPM
+from ddpm.ddpm import create_ddpm_noise_model, DDPM
 from training.train_loop import TrainConfig, TrainLoop
-from vae.vae import VAE
+from vae.vae import VAE, VAE_Network
 from . import train_split
 from . import utils
 
@@ -40,29 +40,47 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     savepath = savedir / Path(f"{config.dataset}-{config.model}-{id_}.pth")
     match config.model:
         case "DDPM":
-            beta = torch.linspace(start=1e-4, end=0.02, steps=1000)
+            image_dim = dataset[0].shape
+            ddpm_config = {
+                "image_dim": image_dim,
+                "time_steps": 1000,
+                "beta_schedule": "linear",
+            }
+            generative_class = DDPM(**ddpm_config)
             model_config = {
-                "beta": beta,
-                "channel_mult": config.channel_mult,
                 "image_dim": dataset[0].shape,
                 "base_channels": config.base_channels,
+                "channel_mult": config.channel_mult,
+                "n_attention_heads": config.n_attention_heads,
+                "attention_resolutions": config.attention_resolutions,
                 "dropout": config.dropout,
                 "resample_with_conv": True,
+                "use_sdpa": True,
             }
-            model = DDPM(**model_config)
+            model = create_ddpm_noise_model(**model_config)
         case "VAE":
+            vae_config = {"n_rsample": 1}
+            generative_class = VAE(**vae_config)
             model_config = {
                 "in_ch": channels,
                 "in_dim": height,
                 "latent_dim": config.latent_dim,
             }
-            model = VAE(**model_config)
+            model = VAE_Network(**model_config)
+        case _:
+            raise ValueError(f"No generative model named {config.model}.")
+
+    checkpoint_config = {
+        "generative_class_config": ddpm_config,
+        "model_config": model_config,
+    }
     TrainLoop(
         model=model,
+        generative_class=generative_class,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         train_config=train_config,
-        model_config=model_config,
+        checkpoint_config=checkpoint_config,
         accelerator=accelerator,
         savepath=savepath,
     ).train()

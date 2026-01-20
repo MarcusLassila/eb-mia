@@ -5,8 +5,8 @@ import torch
 from torch.utils.data import Dataset, Subset
 
 from accelerate.accelerate import AcceleratorLite
-from ddpm.ddpm import DDPM, create_ddpm_noise_model
 from training.train_loop import TrainConfig, TrainLoop
+from vae.vae import VAE, VAE_Network
 from pathlib import Path
 
 
@@ -21,31 +21,25 @@ class _TensorImageDataset(Dataset):
         return self._data[idx]
 
 
-class TestDDPMTrain(unittest.TestCase):
+class TestVAETrain(unittest.TestCase):
     def test_train_runs_two_epochs(self):
         torch.manual_seed(0)
-        data = torch.randn(8, 1, 4, 4)
+        data = torch.randn(8, 1, 8, 8)
         dataset = _TensorImageDataset(data)
         train_dataset = Subset(dataset, indices=torch.arange(0, 6))
         val_dataset = Subset(dataset, indices=torch.arange(6, 8))
 
-        image_dim = (1, 4, 4)
-        ddpm_config = {
-            "image_dim": image_dim,
-            "time_steps": 10,
-            "beta_schedule": "linear",
-        }
-        generative_class = DDPM(**ddpm_config)
         model_config = {
-            "image_dim": image_dim,
-            "base_channels": 32,
-            "channel_mult": (1,),
-            "dropout": 0.0,
-            "resample_with_conv": True,
+            "in_ch": 1,
+            "in_dim": 8,
+            "latent_dim": 4,
         }
-        model = create_ddpm_noise_model(**model_config)
+        model = VAE_Network(**model_config)
+        generative_class = VAE(n_rsamples=1)
         checkpoint_config = {
-            "generative_class_config": ddpm_config,
+            "generative_class_config": {
+                "n_rsamples": 1,
+            },
             "model_config": model_config,
         }
 
@@ -63,7 +57,7 @@ class TestDDPMTrain(unittest.TestCase):
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
-            savepath = Path(tmpdir) / "ddpm_test.pth"
+            savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
                 generative_class=generative_class,
@@ -77,28 +71,22 @@ class TestDDPMTrain(unittest.TestCase):
 
     def test_train_runs_with_scheduler_enabled(self):
         torch.manual_seed(0)
-        data = torch.randn(8, 1, 4, 4)
+        data = torch.randn(8, 1, 8, 8)
         dataset = _TensorImageDataset(data)
         train_dataset = Subset(dataset, indices=torch.arange(0, 6))
         val_dataset = Subset(dataset, indices=torch.arange(6, 8))
 
-        image_dim = (1, 4, 4)
-        ddpm_config = {
-            "image_dim": image_dim,
-            "time_steps": 10,
-            "beta_schedule": "linear",
-        }
-        generative_class = DDPM(**ddpm_config)
         model_config = {
-            "image_dim": image_dim,
-            "base_channels": 32,
-            "channel_mult": (1,),
-            "dropout": 0.0,
-            "resample_with_conv": True,
+            "in_ch": 1,
+            "in_dim": 8,
+            "latent_dim": 4,
         }
-        model = create_ddpm_noise_model(**model_config)
+        model = VAE_Network(**model_config)
+        generative_class = VAE(n_rsamples=1)
         checkpoint_config = {
-            "generative_class_config": ddpm_config,
+            "generative_class_config": {
+                "n_rsamples": 1,
+            },
             "model_config": model_config,
         }
 
@@ -116,7 +104,7 @@ class TestDDPMTrain(unittest.TestCase):
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
-            savepath = Path(tmpdir) / "ddpm_test.pth"
+            savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
                 generative_class=generative_class,
@@ -131,28 +119,22 @@ class TestDDPMTrain(unittest.TestCase):
     def test_train_runs_with_ema_enabled(self):
         '''Ensure EMA checkpoints are saved and match raw weights when decay is zero.'''
         torch.manual_seed(0)
-        data = torch.randn(8, 1, 4, 4)
+        data = torch.randn(8, 1, 8, 8)
         dataset = _TensorImageDataset(data)
         train_dataset = Subset(dataset, indices=torch.arange(0, 6))
         val_dataset = Subset(dataset, indices=torch.arange(6, 8))
 
-        image_dim = (1, 4, 4)
-        ddpm_config = {
-            "image_dim": image_dim,
-            "time_steps": 10,
-            "beta_schedule": "linear",
-        }
-        generative_class = DDPM(**ddpm_config)
         model_config = {
-            "image_dim": image_dim,
-            "base_channels": 32,
-            "channel_mult": (1,),
-            "dropout": 0.0,
-            "resample_with_conv": True,
+            "in_ch": 1,
+            "in_dim": 8,
+            "latent_dim": 4,
         }
-        model = create_ddpm_noise_model(**model_config)
+        model = VAE_Network(**model_config)
+        generative_class = VAE(n_rsamples=1)
         checkpoint_config = {
-            "generative_class_config": ddpm_config,
+            "generative_class_config": {
+                "n_rsamples": 1,
+            },
             "model_config": model_config,
         }
 
@@ -171,7 +153,7 @@ class TestDDPMTrain(unittest.TestCase):
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
-            savepath = Path(tmpdir) / "ddpm_test.pth"
+            savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
                 generative_class=generative_class,
@@ -182,7 +164,7 @@ class TestDDPMTrain(unittest.TestCase):
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
-            checkpoint_path = Path(tmpdir) / "ddpm_test-epoch1.pth"
+            checkpoint_path = Path(tmpdir) / "vae_test-epoch1.pth"
             checkpoint = torch.load(checkpoint_path, map_location="cpu")
             self.assertIn("ema_model_state_dict", checkpoint)
             raw_state = checkpoint["raw_model_state_dict"]

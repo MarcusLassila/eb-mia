@@ -1,6 +1,11 @@
+from agm.agm import AbstractGenerativeModel
+from accelerate.accelerate import AcceleratorLite
+
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from itertools import islice
 from pathlib import Path
+from typing import Union
 import copy
 import inspect
 import time
@@ -26,20 +31,27 @@ class TrainLoop:
     
     def __init__(
         self,
-        model,
-        train_dataset,
-        val_dataset,
-        train_config,
-        model_config, # For checkpoint saving
-        accelerator,
-        savepath,
+        model: torch.nn.Module,
+        generative_class: AbstractGenerativeModel,
+        train_dataset: torch.utils.data.Dataset,
+        val_dataset: torch.utils.data.Dataset,
+        train_config: TrainConfig,
+        checkpoint_config: dict,
+        accelerator: AcceleratorLite,
+        savepath: Union[str, Path],
     ):
         self.train_config = train_config
-        self.model_config = model_config
+        if "train_config" not in checkpoint_config:
+            checkpoint_config["train_config"] = asdict(train_config)
+        self.checkpoint_config = checkpoint_config
+
         self._unpack_train_config()
         self.accelerator = accelerator
         self.device = self.accelerator.device
-        self.savepath = savepath
+        self.savepath = Path(savepath)
+
+        self.generative_class = generative_class
+        self.generative_class.move_to(self.device)
 
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
@@ -73,7 +85,7 @@ class TrainLoop:
         # Use fused AdamW (Adam with weight decay)
         use_fused = "fused" in inspect.signature(torch.optim.AdamW).parameters and self.device.type == "cuda"
         accelerator.print(f"Using fused AdamW: {use_fused}")
-        self.optimizer = torch.optim.AdamW(params=model.parameters(), lr=self.lr, weight_decay=self.weight_decay, fused=use_fused)
+        self.optimizer = torch.optim.AdamW(params=self.raw_model.parameters(), lr=self.lr, weight_decay=self.weight_decay, fused=use_fused)
         self.scheduler = self._get_lr_scheduler(self.optimizer)
     
     def train(self):
@@ -88,14 +100,18 @@ class TrainLoop:
             train_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
             accum_grad_norm = torch.zeros((), dtype=torch.float32, device=self.device)
             n_steps = torch.zeros((), dtype=torch.float32, device=self.device)
-            for i, x in enumerate(self.train_dataloader, start=1):
-                final_grad_accum_step = i % self.grad_accum_steps == 0 or i == len(self.train_dataloader)
-                loss = self.model.loss(x, self.autocast_context)
-                loss /= self.grad_accum_steps
-                train_accum_loss += loss.detach()
-                if accelerator.running_ddp:
-                    self.model.require_backward_grad_sync = final_grad_accum_step
-                self.scaler.scale(loss).backward()
+
+            # Drop any incomplete accumulated batch for simplicity
+            n_batches = len(self.train_dataloader)
+            n_full_batches = n_batches - (n_batches % self.grad_accum_steps)
+            for i, x in enumerate(islice(self.train_dataloader, n_full_batches), start=1):
+                # There will be no partial last batch since we drop it
+                final_grad_accum_step = i % self.grad_accum_steps == 0
+                with self.model.no_sync() if accelerator.running_ddp and not final_grad_accum_step else nullcontext():
+                    loss = self.generative_class.loss(self.model, x, autocast_context=self.autocast_context)
+                    loss /= self.grad_accum_steps
+                    train_accum_loss += loss.detach()
+                    self.scaler.scale(loss).backward()
                 if not final_grad_accum_step:
                     continue # Keep accumulating gradients
 
@@ -114,13 +130,13 @@ class TrainLoop:
             self.scheduler.step()
             current_lr = self.scheduler.get_last_lr()[0]
 
-            eval_model = self.ema_model if self.use_ema else self.model
+            eval_model = self.ema_model if self.use_ema else self.raw_model
             eval_model.eval()
             with torch.no_grad():
                 val_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
                 n_val_batches = torch.zeros((), dtype=torch.float32, device=self.device)
                 for x in self.val_dataloader:
-                    val_accum_loss += eval_model.loss(x, self.autocast_context)
+                    val_accum_loss += self.generative_class.loss(eval_model, x, autocast_context=self.autocast_context)
                     n_val_batches += 1
 
             if accelerator.running_ddp:
@@ -141,7 +157,7 @@ class TrainLoop:
             accelerator.print(log_msg, flush=True)
 
             if accelerator.is_master_process and (epoch % self.epochs_per_checkpoint == 0 or epoch == self.epochs):
-                savepath = Path(self.savepath)
+                savepath = self.savepath
                 name = savepath.stem + f"-epoch{epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {
@@ -150,7 +166,7 @@ class TrainLoop:
                     "raw_model_state_dict": self.raw_model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
-                    "model_config": self.model_config,
+                    "checkpoint_config": self.checkpoint_config,
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }

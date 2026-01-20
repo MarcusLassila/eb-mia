@@ -1,6 +1,10 @@
+from agm.agm import AbstractGenerativeModel
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from contextlib import nullcontext
 
 class ResBlockDown(nn.Module):
 
@@ -83,15 +87,14 @@ class Decoder(nn.Module):
         h = self.latent_proj(x).view(x.shape[0], 256, self.pre_deconv_size, self.pre_deconv_size)
         return self.residual_block(h)
 
-class VAE(nn.Module):
+class VAE_Network(nn.Module):
 
-    def __init__(self, in_ch, in_dim, latent_dim, n_rsamples=1):
+    def __init__(self, in_ch, in_dim, latent_dim):
         super().__init__()
         assert in_dim % 8 == 0
         self.in_ch = in_ch
         self.in_dim = in_dim
         self.latent_dim = latent_dim
-        self.n_rsamples = n_rsamples
         self.encoder = Encoder(
             in_ch=in_ch,
             in_dim=in_dim,
@@ -103,44 +106,57 @@ class VAE(nn.Module):
             out_dim=in_dim,
         )
 
-    def forward(self, x):
-        return self.decode(self.encode(x))
+    def forward(self, x, n_rsamples=1):
+        mean, logvar = self.encode(x)
+        zs = [self.rsample(mean, logvar) for _ in range(n_rsamples)]
+        x_hat = [self.decode(z) for z in zs]
+        return x_hat, mean, logvar
 
     def encode(self, x):
-        x = (x + 1.0) / 2.0  # Assmes data in [-1,1]
+        x = (x + 1.0) / 2.0  # Assumes data in [-1,1]
         mean, logvar = self.encoder(x)
-        return self.rsample(mean, logvar)
-    
+        return mean, logvar
+
     def decode(self, z):
         return self.decoder(z)
-
-    def per_sample_loss(self, x):
-        enc_mean, enc_logvar = self.encoder(x)
-        kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp(), dim=1)
-        nll = torch.zeros(x.shape[0], device=x.device)
-        for _ in range(self.n_rsamples):
-            z = self.rsample(enc_mean, enc_logvar)
-            y = self.decode(z)
-            nll += F.mse_loss(input=y, target=x, reduction="none").sum(dim=(1, 2, 3))
-        nll /= self.n_rsamples
-        assert kl_div.shape == nll.shape == (x.shape[0],)
-        return kl_div + nll
-
-    def loss(self, x):
-        return self.per_sample_loss(x).mean()
-
+    
     @torch.inference_mode()
     def sample(self, batch_size):
-        '''Sample a batch from the learned data distribution.'''
         self.decoder.eval()
         device = next(self.decoder.parameters()).device
         noise = torch.randn(batch_size, self.latent_dim).to(device)
         samples = self.decode(noise)
         return samples
-
-    @staticmethod
-    def rsample(mean, logvar):
+    
+    def rsample(self, mean, logvar):
         '''Sample latent variable from encoder mean and log variance using the reparameterization trick.'''
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mean + std * eps
+
+class VAE(AbstractGenerativeModel):
+
+    def __init__(self, n_rsamples=1):
+        self.n_rsamples = n_rsamples
+
+    def move_to(self, device):
+        _ = device
+
+    def per_sample_loss(self, model, x):
+        x_hat, enc_mean, enc_logvar = model(x, n_rsamples=self.n_rsamples)
+        kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp(), dim=1)
+        nll = torch.zeros(x.shape[0], device=x.device)
+        for xh in x_hat:
+            nll += F.mse_loss(input=xh, target=x, reduction="none").sum(dim=(1, 2, 3))
+        nll /= self.n_rsamples
+        assert kl_div.shape == nll.shape == (x.shape[0],)
+        return kl_div + nll
+
+    def loss(self, model, x, autocast_context=nullcontext()):
+        with autocast_context:
+            loss_value = self.per_sample_loss(model, x).mean()
+        return loss_value
+
+    @torch.inference_mode()
+    def sample(self, model, batch_size):
+        return model.sample(batch_size)

@@ -46,13 +46,13 @@ class AcceleratorLite:
             model = torch.compile(model)
         if self.running_ddp:
             model = DDP(model, device_ids=[self.local_rank])
-            train_sampler = DistributedSampler(train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=True)
-            val_sampler = DistributedSampler(val_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False)
-            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True)
-            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, pin_memory=True)
+            train_sampler = DistributedSampler(train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=True, drop_last=True)
+            val_sampler = DistributedSampler(val_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False, drop_last=True)
+            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
+            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True)
         else:
-            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
-            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
+            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
         train_dataloader = DataLoaderOnDevice(train_dataloader, self.device)
         val_dataloader = DataLoaderOnDevice(val_dataloader, self.device)
         return model, train_dataloader, val_dataloader
