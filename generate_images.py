@@ -1,5 +1,5 @@
 from accelerate.accelerate import AcceleratorLite
-from ddpm.ddpm import DDPM
+from generative_models.ddpm import DDPM
 
 import torch
 import matplotlib.pyplot as plt

@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, Subset
 
 from accelerate.accelerate import AcceleratorLite
 from training.train_loop import TrainConfig, TrainLoop
-from vae.vae import VAE, VAE_Network
+from generative_models.vae import VAE, VAE_Network
 from pathlib import Path
 
 
@@ -36,7 +36,7 @@ class TestVAETrain(unittest.TestCase):
         }
         model = VAE_Network(**model_config)
         generative_class = VAE(n_rsamples=1)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": {
                 "n_rsamples": 1,
             },
@@ -64,7 +64,7 @@ class TestVAETrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -83,7 +83,7 @@ class TestVAETrain(unittest.TestCase):
         }
         model = VAE_Network(**model_config)
         generative_class = VAE(n_rsamples=1)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": {
                 "n_rsamples": 1,
             },
@@ -111,7 +111,7 @@ class TestVAETrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -131,7 +131,7 @@ class TestVAETrain(unittest.TestCase):
         }
         model = VAE_Network(**model_config)
         generative_class = VAE(n_rsamples=1)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": {
                 "n_rsamples": 1,
             },
@@ -160,7 +160,7 @@ class TestVAETrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()

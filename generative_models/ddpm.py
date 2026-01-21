@@ -1,4 +1,4 @@
-from agm.agm import AbstractGenerativeModel
+from generative_models.agm import AbstractGenerativeModel
 from unet.unet import UNet
 
 import torch

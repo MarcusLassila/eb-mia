@@ -1,7 +1,7 @@
 from data import data
-from ddpm import ddpm
-from mia.utils import get_dataset_and_model_from_path
-from vae import vae
+from generative_models import ddpm
+from generative_models import vae
+from utils import get_dataset_and_model_from_path
 
 import torch
 from torch.utils.data import DataLoader, Subset

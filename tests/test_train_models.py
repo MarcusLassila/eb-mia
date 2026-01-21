@@ -8,8 +8,8 @@ from unittest import mock
 import torch
 from torch.utils.data import Dataset
 
-import mia.train_models as train_models
-import mia.utils as mia_utils
+import training.train_model as train_model
+import utils
 
 
 class _DummyDataset(Dataset):
@@ -33,9 +33,9 @@ class TestTrainModels(unittest.TestCase):
                 pickle.dump(indices, file)
             config = types.SimpleNamespace(dataset="Dummy", data_dir=".", val_frac=0.2, model="VAE")
             dummy_data = types.SimpleNamespace(Dummy=_dummy_dataset_loader)
-            with mock.patch.object(train_models, "data", dummy_data):
-                with mock.patch.object(train_models, "train_model") as mock_train_model:
-                    train_models.train_model_from_indices_file(
+            with mock.patch.object(train_model, "data", dummy_data):
+                with mock.patch.object(train_model, "train_model") as mock_train_model:
+                    train_model.train_model_from_indices_file(
                         accelerator=object(),
                         config=config,
                         savedir=Path(tmpdir),
@@ -44,7 +44,7 @@ class TestTrainModels(unittest.TestCase):
                     )
                     args, _ = mock_train_model.call_args
                     train_mask = args[4]
-                    expected_mask = mia_utils.index_to_mask(
+                    expected_mask = utils.index_to_mask(
                         torch.tensor(indices, dtype=torch.long),
                         6,
                     )

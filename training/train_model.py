@@ -1,10 +1,10 @@
 from accelerate.accelerate import AcceleratorLite
 from data import data
-from ddpm.ddpm import create_ddpm_noise_model, DDPM
+from generative_models.ddpm import create_ddpm_noise_model, DDPM
 from training.train_loop import TrainConfig, TrainLoop
-from vae.vae import VAE, VAE_Network
+from generative_models.vae import VAE, VAE_Network
 from . import train_split
-from . import utils
+import utils
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -41,12 +41,12 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     match config.model:
         case "DDPM":
             image_dim = dataset[0].shape
-            ddpm_config = {
+            generative_class_config = {
                 "image_dim": image_dim,
                 "time_steps": 1000,
                 "beta_schedule": "linear",
             }
-            generative_class = DDPM(**ddpm_config)
+            generative_class = DDPM(**generative_class_config)
             model_config = {
                 "image_dim": dataset[0].shape,
                 "base_channels": config.base_channels,
@@ -59,8 +59,8 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
             }
             model = create_ddpm_noise_model(**model_config)
         case "VAE":
-            vae_config = {"n_rsample": 1}
-            generative_class = VAE(**vae_config)
+            generative_class_config = {"n_rsamples": 1}
+            generative_class = VAE(**generative_class_config)
             model_config = {
                 "in_ch": channels,
                 "in_dim": height,
@@ -70,8 +70,8 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
         case _:
             raise ValueError(f"No generative model named {config.model}.")
 
-    checkpoint_config = {
-        "generative_class_config": ddpm_config,
+    init_configs = {
+        "generative_class_config": generative_class_config,
         "model_config": model_config,
     }
     TrainLoop(
@@ -80,7 +80,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         train_config=train_config,
-        checkpoint_config=checkpoint_config,
+        configs=init_configs,
         accelerator=accelerator,
         savepath=savepath,
     ).train()
@@ -102,7 +102,7 @@ def train_model_from_indices_file(
 def main(config_file, id_):
     '''Load config and train a model from explicit indices. Args: config_file (str), id_ (int). Returns: None.'''
     root = utils.get_root()
-    with open(f"{root}/mia/configs/{config_file}.yaml", "r") as file:
+    with open(f"{root}/training/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)

@@ -144,7 +144,7 @@ def _build_parser():
     parser = argparse.ArgumentParser(description="Create training split index files.")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--data-dir", default="./datasets")
-    parser.add_argument("--output-dir", default="mia/train_splits")
+    parser.add_argument("--output-dir", default="training/train_splits")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--mode", choices=["random", "entity", "complement"], default="random")
     parser.add_argument("--fraction", type=float, default=1.0)

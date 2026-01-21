@@ -4,7 +4,7 @@ from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
-import mia.train_split as train_split
+import training.train_split as train_split
 from data import data as data_module
 
 

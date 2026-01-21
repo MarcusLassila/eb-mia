@@ -1,13 +1,6 @@
-from data import data
-import utils
-
 import numpy as np
 import torch
-import torch.nn.functional as F
-import torchvision.transforms as T
 import time
-import pickle
-from pathlib import Path
 
 class AIS_MALA:
 
@@ -188,47 +181,6 @@ def create_beta_schedule(steps, gamma=1.0):
     beta_schedule ** gamma
     return beta_schedule
 
-def unnormalized_log_prob(loss_fn, shape):
-    def wrapper(x):
-        x = x.view(x.shape[0], *shape)
-        loss = loss_fn(x)
-        return -loss
-    return wrapper
-
-def compute_partition_functions(path, steps, n_loss_samples, device, data_dir):
-    path = Path(path)
-    dataset_name, model_type, *_ = path.stem.split("-")
-    if model_type == "DDPM":
-        transform = T.Concat([
-            T.RandomHorizontalFlip(p=0.5),
-            T.ToTensor(),
-            T.Lambda(lambda x: x * 2.0 - 1.0),
-        ])
-    else:
-        transform = T.ToTensor()
-    data_shape = getattr(data, dataset_name)(transform=transform, data_dir=data_dir)[0].shape
-    dim = torch.tensor(data_shape).prod()
-    beta_schedule = torch.linspace(0, 1, steps=steps, device=device)
-    model, _ = utils.load_model(
-        path=path,
-        device=device,
-        n_loss_samples=n_loss_samples,
-    )
-    log_p1 = unnormalized_log_prob(model.per_sample_loss, data_shape)
-    sampler = AIS_MALA(
-        dim=dim,
-        beta_schedule=beta_schedule,
-        log_p1=log_p1,
-        device=device,
-    )
-    log_Z = sampler.run()["log_Z"]
-    print(f"log(Z) = {log_Z}")
-    savedir = path.parent / Path("partition-functions")
-    savedir.mkdir(parents=True, exist_ok=True)
-    savepath = savedir / path.name
-    with open(savepath, "wb") as f:
-        pickle.dump(log_Z, f)
-
 def test_mixture_of_multinormal(ais_cls, steps, n_steps_per_beta, device):
     dim = 50
     n_mixtures = 2
@@ -269,25 +221,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="./datasets",
-    )
-    parser.add_argument(
-        "--path",
-        type=str,
-        required=False,
-        help="Path to model checkpoint. Should be saved in the format dataset-model_type-otherstuff.pth"
-    )
-    parser.add_argument(
         "--steps",
         type=int,
         default=1000,
-    )
-    parser.add_argument(
-        "--n-loss-samples",
-        type=int,
-        default=20,
     )
     parser.add_argument(
         "--steps-per-beta",
@@ -308,12 +244,5 @@ if __name__ == "__main__":
             ais_cls = AIS_RWM
         case _:
             raise ValueError("Unsupported MCMC kernel")
-    # compute_partition_functions(
-    #     path=args.path,
-    #     steps=args.steps,
-    #     n_loss_samples=args.n_loss_samples,
-    #     device=device,
-    #     data_dir=args.data_dir,
-    # )
     print('Running test...')
     test_mixture_of_multinormal(ais_cls, args.steps, args.steps_per_beta, device=device)

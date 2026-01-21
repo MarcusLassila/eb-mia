@@ -1,12 +1,8 @@
-from ddpm.ddpm import DDPM
-from vae.vae import VAE
-
-import numpy as np
-import torch
-
 from pathlib import Path
 import subprocess
 import yaml
+
+import torch
 
 class Config:
 
@@ -15,6 +11,7 @@ class Config:
 
     def __str__(self):
         return yaml.dump(self.__dict__)
+
 
 def get_root():
     ''' Return path to the root of the repository. '''
@@ -25,33 +22,38 @@ def get_root():
         return None
 
 def get_dataset_and_model_from_path(path):
-    dataset, model, *_ = Path(path).stem.split("-") # Assumes model checkpoint is saved as dataset-model-otherstuff.pth
+    ''' Extract dataset and model names from a checkpoint path.
+
+    Args:
+        path: Checkpoint path (str or Path).
+
+    Returns:
+        Tuple[str, str]: Dataset name and model name.
+    '''
+    dataset, model, *_ = Path(path).stem.split("-")
     return dataset, model
 
 def load_checkpoint(path: str, device: torch.device):
+    ''' Load a model checkpoint to a target device.
+
+    Args:
+        path: Checkpoint file path.
+        device: Target torch device.
+
+    Returns:
+        dict: Loaded checkpoint.
+    '''
     return torch.load(path, map_location=device)
 
-def load_model(path: str, device: torch.device, n_loss_samples: int = 20):
-    checkpoint = load_checkpoint(path, device)
-    _, model_type = get_dataset_and_model_from_path(path)
-    match model_type:
-        case "DDPM":
-            model = DDPM(**checkpoint["model_config"])
-            model.to(device)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            train_indices = checkpoint["train_indices"]
-        case "VAE":
-            model = VAE(**checkpoint["model_config"])
-            model.n_rsamples = n_loss_samples
-            model.to(device)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            train_indices = checkpoint["train_indices"]
-        case _:
-            raise ValueError(f"Unsupported model: {model_type}")
-    model.eval()
-    return model, train_indices
-
 def get_train_indices(path: str):
+    ''' Load training indices from a checkpoint.
+
+    Args:
+        path: Checkpoint file path.
+
+    Returns:
+        torch.Tensor: Training indices.
+    '''
     checkpoint = load_checkpoint(path, torch.device("cpu"))
     return checkpoint["train_indices"]
 

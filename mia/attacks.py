@@ -1,6 +1,7 @@
 from data import data
 import models
 import utils
+from generative_models.utils import load_model
 
 import numpy as np
 import torch
@@ -20,7 +21,7 @@ class BASE:
         self.n_loss_samples = n_loss_samples
 
     def load_model(self, path):
-        model, _ = utils.load_model(
+        model, _ = load_model(
             path=path,
             device=self.device,
             n_loss_samples=self.n_loss_samples,
@@ -93,7 +94,7 @@ class ClassifierAttack:
             raise ValueError(f"Unsupported classifier: {classifier}")
 
     def load_model(self, index):
-        model, train_indices  = utils.load_model(
+        model, train_indices  = load_model(
             dataset=self.dataset_name,
             model_type=self.model_type,
             index_model=index,
@@ -221,7 +222,7 @@ class GlobalLossAttack:
         self.n_loss_samples = n_loss_samples
 
     def load_model(self, index):
-        model, _ = utils.load_model(
+        model, _ = load_model(
             dataset=self.dataset_name,
             model_type=self.model_type,
             index_model=index,

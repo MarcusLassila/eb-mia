@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset, Subset
 
 from accelerate.accelerate import AcceleratorLite
-from ddpm.ddpm import DDPM, create_ddpm_noise_model
+from generative_models.ddpm import DDPM, create_ddpm_noise_model
 from training.train_loop import TrainConfig, TrainLoop
 from pathlib import Path
 
@@ -44,7 +44,7 @@ class TestDDPMTrain(unittest.TestCase):
             "resample_with_conv": True,
         }
         model = create_ddpm_noise_model(**model_config)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": ddpm_config,
             "model_config": model_config,
         }
@@ -70,7 +70,7 @@ class TestDDPMTrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -97,7 +97,7 @@ class TestDDPMTrain(unittest.TestCase):
             "resample_with_conv": True,
         }
         model = create_ddpm_noise_model(**model_config)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": ddpm_config,
             "model_config": model_config,
         }
@@ -123,7 +123,7 @@ class TestDDPMTrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -151,7 +151,7 @@ class TestDDPMTrain(unittest.TestCase):
             "resample_with_conv": True,
         }
         model = create_ddpm_noise_model(**model_config)
-        checkpoint_config = {
+        configs = {
             "generative_class_config": ddpm_config,
             "model_config": model_config,
         }
@@ -178,7 +178,7 @@ class TestDDPMTrain(unittest.TestCase):
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                checkpoint_config=checkpoint_config,
+                configs=configs,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()

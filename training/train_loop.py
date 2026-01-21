@@ -1,4 +1,4 @@
-from agm.agm import AbstractGenerativeModel
+from generative_models.agm import AbstractGenerativeModel
 from accelerate.accelerate import AcceleratorLite
 
 from contextlib import nullcontext
@@ -36,14 +36,14 @@ class TrainLoop:
         train_dataset: torch.utils.data.Dataset,
         val_dataset: torch.utils.data.Dataset,
         train_config: TrainConfig,
-        checkpoint_config: dict,
+        configs: dict,
         accelerator: AcceleratorLite,
         savepath: Union[str, Path],
     ):
         self.train_config = train_config
-        if "train_config" not in checkpoint_config:
-            checkpoint_config["train_config"] = asdict(train_config)
-        self.checkpoint_config = checkpoint_config
+        if "train_config" not in configs:
+            configs["train_config"] = asdict(train_config)
+        self.configs = configs
 
         self._unpack_train_config()
         self.accelerator = accelerator
@@ -166,7 +166,7 @@ class TrainLoop:
                     "raw_model_state_dict": self.raw_model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
-                    "checkpoint_config": self.checkpoint_config,
+                    "configs": self.configs,
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
