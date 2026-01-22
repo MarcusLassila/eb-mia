@@ -13,14 +13,14 @@ class AbstractGenerativeModel(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def per_sample_loss(self, model, x, *args, **kwargs):
+    def per_sample_loss(self, x, *args, **kwargs):
         raise NotImplementedError
 
     @abstractmethod
-    def loss(self, model, x, autocast_context=nullcontext()):
+    def loss(self, x, autocast_context=nullcontext(), network_override=None, **kwargs):
         raise NotImplementedError
 
     @torch.inference_mode()
     @abstractmethod
-    def sample(self, model, batch_size, **kwargs):
+    def sample(self, batch_size, **kwargs):
         raise NotImplementedError

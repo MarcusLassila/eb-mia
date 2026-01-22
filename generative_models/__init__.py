@@ -1,11 +1,10 @@
 from .agm import AbstractGenerativeModel
-from .ddpm import DDPM, create_ddpm_noise_model
+from .ddpm import DDPM
 from .vae import VAE, VAE_Network
 
 __all__ = [
     "AbstractGenerativeModel",
     "DDPM",
-    "create_ddpm_noise_model",
     "VAE",
     "VAE_Network",
 ]

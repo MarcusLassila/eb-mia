@@ -3,6 +3,7 @@ from generative_models.agm import AbstractGenerativeModel
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from contextlib import nullcontext
 
@@ -136,14 +137,23 @@ class VAE_Network(nn.Module):
 
 class VAE(AbstractGenerativeModel):
 
-    def __init__(self, n_rsamples=1):
+    def __init__(self, in_ch, in_dim, latent_dim, n_rsamples=1):
+        self.network = VAE_Network(
+            in_ch=in_ch,
+            in_dim=in_dim,
+            latent_dim=latent_dim,
+        )
         self.n_rsamples = n_rsamples
 
     def move_to(self, device):
-        _ = device
+        if isinstance(self.network, DDP):
+            assert next(iter(self.network.parameters())).device == torch.device(device), "Should not move a DDP wrapped network to another device"
+        else:
+            self.network.to(device)
 
-    def per_sample_loss(self, model, x):
-        x_hat, enc_mean, enc_logvar = model(x, n_rsamples=self.n_rsamples)
+    def per_sample_loss(self, x, network_override=None):
+        network = network_override if network_override is not None else self.network
+        x_hat, enc_mean, enc_logvar = network(x, n_rsamples=self.n_rsamples)
         kl_div = -0.5 * torch.sum(1 + enc_logvar - enc_mean ** 2 - enc_logvar.exp(), dim=1)
         nll = torch.zeros(x.shape[0], device=x.device)
         for xh in x_hat:
@@ -152,11 +162,11 @@ class VAE(AbstractGenerativeModel):
         assert kl_div.shape == nll.shape == (x.shape[0],)
         return kl_div + nll
 
-    def loss(self, model, x, autocast_context=nullcontext()):
+    def loss(self, x, autocast_context=nullcontext(), network_override=None):
         with autocast_context:
-            loss_value = self.per_sample_loss(model, x).mean()
+            loss_value = self.per_sample_loss(x, network_override=network_override).mean()
         return loss_value
 
     @torch.inference_mode()
-    def sample(self, model, batch_size):
-        return model.sample(batch_size)
+    def sample(self, batch_size):
+        return self.network.sample(batch_size)

@@ -1,13 +1,13 @@
 from accelerate.accelerate import AcceleratorLite
 from data import data
-from generative_models.ddpm import create_ddpm_noise_model, DDPM
+from generative_models.ddpm import DDPM
 from training.train_loop import TrainConfig, TrainLoop
-from generative_models.vae import VAE, VAE_Network
+from generative_models.vae import VAE
 from . import train_split
 import utils
 
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import Subset
 
 from pathlib import Path
 import yaml
@@ -41,14 +41,10 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     match config.model:
         case "DDPM":
             image_dim = dataset[0].shape
-            generative_class_config = {
+            model_config = {
                 "image_dim": image_dim,
                 "time_steps": 1000,
                 "beta_schedule": "linear",
-            }
-            generative_class = DDPM(**generative_class_config)
-            model_config = {
-                "image_dim": dataset[0].shape,
                 "base_channels": config.base_channels,
                 "channel_mult": config.channel_mult,
                 "n_attention_heads": config.n_attention_heads,
@@ -57,30 +53,24 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
                 "resample_with_conv": True,
                 "use_sdpa": True,
             }
-            model = create_ddpm_noise_model(**model_config)
+            model = DDPM(**model_config)
         case "VAE":
-            generative_class_config = {"n_rsamples": 1}
-            generative_class = VAE(**generative_class_config)
             model_config = {
                 "in_ch": channels,
                 "in_dim": height,
                 "latent_dim": config.latent_dim,
+                "n_rsamples": 1,
             }
-            model = VAE_Network(**model_config)
+            model = VAE(**model_config)
         case _:
             raise ValueError(f"No generative model named {config.model}.")
 
-    init_configs = {
-        "generative_class_config": generative_class_config,
-        "model_config": model_config,
-    }
     TrainLoop(
         model=model,
-        generative_class=generative_class,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         train_config=train_config,
-        configs=init_configs,
+        model_config=model_config,
         accelerator=accelerator,
         savepath=savepath,
     ).train()

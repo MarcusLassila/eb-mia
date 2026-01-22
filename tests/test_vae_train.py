@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, Subset
 
 from accelerate.accelerate import AcceleratorLite
 from training.train_loop import TrainConfig, TrainLoop
-from generative_models.vae import VAE, VAE_Network
+from generative_models.vae import VAE
 from pathlib import Path
 
 
@@ -33,15 +33,9 @@ class TestVAETrain(unittest.TestCase):
             "in_ch": 1,
             "in_dim": 8,
             "latent_dim": 4,
+            "n_rsamples": 1,
         }
-        model = VAE_Network(**model_config)
-        generative_class = VAE(n_rsamples=1)
-        configs = {
-            "generative_class_config": {
-                "n_rsamples": 1,
-            },
-            "model_config": model_config,
-        }
+        model = VAE(**model_config)
 
         train_config = TrainConfig(
             batch_size=2,
@@ -60,11 +54,10 @@ class TestVAETrain(unittest.TestCase):
             savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
-                generative_class=generative_class,
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                configs=configs,
+                model_config=model_config,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -80,15 +73,9 @@ class TestVAETrain(unittest.TestCase):
             "in_ch": 1,
             "in_dim": 8,
             "latent_dim": 4,
+            "n_rsamples": 1,
         }
-        model = VAE_Network(**model_config)
-        generative_class = VAE(n_rsamples=1)
-        configs = {
-            "generative_class_config": {
-                "n_rsamples": 1,
-            },
-            "model_config": model_config,
-        }
+        model = VAE(**model_config)
 
         train_config = TrainConfig(
             batch_size=2,
@@ -107,11 +94,10 @@ class TestVAETrain(unittest.TestCase):
             savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
-                generative_class=generative_class,
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                configs=configs,
+                model_config=model_config,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
@@ -128,15 +114,9 @@ class TestVAETrain(unittest.TestCase):
             "in_ch": 1,
             "in_dim": 8,
             "latent_dim": 4,
+            "n_rsamples": 1,
         }
-        model = VAE_Network(**model_config)
-        generative_class = VAE(n_rsamples=1)
-        configs = {
-            "generative_class_config": {
-                "n_rsamples": 1,
-            },
-            "model_config": model_config,
-        }
+        model = VAE(**model_config)
 
         train_config = TrainConfig(
             batch_size=2,
@@ -156,20 +136,19 @@ class TestVAETrain(unittest.TestCase):
             savepath = Path(tmpdir) / "vae_test.pth"
             TrainLoop(
                 model=model,
-                generative_class=generative_class,
                 train_dataset=train_dataset,
                 val_dataset=val_dataset,
                 train_config=train_config,
-                configs=configs,
+                model_config=model_config,
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
             checkpoint_path = Path(tmpdir) / "vae_test-epoch1.pth"
             checkpoint = torch.load(checkpoint_path, map_location="cpu")
-            self.assertIn("ema_model_state_dict", checkpoint)
-            raw_state = checkpoint["raw_model_state_dict"]
-            ema_state = checkpoint["ema_model_state_dict"]
-            model_state = checkpoint["model_state_dict"]
+            self.assertIn("ema_network_state_dict", checkpoint)
+            raw_state = checkpoint["raw_network_state_dict"]
+            ema_state = checkpoint["ema_network_state_dict"]
+            model_state = checkpoint["network_state_dict"]
             self.assertEqual(raw_state.keys(), ema_state.keys())
             self.assertEqual(model_state.keys(), ema_state.keys())
             for key, model_tensor in model_state.items():
