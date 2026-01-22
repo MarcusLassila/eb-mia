@@ -60,20 +60,23 @@ class CIFAR10(Dataset):
         return len(self.dataset)
 
 class CelebA(Entity):
-    '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int). Returns: None.'''
+    '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
 
-    def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0):
-        '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), min_celeb_samples (int). Returns: None.'''
+    def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0, size=128, grayscale=False):
+        '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
         if transform is None:
-            self.transform = T.Compose([
+            transforms = [
                 T.CenterCrop((178, 178)),
                 T.Resize(
-                    (128, 128),
+                    (size, size),
                     interpolation=T.InterpolationMode.BICUBIC,
                     antialias=True,
                 ),
-                TRANSFORM,
-            ])
+            ]
+            if grayscale:
+                transforms.append(T.Grayscale(num_output_channels=1))
+            transforms.append(TRANSFORM)
+            self.transform = T.Compose(transforms)
         else:
             self.transform = transform
         ds = load_dataset("flwrlabs/celeba", cache_dir=data_dir)
@@ -111,11 +114,24 @@ class CelebA(Entity):
         return len(self.dataset)
 
 class CelebA2(CelebA):
-    '''CelebA dataset filtered to celeb_ids with at least 2 samples. Args: data_dir (str), transform (callable|None). Returns: None.'''
+    '''CelebA dataset filtered to celeb_ids with at least 2 samples. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
 
-    def __init__(self, data_dir="./datasets", transform=None):
-        '''Initialize CelebA2 dataset. Args: data_dir (str), transform (callable|None). Returns: None.'''
-        super().__init__(data_dir=data_dir, transform=transform, min_celeb_samples=2)
+    def __init__(self, data_dir="./datasets", transform=None, size=128, grayscale=False):
+        '''Initialize CelebA2 dataset. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+        super().__init__(
+            data_dir=data_dir,
+            transform=transform,
+            min_celeb_samples=2,
+            size=size,
+            grayscale=grayscale,
+        )
+
+class CelebA2LowRes(CelebA2):
+    '''CelebA2 dataset resized and optionally grayscaled. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+
+    def __init__(self, data_dir="./datasets", transform=None, size=32, grayscale=True):
+        '''Initialize low resolution CelebA2 dataset. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+        super().__init__(data_dir=data_dir, transform=transform, size=size, grayscale=grayscale)
 
 class CelebAHQ(Dataset):
 

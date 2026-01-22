@@ -63,15 +63,13 @@ class TestTrainSplit(unittest.TestCase):
 
     def test_entity_subset_indices_min_one_per_entity(self):
         entity_ids = [10, 11, 12, 13]
-        indices = train_split.sample_entity_fraction_indices(
-            entity_ids=entity_ids,
-            entity_fraction=1.0,
-            per_entity_fraction=0.5,
-            seed=99,
-        )
-        selected_entity_ids = {entity_ids[index] for index in indices}
-        self.assertEqual(len(selected_entity_ids), 4)
-        self.assertEqual(len(indices), 4)
+        with self.assertRaises(AssertionError):
+            train_split.sample_entity_fraction_indices(
+                entity_ids=entity_ids,
+                entity_fraction=1.0,
+                per_entity_fraction=0.5,
+                seed=99,
+            )
 
     def test_entity_subset_filename_structure(self):
         name = train_split.entity_subset_filename("CelebA", 0.5, 0.25, seed=9)
@@ -145,6 +143,46 @@ class TestTrainSplit(unittest.TestCase):
             if entity_id not in selected_entity_ids:
                 expected = 0
             self.assertEqual(selected_counts.get(entity_id, 0), expected)
+
+    def test_entity_complement_subset_non_overlapping_ids(self):
+        entity_ids = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]
+        base_indices = [0, 6]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir) / "base.pkl"
+            train_split.save_indices(base_indices, base_path)
+            complement_path = train_split.create_entity_complement_subset(
+                subset_path=base_path,
+                entity_ids=entity_ids,
+                per_entity_fraction=0.5,
+                seed=11,
+                output_dir=tmpdir,
+            )
+            complement_indices = train_split.load_indices(complement_path)
+
+        base_entity_ids = {entity_ids[index] for index in base_indices}
+        complement_entity_ids = {entity_ids[index] for index in complement_indices}
+        self.assertTrue(base_entity_ids.isdisjoint(complement_entity_ids))
+        self.assertEqual(base_entity_ids | complement_entity_ids, set(entity_ids))
+        total_counts = Counter(entity_ids)
+        selected_counts = Counter(entity_ids[index] for index in complement_indices)
+        for entity_id in set(entity_ids):
+            expected = int(total_counts[entity_id] * 0.5)
+            if entity_id not in complement_entity_ids:
+                expected = 0
+            else:
+                self.assertGreater(expected, 0)
+            self.assertEqual(selected_counts.get(entity_id, 0), expected)
+
+    def test_entity_complement_subset_requires_min_samples(self):
+        entity_ids = [0, 1, 2]
+        base_indices = []
+        with self.assertRaises(AssertionError):
+            train_split.sample_entity_complement_fraction_indices(
+                entity_ids=entity_ids,
+                base_indices=base_indices,
+                per_entity_fraction=0.5,
+                seed=3,
+            )
 
     def test_cli_random_and_complement(self):
         class FakeDataset:

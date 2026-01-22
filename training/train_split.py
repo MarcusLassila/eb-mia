@@ -82,6 +82,8 @@ def sample_entity_fraction_indices(entity_ids, entity_fraction, per_entity_fract
     indices_by_entity = {}
     for index, entity_id in enumerate(entity_ids):
         indices_by_entity.setdefault(entity_id, []).append(index)
+    min_entity_samples = min(len(entity_indices) for entity_indices in indices_by_entity.values())
+    assert int(min_entity_samples * per_entity_fraction) >= 1
     unique_entity_ids = sorted(indices_by_entity)
     subset_size = int(len(unique_entity_ids) * entity_fraction)
     rng = random.Random(seed)
@@ -90,8 +92,35 @@ def sample_entity_fraction_indices(entity_ids, entity_fraction, per_entity_fract
     for entity_id in sampled_entity_ids:
         entity_indices = indices_by_entity[entity_id]
         entity_subset_size = int(len(entity_indices) * per_entity_fraction)
-        entity_subset_size = max(1, entity_subset_size)
-        entity_subset_size = min(len(entity_indices), entity_subset_size)
+        sampled_indices.extend(rng.sample(entity_indices, k=entity_subset_size))
+    return sorted(sampled_indices)
+
+def sample_entity_complement_fraction_indices(entity_ids, base_indices, per_entity_fraction, seed):
+    '''Sample indices from complement entity ids. Args: entity_ids (iterable), base_indices (iterable), per_entity_fraction (float), seed (int). Returns: list[int].'''
+    entity_ids = _normalize_labels(entity_ids)
+    base_indices = _normalize_indices(base_indices)
+    _validate_indices(base_indices, len(entity_ids))
+    if not 0.0 < per_entity_fraction <= 1.0:
+        raise ValueError("per_entity_fraction must be in (0, 1]")
+    indices_by_entity = {}
+    for index, entity_id in enumerate(entity_ids):
+        indices_by_entity.setdefault(entity_id, []).append(index)
+    base_entity_ids = {entity_ids[index] for index in base_indices}
+    complement_entity_ids = [
+        entity_id
+        for entity_id in sorted(indices_by_entity)
+        if entity_id not in base_entity_ids
+    ]
+    if complement_entity_ids:
+        min_entity_samples = min(
+            len(indices_by_entity[entity_id]) for entity_id in complement_entity_ids
+        )
+        assert int(min_entity_samples * per_entity_fraction) >= 1
+    rng = random.Random(seed)
+    sampled_indices = []
+    for entity_id in complement_entity_ids:
+        entity_indices = indices_by_entity[entity_id]
+        entity_subset_size = int(len(entity_indices) * per_entity_fraction)
         sampled_indices.extend(rng.sample(entity_indices, k=entity_subset_size))
     return sorted(sampled_indices)
 
@@ -102,6 +131,12 @@ def create_random_subset(dataset_name, n_items, fraction, seed, output_dir):
     path = Path(output_dir) / filename
     save_indices(indices, path)
     return path
+
+def entity_complement_subset_filename(subset_path, per_entity_fraction, seed):
+    '''Build entity complement subset filename. Args: subset_path (str|Path), per_entity_fraction (float), seed (int). Returns: str.'''
+    subset_stem = Path(subset_path).stem
+    per_entity_frac_str = _format_fraction(per_entity_fraction)
+    return f"{subset_stem}-entity-complement-per{per_entity_frac_str}-seed{seed}.pkl"
 
 def create_entity_subset(dataset_name, entity_ids, entity_fraction, per_entity_fraction, seed, output_dir):
     '''Create and save entity subset. Args: dataset_name (str), entity_ids (iterable), entity_fraction (float), per_entity_fraction (float), seed (int), output_dir (str|Path). Returns: Path.'''
@@ -119,6 +154,22 @@ def create_entity_subset(dataset_name, entity_ids, entity_fraction, per_entity_f
     )
     path = Path(output_dir) / filename
     save_indices(indices, path)
+    return path
+
+def create_entity_complement_subset(subset_path, entity_ids, per_entity_fraction, seed, output_dir=None):
+    '''Create and save entity complement subset. Args: subset_path (str|Path), entity_ids (iterable), per_entity_fraction (float), seed (int), output_dir (str|Path|None). Returns: Path.'''
+    base_indices = load_indices(subset_path)
+    complement = sample_entity_complement_fraction_indices(
+        entity_ids=entity_ids,
+        base_indices=base_indices,
+        per_entity_fraction=per_entity_fraction,
+        seed=seed,
+    )
+    if output_dir is None:
+        output_dir = Path(subset_path).parent
+    filename = entity_complement_subset_filename(subset_path, per_entity_fraction, seed)
+    path = Path(output_dir) / filename
+    save_indices(complement, path)
     return path
 
 def complement_indices(indices, n_items):
@@ -146,7 +197,7 @@ def _build_parser():
     parser.add_argument("--data-dir", default="./datasets")
     parser.add_argument("--output-dir", default="training/train_splits")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--mode", choices=["random", "entity", "complement"], default="random")
+    parser.add_argument("--mode", choices=["random", "entity", "complement", "entity-complement"], default="random")
     parser.add_argument("--fraction", type=float, default=1.0)
     parser.add_argument("--entity-fraction", type=float, default=1.0)
     parser.add_argument("--per-entity-fraction", type=float, default=1.0)
@@ -170,6 +221,19 @@ def main(argv=None):
             dataset_name=args.dataset,
             entity_ids=entity_ids,
             entity_fraction=args.entity_fraction,
+            per_entity_fraction=args.per_entity_fraction,
+            seed=args.seed,
+            output_dir=output_dir,
+        )
+    if args.mode == "entity-complement":
+        entity_ids = getattr(dataset, "entity_ids", None)
+        if entity_ids is None:
+            raise ValueError("dataset must provide entity_ids for entity complement mode")
+        if args.subset_path is None:
+            raise ValueError("subset_path is required for entity complement mode")
+        return create_entity_complement_subset(
+            subset_path=args.subset_path,
+            entity_ids=entity_ids,
             per_entity_fraction=args.per_entity_fraction,
             seed=args.seed,
             output_dir=output_dir,
