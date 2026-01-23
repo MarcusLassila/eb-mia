@@ -1,6 +1,7 @@
 from data import data
 import models
 import utils
+from generative_models import VAE
 from generative_models.utils import load_model
 
 import numpy as np
@@ -10,6 +11,21 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from xgboost import XGBClassifier
 
+
+def compute_averaged_loss(model, samples, n_loss_samples, device):
+    match model.__class__.__name__:
+        case "DDPM":
+            loss_samples = []
+            for _ in range(n_loss_samples):
+                t = torch.randint(1, int(model.time_steps * 0.1), device=device)
+                loss = model.per_sample_loss(samples, t).cpu()
+                loss_samples.append(loss)
+            avg_loss = torch.stack(loss_samples).mean(dim=0)
+        case "VAE":
+            avg_loss = model.per_sample_loss(samples).cpu()
+        case _:
+            raise ValueError("Unavailable class of generative model.")
+    return avg_loss
 
 class BASE:
 
@@ -24,8 +40,9 @@ class BASE:
         model, _ = load_model(
             path=path,
             device=self.device,
-            n_loss_samples=self.n_loss_samples,
         )
+        if isinstance(model, VAE):
+            model.n_rsamples = self.n_loss_samples
         return model
 
     @torch.inference_mode()
@@ -34,13 +51,7 @@ class BASE:
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            avg_loss = []
-            for _ in range(self.n_loss_samples):
-                t = torch.randint(1, 100, size=(samples.shape[0],), device=self.device)
-                loss = model.per_sample_loss(samples, t).cpu()
-                avg_loss.append(loss)
-            avg_loss = torch.stack(avg_loss).mean(dim=0)
-            sig.append(avg_loss)
+            sig.append(compute_averaged_loss(model, samples))
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig

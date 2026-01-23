@@ -117,6 +117,8 @@ class TrainLoop:
                 if self.grad_clip != 0.0:
                     self.scaler.unscale_(self.optimizer)
                     norm = torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.grad_clip)
+                    if not torch.isfinite(norm).item():
+                        raise RuntimeError("Non-finite gradient norm detected during clipping.")
                     accum_grad_norm += norm
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
