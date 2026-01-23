@@ -12,6 +12,11 @@ CelebA-DDPM:
   grad_clip: 1.0
   autocast_dtype: "bfloat16"
   lr_scheduler: "none"
+  dataloader_config:
+    num_workers: 0
+    pin_memory: false
+    persistent_workers: false
+    prefetch_factor: null
   val_frac: 0.02
   model: "DDPM"
   base_channels: 128

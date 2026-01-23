@@ -1,4 +1,8 @@
+import os
 import random
+from dataclasses import asdict, dataclass
+from typing import Optional
+
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -6,13 +10,21 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-import os
+@dataclass
+class DataLoaderConfig:
+    '''Configuration for torch DataLoader options. Args: num_workers (int), pin_memory (bool), persistent_workers (bool), prefetch_factor (int | None). Returns: None.'''
+
+    num_workers: int = 0
+    pin_memory: bool = False
+    persistent_workers: bool = False
+    prefetch_factor: Optional[int] = None
 
 class AcceleratorLite:
     '''Lightweight Accelerator (Huggingface) like class to handle device placement and distributed training.'''
 
-    def __init__(self, torch_compile=False, base_seed=42):
+    def __init__(self, torch_compile=False, base_seed=42, dataloader_config=None):
         self.torch_compile = torch_compile
+        self.dataloader_config = self._parse_dataloader_config(dataloader_config)
         self.running_ddp = "RANK" in os.environ
         if self.running_ddp:
             assert torch.cuda.is_available()
@@ -44,15 +56,16 @@ class AcceleratorLite:
         if torch.cuda.is_available() and self.torch_compile:
             self.print(f"torch compile model")
             model = torch.compile(model)
+        dataloader_kwargs = asdict(self.dataloader_config)
         if self.running_ddp:
             model = DDP(model, device_ids=[self.local_rank])
             train_sampler = DistributedSampler(train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=True, drop_last=True)
             val_sampler = DistributedSampler(val_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False, drop_last=True)
-            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
-            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True)
+            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True, **dataloader_kwargs)
+            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True, **dataloader_kwargs)
         else:
-            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+            train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, **dataloader_kwargs)
+            val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=True, **dataloader_kwargs)
         train_dataloader = DataLoaderOnDevice(train_dataloader, self.device)
         val_dataloader = DataLoaderOnDevice(val_dataloader, self.device)
         return model, train_dataloader, val_dataloader
@@ -67,6 +80,16 @@ class AcceleratorLite:
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
+
+    def _parse_dataloader_config(self, dataloader_config):
+        '''Parse dataloader configuration to a DataLoaderConfig instance. Args: dataloader_config (dict or DataLoaderConfig). Returns: DataLoaderConfig.'''
+        if dataloader_config is None:
+            return DataLoaderConfig()
+        if isinstance(dataloader_config, DataLoaderConfig):
+            return dataloader_config
+        if isinstance(dataloader_config, dict):
+            return DataLoaderConfig(**dataloader_config)
+        raise TypeError("dataloader_config must be a dict or DataLoaderConfig")
 
 class DataLoaderOnDevice:
     '''Wrapper to place batches on device.'''

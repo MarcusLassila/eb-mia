@@ -12,6 +12,11 @@ CelebA2LowRes-VAE:
   grad_clip: 0.0
   autocast_dtype: "bfloat16"
   lr_scheduler: "cosine"
+  dataloader_config:
+    num_workers: 8
+    pin_memory: true
+    persistent_workers: true
+    prefetch_factor: 2
   val_frac: 0.02
   model: "VAE"
   latent_dim: 128

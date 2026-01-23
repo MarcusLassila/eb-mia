@@ -97,7 +97,8 @@ def main(config_file, id_):
     _, params = next(iter(config.items()))
     config = utils.Config(params)
     config.id = id_
-    accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_)
+    dataloader_config = getattr(config, "dataloader_config", None)
+    accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_, dataloader_config=dataloader_config)
     savedir = Path(f"./trained_models")
     savedir.mkdir(parents=True, exist_ok=True)
     train_indices_path = getattr(config, "train_indices_path", None)
