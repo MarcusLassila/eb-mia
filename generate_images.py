@@ -1,5 +1,5 @@
 from accelerate.accelerate import AcceleratorLite
-from generative_models.ddpm import DDPM
+from generative_models.utils import load_model
 
 import torch
 import matplotlib.pyplot as plt
@@ -25,28 +25,14 @@ def plot_images(images, name="temp_image"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-size", default=16, type=int)
-    parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--model-path", type=str, required=True)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--save-raw-data", action="store_true")
     args = parser.parse_args()
 
     accelerator = AcceleratorLite(torch_compile=False, base_seed=args.seed)
 
-    checkpoint = torch.load(f"/mimer/NOBACKUP/groups/e2e_comms/lassila/genai_models/{args.model}.pth", map_location="cpu")
-    fixed_state = {}
-    for k, v in checkpoint["model_state_dict"].items():
-        new_key = k.replace("_orig_mod.", "", 1)
-        fixed_state[new_key] = v
-    model = DDPM(
-        beta=checkpoint["beta"],
-        channel_mult=checkpoint["channel_mult"],
-        image_dim=checkpoint["image_dim"],
-        base_channels=checkpoint["base_channels"],
-        dropout=checkpoint["dropout"],
-        resample_with_conv=checkpoint["resample_with_conv"],
-        accelerator=accelerator,
-    )
-    model.load(fixed_state)
+    model, _ = load_model(args.model_path, accelerator.device)
     batch_size = args.batch_size
     gen_batch = model.sample(batch_size).cpu() 
     if args.save_raw_data:
