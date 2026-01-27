@@ -31,12 +31,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     accelerator = AcceleratorLite(torch_compile=False, base_seed=args.seed)
-
-    model, _ = load_model(args.model_path, accelerator.device)
+    model_path = Path(args.model_path)
+    model, _ = load_model(model_path, accelerator.device)
     batch_size = args.batch_size
     gen_batch = model.sample(batch_size).cpu() 
     if args.save_raw_data:
         Path("./images").mkdir(parents=True, exist_ok=True)
-        torch.save(gen_batch, "./images/image_batch.pth")
+        torch.save(gen_batch, "./images/{model_path.stem}_image_raw.pth")
     else:
-        plot_images(gen_batch, name=f"{args.model}_images")
+        plot_images(gen_batch, name=f"{model_path.stem}_images")

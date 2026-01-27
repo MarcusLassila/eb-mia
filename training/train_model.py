@@ -99,7 +99,7 @@ def main(config_file, id_):
     config.id = id_
     dataloader_config = getattr(config, "dataloader_config", None)
     accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_, dataloader_config=dataloader_config)
-    savedir = Path(f"./trained_models")
+    savedir = Path(config.save_dir)
     savedir.mkdir(parents=True, exist_ok=True)
     train_indices_path = getattr(config, "train_indices_path", None)
     if train_indices_path is None:
