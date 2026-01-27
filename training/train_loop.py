@@ -90,7 +90,7 @@ class TrainLoop:
         step = 0
 
         accelerator.print("Train config:")
-        for k, v in self.train_config:
+        for k, v in self.train_config.items():
             accelerator.print(f"{k}: {v}")
 
         # Drop any incomplete accumulated batch for simplicity
@@ -169,9 +169,12 @@ class TrainLoop:
                 savepath = self.savepath
                 name = savepath.stem + f"-epoch{epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
-                ema_state_dict = self.ema_network.state_dict()
+                checkpoint = {}
+                if self.use_ema:
+                    ema_state_dict = self.ema_network.state_dict()
+                    checkpoint["ema_network_state_dict"] = ema_state_dict
                 raw_state_dict = self.raw_network.state_dict()
-                checkpoint = {
+                checkpoint |= {
                     "epoch": epoch,
                     "network_state_dict": ema_state_dict if self.use_ema else raw_state_dict,
                     "raw_network_state_dict": raw_state_dict,
@@ -182,8 +185,6 @@ class TrainLoop:
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
-                if self.use_ema:
-                    checkpoint["ema_network_state_dict"] = ema_state_dict
                 torch.save(checkpoint, current_epoch_savepath)
 
     def _ema_create(self):

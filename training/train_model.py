@@ -1,5 +1,5 @@
 from accelerate.accelerate import AcceleratorLite
-from data import data
+from data.utils import load_dataset
 from generative_models.ddpm import DDPM
 from training.train_loop import TrainConfig, TrainLoop
 from generative_models.vae import VAE
@@ -83,7 +83,7 @@ def train_model_from_indices_file(
         id_,
     ):
     '''Train a model from explicit training indices. Args: accelerator, config, savedir (Path), train_indices_path (Path), id_ (int). Returns: None.'''
-    dataset = getattr(data, config.dataset)(data_dir=config.data_dir, transform=None)  # Use default transforms
+    dataset = load_dataset(config.dataset, data_dir=config.data_dir, transform=None)  # Use default transforms
     train_indices = torch.tensor(train_split.load_indices(train_indices_path), dtype=torch.long)
     train_mask = utils.index_to_mask(train_indices, len(dataset))
     train_model(accelerator, config, savedir, dataset, train_mask, id_)

@@ -1,4 +1,4 @@
-from data import data
+from data.utils import load_dataset
 import models
 import utils
 from generative_models import VAE
@@ -76,7 +76,7 @@ class BASE:
 class ClassifierAttack:
 
     def __init__(self, dataset_name, model_type, batch_size, device, index_shadow_models, n_loss_samples=20, classifier="MLP"):
-        self.dataset = getattr(data, dataset_name)() # Full dataset
+        self.dataset = load_dataset(dataset_name) # Full dataset
         self.dataset_name = dataset_name
         self.model_type = model_type
         self.batch_size = batch_size

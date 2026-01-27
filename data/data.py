@@ -62,7 +62,7 @@ class CIFAR10(Dataset):
 class CelebA(Entity):
     '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
 
-    def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0, size=128, grayscale=False):
+    def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0, size=128, grayscale=False, random_horizontal_flip=True):
         '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
         if transform is None:
             transforms = [
@@ -75,6 +75,8 @@ class CelebA(Entity):
             ]
             if grayscale:
                 transforms.append(T.Grayscale(num_output_channels=1))
+            if random_horizontal_flip:
+                transforms.append(T.RandomHorizontalFlip(p=0.5))
             transforms.append(TRANSFORM)
             self.transform = T.Compose(transforms)
         else:
@@ -135,12 +137,13 @@ class CelebA2LowRes(CelebA2):
 
 class CelebAHQ(Dataset):
 
-    def __init__(self, data_dir="./datasets", transform=None):
+    def __init__(self, data_dir="./datasets", transform=None, random_horizontal_flip=True):
         if transform is None:
-            self.transform = T.Compose([
-                T.RandomHorizontalFlip(p=0.5),
-                TRANSFORM,
-            ])
+            transforms = []
+            if random_horizontal_flip:
+                transforms.append(T.RandomHorizontalFlip(p=0.5))
+            transforms.append(TRANSFORM)
+            self.transform = T.Compose(transforms)
         else:
             self.transform = transform
         self.dataset = ConcatDataset([
@@ -158,12 +161,13 @@ class CelebAHQ(Dataset):
 
 class Flowers(Dataset):
 
-    def __init__(self, data_dir="./datasets", transform=None):
+    def __init__(self, data_dir="./datasets", transform=None, random_horizontal_flip=True):
         if transform is None:
-            self.transform = T.Compose([
-                T.RandomHorizontalFlip(p=0.5),
-                TRANSFORM,
-            ])
+            transforms = []
+            if random_horizontal_flip:
+                transforms.append(T.RandomHorizontalFlip(p=0.5))
+            transforms.append(TRANSFORM)
+            self.transform = T.Compose(transforms)
         else:
             self.transform = transform
         self.dataset = load_dataset("huggan/flowers-102-categories", cache_dir=data_dir)["train"]

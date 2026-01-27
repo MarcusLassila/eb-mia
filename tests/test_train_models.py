@@ -20,7 +20,7 @@ class _DummyDataset(Dataset):
         return torch.zeros(1, 2, 2)
 
 
-def _dummy_dataset_loader(data_dir=None, transform=None):
+def _dummy_dataset_loader(dataset_name=None, data_dir=None, transform=None, **kwargs):
     return _DummyDataset()
 
 
@@ -32,8 +32,7 @@ class TestTrainModels(unittest.TestCase):
             with open(path, "wb") as file:
                 pickle.dump(indices, file)
             config = types.SimpleNamespace(dataset="Dummy", data_dir=".", val_frac=0.2, model="VAE")
-            dummy_data = types.SimpleNamespace(Dummy=_dummy_dataset_loader)
-            with mock.patch.object(train_model, "data", dummy_data):
+            with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
                 with mock.patch.object(train_model, "train_model") as mock_train_model:
                     train_model.train_model_from_indices_file(
                         accelerator=object(),

@@ -1,4 +1,4 @@
-from data import data
+from data.utils import load_dataset
 import attacks
 import evaluation
 import utils
@@ -64,7 +64,7 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
 def run_audit(config, device):
     root = utils.get_root()
     resdir = f"{root}/mia/results/{config.dataset}-{config.model_type}/"
-    data_population = getattr(data, config.dataset)()
+    data_population = load_dataset(config.dataset)
     target_model_paths = list(map(Path, config.target_model_paths))
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
