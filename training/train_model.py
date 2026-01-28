@@ -29,8 +29,10 @@ def get_train_config(config):
 
 def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     '''Train a single model on a masked dataset split. Args: accelerator, config, savedir (Path), dataset, train_mask (torch.BoolTensor), id_ (int). Returns: None.'''
-    channels, height, width = dataset[0].shape
+    image_dim = dataset[0].shape
+    channels, height, width = image_dim
     assert height == width
+    assert height == config.image_resolution
     train_indices = utils.mask_to_index(train_mask)
     nontrain_indices = utils.mask_to_index(~train_mask)
     val_size = int(config.val_frac * len(dataset))

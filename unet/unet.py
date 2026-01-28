@@ -87,11 +87,13 @@ class NIN(nn.Module):
         if dim == 1:
             self.layer = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
         elif dim == 2:
-            self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+            self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1).to(memory_format=channels_last)
         else:
             raise ValueError("NIN only supports 1 and 2 dimensions!")
 
     def forward(self, x):
+        if self.dim == 2 and x.dim() == 4 and x.is_cuda:
+            x = x.contiguous(memory_format=torch.channels_last)
         return self.layer(x)
 
 class Downsample(nn.Module):
@@ -141,6 +143,7 @@ class ResBlock(nn.Module):
         if in_channels == out_channels:
             self.res_connection = nn.Identity()
         elif conv_shortcut:
+            # This may cause issues with grad-layout when using torch compile
             self.res_connection = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1)
         else:
             self.res_connection = NIN(dim=2, in_channels=in_channels, out_channels=out_channels)
