@@ -168,5 +168,5 @@ class VAE(AbstractGenerativeModel):
         return loss_value
 
     @torch.inference_mode()
-    def sample(self, batch_size):
+    def sample(self, batch_size, **kwargs):
         return self.network.sample(batch_size)

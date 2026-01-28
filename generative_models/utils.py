@@ -22,7 +22,6 @@ def load_model(path: str, device: torch.device):
             model = DDPM(**checkpoint["model_config"])
         case "VAE":
             model = VAE(**checkpoint["model_config"])
-            
         case _:
             raise ValueError(f"Unsupported model: {model_type}")
     model.move_to(device)

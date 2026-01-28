@@ -128,13 +128,6 @@ class CelebA2(CelebA):
             grayscale=grayscale,
         )
 
-class CelebA2LowRes(CelebA2):
-    '''CelebA2 dataset resized and optionally grayscaled. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
-
-    def __init__(self, data_dir="./datasets", transform=None, size=32, grayscale=True):
-        '''Initialize low resolution CelebA2 dataset. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
-        super().__init__(data_dir=data_dir, transform=transform, size=size, grayscale=grayscale)
-
 class CelebAHQ(Dataset):
 
     def __init__(self, data_dir="./datasets", transform=None, random_horizontal_flip=True):

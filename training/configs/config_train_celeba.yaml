@@ -19,12 +19,18 @@ CelebA-DDPM:
     prefetch_factor: null
   val_frac: 0.02
   model: "DDPM"
-  base_channels: 128
+  base_channels: 256
   channel_mult:
   - 1
   - 1
   - 2
-  - 2
+  - 3
   - 4
   - 4
+  n_attention_heads: 4
+  attention_resolutions:
+  - 8
+  - 16
+  - 32
   dropout: 0.0
+  use_sdpa: true

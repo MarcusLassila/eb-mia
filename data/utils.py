@@ -23,13 +23,6 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
                 size=kwargs.get("size", 128),
                 grayscale=kwargs.get("grayscale", False),
             )
-        case "CelebA2LowRes":
-            dataset = CelebA2LowRes(
-                data_dir=data_dir,
-                transform=transform,
-                size=kwargs.get("size", 32),
-                grayscale=kwargs.get("grayscale", True),
-            )
         case "CelebAHQ":
             dataset = CelebAHQ(
                 data_dir=data_dir,

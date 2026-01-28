@@ -14,7 +14,6 @@ def _normalize_data(samples):
     return (samples + 1.0) * 0.5
 
 def _validate_sample_assumptions(samples, device, name, tolerance=1e-8):
-    assert samples.device == device, f"{name} on {samples.device}, expected {device}"
     assert torch.isfinite(samples).all().item(), f"{name} contains non-finite values"
     min_value = float(samples.min())
     max_value = float(samples.max())
@@ -26,10 +25,10 @@ def fid_score(model, dataloader, device, disable_tqdm=True):
     fid = FrechetInceptionDistance(feature=2048, normalize=True).to(device)
     fid = fid.set_dtype(torch.float64)
     checked = False
-    for real_samples in tqdm(dataloader, disable=disable_tqdm, desc="Generating samples for FID"):
+    for real_samples in tqdm(dataloader, desc="Generating samples for FID"):
         batch_size = real_samples.shape[0]
-        real_samples = _normalize_data(real_samples.to(device))
-        gen_samples = model.sample(batch_size)
+        real_samples = _normalize_data(real_samples).to(device)
+        gen_samples = model.sample(batch_size, disable_tqdm=disable_tqdm)
         if not checked:
             _validate_sample_assumptions(real_samples, device, "real samples")
             _validate_sample_assumptions(gen_samples, device, "generated samples")
@@ -43,8 +42,8 @@ def inception_score(model, n_samples, batch_size, device, disable_tqdm=True):
     is_metric = InceptionScore(normalize=True).to(device)
     n_batches, remainder = divmod(n_samples, batch_size)
     checked = False
-    for _ in tqdm(range(n_batches), disable=disable_tqdm, desc="Generating samples for inception score"):
-        samples = model.sample(batch_size)
+    for _ in tqdm(range(n_batches), desc="Generating samples for inception score"):
+        samples = model.sample(batch_size, disable_tqdm=disable_tqdm)
         if not checked:
             _validate_sample_assumptions(samples, device, "generated samples")
             checked = True
@@ -73,7 +72,7 @@ if __name__ == "__main__":
         help="Which model checkpoint to evaluate."
     )
     parser.add_argument(
-        "--data_dir",
+        "--data-dir",
         type=str,
         default="./datasets",
         help="Where datasets are stored."

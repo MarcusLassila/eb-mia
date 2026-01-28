@@ -20,6 +20,7 @@ def get_train_config(config):
         epochs_per_checkpoint=config.epochs_per_checkpoint,
         lr=config.lr,
         weight_decay=config.weight_decay,
+        use_ema=bool(config.ema_decay),
         ema_decay=config.ema_decay,
         grad_clip=config.grad_clip,
         autocast_dtype=config.autocast_dtype,
@@ -51,7 +52,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
                 "attention_resolutions": config.attention_resolutions,
                 "dropout": config.dropout,
                 "resample_with_conv": True,
-                "use_sdpa": True,
+                "use_sdpa": config.use_sdpa,
             }
             model = DDPM(**model_config)
         case "VAE":
@@ -83,7 +84,7 @@ def train_model_from_indices_file(
         id_,
     ):
     '''Train a model from explicit training indices. Args: accelerator, config, savedir (Path), train_indices_path (Path), id_ (int). Returns: None.'''
-    dataset = load_dataset(config.dataset, data_dir=config.data_dir, transform=None)  # Use default transforms
+    dataset = load_dataset(config.dataset, data_dir=config.data_dir, transform=None, size=config.image_resolution)  # Use default transforms
     train_indices = torch.tensor(train_split.load_indices(train_indices_path), dtype=torch.long)
     train_mask = utils.index_to_mask(train_indices, len(dataset))
     train_model(accelerator, config, savedir, dataset, train_mask, id_)
