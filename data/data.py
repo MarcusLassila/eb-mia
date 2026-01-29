@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 import torch
 from datasets import concatenate_datasets, load_dataset
@@ -17,6 +18,12 @@ class Entity(Dataset, ABC):
     @abstractmethod
     def entity_ids(self):
         raise NotImplementedError
+
+    def get_entity_index_table(self):
+        table = defaultdict(list)
+        for idx, id in enumerate(self.entity_ids):
+            table[id.item()].append(idx)
+        return table
 
 class MNIST(Dataset):
     
