@@ -87,7 +87,7 @@ class NIN(nn.Module):
         if dim == 1:
             self.layer = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
         elif dim == 2:
-            self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1).to(memory_format=channels_last)
+            self.layer = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1).to(memory_format=torch.channels_last)
         else:
             raise ValueError("NIN only supports 1 and 2 dimensions!")
 
