@@ -1,6 +1,7 @@
+from data.data import EntityDataset
 from data.utils import load_dataset
-import attacks
-import evaluation
+from . import attacks
+from . import evaluation
 import utils
 
 import torch
@@ -47,10 +48,24 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
+def get_entity_audit_table(data_population: EntityDataset):
+    table = data_population.get_entity_index_table()
+    audit_samples = {}
+    for entity_id, indices in table.items():
+        audit_samples[entity_id] = Subset(data_population, indices)
+
 def get_attacker(attack_config, batch_size, device, shadow_model_paths):
     match attack_config.attack:
         case "BASE":
             attacker = attacks.BASE(
+                batch_size=batch_size,
+                device=device,
+                shadow_model_paths=shadow_model_paths,
+                prior=attack_config.prior,
+                n_loss_samples=attack_config.n_loss_samples,
+            )
+        case "CompositeBASE":
+            attacker = attacks.CompositeBASE(
                 batch_size=batch_size,
                 device=device,
                 shadow_model_paths=shadow_model_paths,
@@ -62,8 +77,6 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
     return attacker
 
 def run_audit(config, device):
-    root = utils.get_root()
-    resdir = f"{root}/mia/results/{config.dataset}-{config.model_type}/"
     data_population = load_dataset(config.dataset)
     target_model_paths = list(map(Path, config.target_model_paths))
     if not config.round_robin:
@@ -72,8 +85,6 @@ def run_audit(config, device):
         if config.round_robin:
             shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
             shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
-        print("target path:", target_path)
-        print("shadow paths:", shadow_model_paths)
         target_train_indices = utils.get_train_indices(target_path)
         membership_mask = utils.index_to_mask(target_train_indices, len(data_population))
         audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
@@ -88,9 +99,45 @@ def run_audit(config, device):
             )
             score = attacker.run_attack(audit_samples, target_path)
             metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
-            Path(f"{resdir}/{attack}").mkdir(parents=True, exist_ok=True)
+            Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
             model_id = target_path.stem
-            with open(f"{resdir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
+            with open(f"{config.res_dir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
+                pickle.dump(metrics, f)
+
+def run_entity_audit(config, device):
+    data_population = load_dataset(config.dataset)
+    assert isinstance(data_population, EntityDataset)
+ 
+    target_model_paths = list(map(Path, config.target_model_paths))
+    if not config.round_robin:
+        shadow_model_paths = list(map(Path, config.shadow_model_paths))
+    for target_idx, target_path in tqdm(enumerate(target_model_paths), total=len(target_model_paths), desc="Running audit"):
+        if config.round_robin:
+            shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
+            shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
+        target_train_index = utils.get_train_indices(target_path)
+        train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
+        audit_table = get_entity_audit_table()
+        ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
+        for entity_id in train_entity_ids:
+            entity_id = entity_id.item()
+            if entity_id in ground_truth:
+                ground_truth[entity_id] = 1
+        ground_truth = torch.tensor(ground_truth.values(), dtype=torch.long)
+
+        for attack, attack_dict in config.attacks.items():
+            attacker = get_attacker(
+                attack_config=utils.Config(attack_dict),
+                batch_size=config.batch_size,
+                device=device,
+                shadow_model_paths=shadow_model_paths,
+            )
+            score = attacker.run_attack(audit_table, target_path)
+            score = torch.tensor(score.values(), dtype=torch.float32)
+            metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
+            Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
+            model_id = target_path.stem
+            with open(f"{config.res_dir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
                 pickle.dump(metrics, f)
 
 if __name__ == "__main__":

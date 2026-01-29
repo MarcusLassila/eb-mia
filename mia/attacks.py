@@ -4,6 +4,7 @@ import utils
 from generative_models import VAE
 from generative_models.utils import load_model
 
+from abc import ABC, abstractmethod
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,6 +12,17 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from xgboost import XGBClassifier
 
+class MIA(ABC):
+
+    @abstractmethod
+    def run_attack(self, audit_samples, target_model_path):
+        raise NotImplementedError
+
+class CompositeMIA(ABC):
+
+    @abstractmethod
+    def run_attack(self, audit_entities, target_model_path):
+        raise NotImplementedError
 
 def compute_averaged_loss(model, samples, n_loss_samples, device):
     match model.__class__.__name__:
@@ -27,7 +39,7 @@ def compute_averaged_loss(model, samples, n_loss_samples, device):
             raise ValueError("Unavailable class of generative model.")
     return avg_loss
 
-class BASE:
+class BASE(MIA):
 
     def __init__(self, batch_size, device, shadow_model_paths, prior=0.5, n_loss_samples=1):
         self.batch_size = batch_size
@@ -68,6 +80,23 @@ class BASE:
         score = -sig_target - torch.logsumexp(-sig_shadow_models, dim=0) + np.log(self.prior / (1 - self.prior))
         return score.sigmoid()
 
+class CompositeBASE(CompositeMIA):
+
+    def __init__(self, batch_size, device, shadow_model_paths, prior=0.5, n_loss_samples=1):
+        self.base_mia = BASE(
+            batch_size=batch_size,
+            device=device,
+            shadow_model_paths=shadow_model_paths,
+            prior=prior,
+            n_loss_samples=n_loss_samples,
+        )
+
+    def run_attack(self, audit_table, target_model_path):
+        score = {}
+        for entity_id, audit_samples in audit_table.items():
+            base_probs = self.base_mia.run_attack(audit_samples=audit_samples, target_model_path=target_model_path)
+            score[entity_id] = 1 - (1 - base_probs).prod()
+        return score
 
 #########################################################################
 ########## Classifier and naive loss attack that does not work ########## 

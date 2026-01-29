@@ -12,11 +12,16 @@ TRANSFORM = T.Compose([
     T.Lambda(lambda x: x * 2.0 - 1.0),
 ])
 
-class Entity(Dataset, ABC):
+class EntityDataset(Dataset, ABC):
 
     @property
     @abstractmethod
     def entity_ids(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def n_entities(self):
         raise NotImplementedError
 
     def get_entity_index_table(self):
@@ -66,7 +71,7 @@ class CIFAR10(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-class CelebA(Entity):
+class CelebA(EntityDataset):
     '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
 
     def __init__(self, data_dir="./datasets", transform=None, min_celeb_samples=0, size=128, grayscale=False, random_horizontal_flip=True):
@@ -91,8 +96,8 @@ class CelebA(Entity):
         ds = load_dataset("flwrlabs/celeba", cache_dir=data_dir)
         dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
         celeb_ids = torch.tensor(dataset["celeb_id"], dtype=torch.long)
+        unique_ids, counts = torch.unique(celeb_ids, return_counts=True)
         if min_celeb_samples > 1:
-            unique_ids, counts = torch.unique(celeb_ids, return_counts=True)
             keep_ids = set(unique_ids[counts >= min_celeb_samples].tolist())
             celeb_ids_list = celeb_ids.tolist()
             keep_indices = [
@@ -106,11 +111,16 @@ class CelebA(Entity):
                 dtype=torch.long,
             )
         self.dataset = dataset
-        self.celeb_ids = celeb_ids
+        self._celeb_ids = celeb_ids
+        self._n_entities = len(unique_ids)
 
     @property
     def entity_ids(self):
-        return self.celeb_ids
+        return self._celeb_ids
+
+    @property
+    def n_entities(self):
+        return self._n_entities
 
     def __getitem__(self, index):
         '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''
