@@ -48,11 +48,19 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
-def get_entity_audit_table(data_population: EntityDataset):
+def get_entity_audit_table(data_population: EntityDataset, target_train_index):
     table = data_population.get_entity_index_table()
     audit_samples = {}
+    target_train_index = set(target_train_index.tolist())
     for entity_id, indices in table.items():
+        indices = set(indices)
+        overlap = indices & target_train_index
+        if overlap:
+            overlap.pop()
+        indices = list(indices - overlap)
+        assert len(set(indices) & target_train_index) <= 1
         audit_samples[entity_id] = Subset(data_population, indices)
+    return audit_samples
 
 def get_attacker(attack_config, batch_size, device, shadow_model_paths):
     match attack_config.attack:
@@ -77,7 +85,7 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
     return attacker
 
 def run_audit(config, device):
-    data_population = load_dataset(config.dataset)
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir)
     target_model_paths = list(map(Path, config.target_model_paths))
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
@@ -105,25 +113,26 @@ def run_audit(config, device):
                 pickle.dump(metrics, f)
 
 def run_entity_audit(config, device):
-    data_population = load_dataset(config.dataset)
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=32)
     assert isinstance(data_population, EntityDataset)
  
     target_model_paths = list(map(Path, config.target_model_paths))
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
-    for target_idx, target_path in tqdm(enumerate(target_model_paths), total=len(target_model_paths), desc="Running audit"):
+    for target_idx, target_path in enumerate(target_model_paths):
+        print(f"Running audit number {target_idx}")
         if config.round_robin:
             shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
             shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
         target_train_index = utils.get_train_indices(target_path)
         train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
-        audit_table = get_entity_audit_table()
+        audit_table = get_entity_audit_table(data_population, target_train_index)
         ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
         for entity_id in train_entity_ids:
             entity_id = entity_id.item()
             if entity_id in ground_truth:
                 ground_truth[entity_id] = 1
-        ground_truth = torch.tensor(ground_truth.values(), dtype=torch.long)
+        ground_truth = torch.tensor(list(ground_truth.values()), dtype=torch.long)
 
         for attack, attack_dict in config.attacks.items():
             attacker = get_attacker(
@@ -133,7 +142,7 @@ def run_entity_audit(config, device):
                 shadow_model_paths=shadow_model_paths,
             )
             score = attacker.run_attack(audit_table, target_path)
-            score = torch.tensor(score.values(), dtype=torch.float32)
+            score = torch.tensor(list(score.values()), dtype=torch.float32)
             metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
             Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
             model_id = target_path.stem
@@ -142,13 +151,13 @@ def run_entity_audit(config, device):
 
 if __name__ == "__main__":
     root = utils.get_root()
-    with open(f"{root}/mia/configs/config_audit.yaml", "r") as file:
+    with open(f"{root}/mia/configs/config_composite_audit.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)
     print(config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    run_audit(
+    run_entity_audit(
         config=config,
         device=device,
     )

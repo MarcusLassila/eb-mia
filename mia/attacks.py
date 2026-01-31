@@ -1,5 +1,5 @@
 from data.utils import load_dataset
-import models
+from . import models
 import utils
 from generative_models import VAE
 from generative_models.utils import load_model
@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm.auto import tqdm
 
 from xgboost import XGBClassifier
 
@@ -24,12 +25,12 @@ class CompositeMIA(ABC):
     def run_attack(self, audit_entities, target_model_path):
         raise NotImplementedError
 
-def compute_averaged_loss(model, samples, n_loss_samples, device):
+def compute_averaged_loss(model, samples, n_loss_samples):
     match model.__class__.__name__:
         case "DDPM":
             loss_samples = []
             for _ in range(n_loss_samples):
-                t = torch.randint(1, int(model.time_steps * 0.1), device=device)
+                t = torch.randint(1, int(model.time_steps * 0.1), device=samples.device)
                 loss = model.per_sample_loss(samples, t).cpu()
                 loss_samples.append(loss)
             avg_loss = torch.stack(loss_samples).mean(dim=0)
@@ -63,7 +64,7 @@ class BASE(MIA):
         sig = []
         for samples in audit_loader:
             samples = samples.to(self.device)
-            sig.append(compute_averaged_loss(model, samples))
+            sig.append(compute_averaged_loss(model, samples, self.n_loss_samples))
         sig = torch.concat(sig, dim=0)
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
@@ -93,9 +94,11 @@ class CompositeBASE(CompositeMIA):
 
     def run_attack(self, audit_table, target_model_path):
         score = {}
-        for entity_id, audit_samples in audit_table.items():
+        for entity_id, audit_samples in tqdm(audit_table.items(), total=len(audit_table), desc="Running composite BASE"):
             base_probs = self.base_mia.run_attack(audit_samples=audit_samples, target_model_path=target_model_path)
-            score[entity_id] = 1 - (1 - base_probs).prod()
+            base_probs.clamp(min=0.0, max=1.0-1e-12)
+            # Numerically stable implementation of 1 - (1 - base_probs).prod()
+            score[entity_id] = -torch.expm1(torch.log1p(-base_probs).sum())
         return score
 
 #########################################################################
