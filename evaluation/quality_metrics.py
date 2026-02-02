@@ -1,6 +1,6 @@
 from data.utils import load_dataset
 from generative_models.utils import load_model
-from utils import get_dataset_and_model_from_path
+from utils import parse_properties_from_checkpoint_path
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -95,12 +95,14 @@ if __name__ == "__main__":
         score_mean, score_std = inception_score(model, args.n_samples, args.batch_size, device)
         print(f"{score_mean} +- {score_std}")
     else: # FID
-        dataset_name, _ = get_dataset_and_model_from_path(args.checkpoint)
+        properties = parse_properties_from_checkpoint_path(args.checkpoint)
+        dataset_name = properties["dataset"]
         dataset = load_dataset(
             dataset_name,
             data_dir=args.data_dir,
             transform=None,
             random_horizontal_flip=False,
+            size=model.image_size,
         )
         non_train_index = torch.tensor(sorted(set(range(len(dataset))) - set(train_index.tolist())), dtype=torch.long)
         n_samples = min(args.n_samples, non_train_index.shape[0])

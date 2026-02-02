@@ -151,6 +151,11 @@ class VAE(AbstractGenerativeModel):
         else:
             self.network.to(device)
 
+    @property
+    def image_size(self):
+        '''Return model image size. Args: None. Returns: int.'''
+        return self.network.in_dim
+
     def per_sample_loss(self, x, network_override=None):
         network = network_override if network_override is not None else self.network
         x_hat, enc_mean, enc_logvar = network(x, n_rsamples=self.n_rsamples)

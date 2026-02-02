@@ -44,6 +44,11 @@ class _InfGradModel(AbstractGenerativeModel):
     def sample(self, batch_size, **kwargs):
         return torch.zeros(batch_size, 1)
 
+    @property
+    def image_size(self):
+        '''Return model image size. Args: None. Returns: int.'''
+        return 1
+
 
 class TestTrainLoopGradClip(unittest.TestCase):
     def test_grad_clip_raises_on_non_finite_norm(self):

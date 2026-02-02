@@ -60,7 +60,6 @@ class TestData(unittest.TestCase):
                     min_celeb_samples=2,
                 )
                 self.assertEqual(len(dataset), 4)
-                self.assertEqual(dataset.celeb_ids.tolist(), [0, 0, 2, 2])
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 2, 2])
 
     def test_celeba_low_res_grayscale_transform(self):
@@ -111,7 +110,7 @@ class TestData(unittest.TestCase):
                 "data.data.concatenate_datasets",
                 side_effect=fake_concatenate_datasets,
             ):
-                low_res = data_module.CelebA2LowRes(data_dir=tmpdir, transform=None)
+                low_res = data_module.CelebA2(data_dir=tmpdir, transform=None, size=32, grayscale=True)
                 low_res_sample = low_res[0]
                 self.assertEqual(tuple(low_res_sample.shape), (1, 32, 32))
                 color = data_module.CelebA(data_dir=tmpdir, transform=None, size=64, grayscale=False)

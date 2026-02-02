@@ -1,14 +1,15 @@
-CelebA-DDPM:
-  dataset: "CelebA"
-  model_type: "DDPM"
-  batch_size: 512
-  n_audit_samples: 30000
-  target_model_paths:
-  - ""
-  shadow_model_paths:
-  - ""
-  attacks:
-    BASE:
-      attack: "BASE"
-      prior: 0.5
-      n_loss_samples: 10
+dataset: "CelebA"
+model_type: "DDPM"
+batch_size: 512
+n_audit_samples: 30000
+audit_mode: "sample"
+image_size: 128
+target_model_paths:
+- ""
+shadow_model_paths:
+- ""
+attacks:
+  BASE:
+    attack: "BASE"
+    prior: 0.5
+    n_loss_samples: 10

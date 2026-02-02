@@ -12,6 +12,7 @@ CelebA-DDPM:
   grad_clip: 1.0
   autocast_dtype: "bfloat16"
   lr_scheduler: "none"
+  image_resolution: 128
   dataloader_config:
     num_workers: 0
     pin_memory: false

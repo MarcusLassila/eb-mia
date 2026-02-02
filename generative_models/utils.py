@@ -1,6 +1,6 @@
 import torch
 
-from utils import get_dataset_and_model_from_path, load_checkpoint
+from utils import load_checkpoint, parse_properties_from_checkpoint_path
 
 from .ddpm import DDPM
 from .vae import VAE
@@ -16,7 +16,8 @@ def load_model(path: str, device: torch.device):
         Tuple[AbstractGenerativeModel, torch.Tensor]: Loaded model and train indices.
     '''
     checkpoint = load_checkpoint(path, device)
-    _, model_type = get_dataset_and_model_from_path(path)
+    properties = parse_properties_from_checkpoint_path(path)
+    model_type = properties["model"]
     match model_type:
         case "DDPM":
             model = DDPM(**checkpoint["model_config"])
@@ -28,4 +29,5 @@ def load_model(path: str, device: torch.device):
     model.network.load_state_dict(checkpoint["network_state_dict"])
     model.network.eval()
     train_indices = checkpoint["train_indices"]
+    assert model.image_size == properties["size"]
     return model, train_indices

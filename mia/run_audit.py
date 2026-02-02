@@ -4,6 +4,7 @@ from . import attacks
 from . import evaluation
 import utils
 
+import argparse
 import torch
 from torch.utils.data import Subset
 from tqdm.auto import tqdm
@@ -48,18 +49,29 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
-def get_entity_audit_table(data_population: EntityDataset, target_train_index):
+def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode):
+    '''Build an entity -> Subset table with a selection mode. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str). Returns: dict[int, Subset].'''
     table = data_population.get_entity_index_table()
     audit_samples = {}
     target_train_index = set(target_train_index.tolist())
     for entity_id, indices in table.items():
         indices = set(indices)
-        overlap = indices & target_train_index
-        if overlap:
-            overlap.pop()
-        indices = list(indices - overlap)
-        assert len(set(indices) & target_train_index) <= 1
-        audit_samples[entity_id] = Subset(data_population, indices)
+        match mode:
+            case "all":
+                selected_indices = indices
+            case "max_one_train_sample":
+                overlap = sorted(indices & target_train_index)
+                if len(overlap) > 1:
+                    keep = overlap[0]
+                    indices = indices - set(overlap)
+                    indices.add(keep)
+                selected_indices = indices
+                assert len(selected_indices & target_train_index) <= 1
+            case "exclude_train":
+                selected_indices = indices - target_train_index
+            case _:
+                raise ValueError(f"Unknown entity audit mode: {mode}")
+        audit_samples[entity_id] = Subset(data_population, sorted(selected_indices))
     return audit_samples
 
 def get_attacker(attack_config, batch_size, device, shadow_model_paths):
@@ -85,7 +97,7 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
     return attacker
 
 def run_audit(config, device):
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir)
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=config.image_size)
     target_model_paths = list(map(Path, config.target_model_paths))
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
@@ -113,7 +125,7 @@ def run_audit(config, device):
                 pickle.dump(metrics, f)
 
 def run_entity_audit(config, device):
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=32)
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=config.image_size)
     assert isinstance(data_population, EntityDataset)
  
     target_model_paths = list(map(Path, config.target_model_paths))
@@ -124,9 +136,11 @@ def run_entity_audit(config, device):
         if config.round_robin:
             shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
             shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
+
         target_train_index = utils.get_train_indices(target_path)
         train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
-        audit_table = get_entity_audit_table(data_population, target_train_index)
+        audit_table = get_entity_audit_table(data_population, target_train_index, mode=config.entity_audit_mode)
+
         ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
         for entity_id in train_entity_ids:
             entity_id = entity_id.item()
@@ -149,15 +163,36 @@ def run_entity_audit(config, device):
             with open(f"{config.res_dir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
                 pickle.dump(metrics, f)
 
-if __name__ == "__main__":
+def default_config_path():
+    '''Return default audit config path. Args: None. Returns: str.'''
     root = utils.get_root()
-    with open(f"{root}/mia/configs/config_composite_audit.yaml", "r") as file:
-        config = yaml.safe_load(file)
-    _, params = next(iter(config.items()))
-    config = utils.Config(params)
-    print(config)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    run_entity_audit(
-        config=config,
-        device=device,
+    if root is None:
+        return "mia/configs/config_audit.yaml"
+    return f"{root}/mia/configs/config_audit.yaml"
+
+def parse_args(argv=None):
+    '''Parse CLI arguments for audit. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
+    parser = argparse.ArgumentParser(description="Run membership inference audit.")
+    parser.add_argument(
+        "--config",
+        default=default_config_path(),
+        help="Path to audit config yaml file.",
     )
+    return parser.parse_args(argv)
+
+def main(argv=None):
+    '''Entry point for audit CLI. Args: argv (list[str]|None). Returns: None.'''
+    args = parse_args(argv)
+    with open(args.config, "r") as file:
+        config_dict = yaml.safe_load(file)
+    config = utils.Config(config_dict)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if config.audit_mode == "sample":
+        run_audit(config=config, device=device)
+    elif config.audit_mode == "entity":
+        run_entity_audit(config=config, device=device)
+    else:
+        raise ValueError(f"Unknown audit_mode: {config.audit_mode}")
+
+if __name__ == "__main__":
+    main()

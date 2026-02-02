@@ -1,8 +1,8 @@
-CelebA2LowRes-VAE:
+CelebA2-VAE:
   batch_size: 128
   simul_batch_size: 128
   torch_compile: false
-  dataset: "CelebA2LowRes"
+  dataset: "CelebA2"
   data_dir: "./datasets"
   epochs: 1000
   epochs_per_checkpoint: 100
@@ -12,6 +12,7 @@ CelebA2LowRes-VAE:
   grad_clip: 0.0
   autocast_dtype: "bfloat16"
   lr_scheduler: "cosine"
+  image_resolution: 32
   dataloader_config:
     num_workers: 8
     pin_memory: true

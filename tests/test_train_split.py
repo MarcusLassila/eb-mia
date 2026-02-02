@@ -30,16 +30,16 @@ class TestTrainSplit(unittest.TestCase):
         self.assertEqual(complement, [1, 3, 4])
 
     def test_complement_subset_filename_contains_source(self):
-        name = train_split.complement_subset_filename("cifar-random-frac0p5-seed1.pkl")
-        self.assertIn("complement", name)
-        self.assertIn("cifar-random-frac0p5-seed1", name)
+        name = train_split.complement_subset_filename("cifar-rand-f0p5-s1.pkl")
+        self.assertIn("comp", name)
+        self.assertIn("cifar-rand-f0p5-s1", name)
 
     def test_random_subset_filename_structure(self):
         name = train_split.random_subset_filename("MNIST", 0.25, seed=7)
         self.assertIn("MNIST", name)
-        self.assertIn("random", name)
-        self.assertIn("frac0p25", name)
-        self.assertIn("seed7", name)
+        self.assertIn("rand", name)
+        self.assertIn("f0p25", name)
+        self.assertIn("s7", name)
 
     def test_entity_subset_indices_deterministic(self):
         entity_ids = [1, 1, 2, 2, 3, 3, 4, 4]
@@ -74,10 +74,10 @@ class TestTrainSplit(unittest.TestCase):
     def test_entity_subset_filename_structure(self):
         name = train_split.entity_subset_filename("CelebA", 0.5, 0.25, seed=9)
         self.assertIn("CelebA", name)
-        self.assertIn("entity", name)
-        self.assertIn("frac0p5", name)
-        self.assertIn("per0p25", name)
-        self.assertIn("seed9", name)
+        self.assertIn("ent", name)
+        self.assertIn("f0p5", name)
+        self.assertIn("p0p25", name)
+        self.assertIn("s9", name)
 
     def test_entity_subset_save_load_matches_dataset(self):
         class FakeSplit:
@@ -148,13 +148,16 @@ class TestTrainSplit(unittest.TestCase):
         entity_ids = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]
         base_indices = [0, 6]
         with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir) / "base.pkl"
+            base_path = Path(tmpdir) / train_split.entity_subset_filename(
+                "CelebA",
+                0.5,
+                0.5,
+                seed=11,
+            )
             train_split.save_indices(base_indices, base_path)
             complement_path = train_split.create_entity_complement_subset(
                 subset_path=base_path,
                 entity_ids=entity_ids,
-                per_entity_fraction=0.5,
-                seed=11,
                 output_dir=tmpdir,
             )
             complement_indices = train_split.load_indices(complement_path)

@@ -31,7 +31,13 @@ class TestTrainModels(unittest.TestCase):
             path = Path(tmpdir) / "train_indices.pkl"
             with open(path, "wb") as file:
                 pickle.dump(indices, file)
-            config = types.SimpleNamespace(dataset="Dummy", data_dir=".", val_frac=0.2, model="VAE")
+            config = types.SimpleNamespace(
+                dataset="Dummy",
+                data_dir=".",
+                val_frac=0.2,
+                model="VAE",
+                image_resolution=2,
+            )
             with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
                 with mock.patch.object(train_model, "train_model") as mock_train_model:
                     train_model.train_model_from_indices_file(
@@ -39,7 +45,6 @@ class TestTrainModels(unittest.TestCase):
                         config=config,
                         savedir=Path(tmpdir),
                         train_indices_path=path,
-                        id_=3,
                     )
                     args, _ = mock_train_model.call_args
                     train_mask = args[4]

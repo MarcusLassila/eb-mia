@@ -62,6 +62,11 @@ class DDPM(AbstractGenerativeModel):
             use_sdpa=self.use_sdpa,
         )
 
+    @property
+    def image_size(self):
+        '''Return model image size. Args: None. Returns: int.'''
+        return self.image_dim[1]
+
     def move_to(self, device):
         self.beta = self.beta.to(device)
         self.alpha_bar = self.alpha_bar.to(device)

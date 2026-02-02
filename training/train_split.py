@@ -29,15 +29,26 @@ def _validate_indices(indices, n_items):
     if indices_set and (min(indices_set) < 0 or max(indices_set) >= n_items):
         raise ValueError("indices must be within [0, n_items)")
 
+def _parse_fraction_token(token, prefix):
+    '''Parse fraction token. Args: token (str), prefix (str). Returns: float.'''
+    assert token.startswith(prefix)
+    fraction_str = token[len(prefix):].replace("p", ".")
+    return float(fraction_str)
+
+def _parse_seed_token(token):
+    '''Parse seed token. Args: token (str). Returns: int.'''
+    assert token.startswith("s")
+    return int(token[1:])
+
 def random_subset_filename(dataset_name, fraction, seed):
     '''Build random subset filename. Args: dataset_name (str), fraction (float), seed (int). Returns: str.'''
     fraction_str = _format_fraction(fraction)
-    return f"{dataset_name}-random-frac{fraction_str}-seed{seed}.pkl"
+    return f"{dataset_name}-rand-f{fraction_str}-s{seed}.pkl"
 
 def complement_subset_filename(subset_path):
     '''Build complement subset filename. Args: subset_path (str|Path). Returns: str.'''
     subset_stem = Path(subset_path).stem
-    return f"{subset_stem}-complement.pkl"
+    return f"{subset_stem}-comp.pkl"
 
 def save_indices(indices, path):
     '''Save indices to pickle. Args: indices (iterable), path (str|Path). Returns: Path.'''
@@ -59,9 +70,33 @@ def entity_subset_filename(dataset_name, entity_fraction, per_entity_fraction, s
     entity_frac_str = _format_fraction(entity_fraction)
     per_entity_frac_str = _format_fraction(per_entity_fraction)
     return (
-        f"{dataset_name}-entity-frac{entity_frac_str}"
-        f"-per{per_entity_frac_str}-seed{seed}.pkl"
+        f"{dataset_name}-ent-f{entity_frac_str}"
+        f"-p{per_entity_frac_str}-s{seed}.pkl"
     )
+
+def parse_subset_metadata(subset_path):
+    '''Parse subset filename metadata. Args: subset_path (str|Path). Returns: dict.'''
+    subset_stem = Path(subset_path).stem
+    assert not subset_stem.endswith("-comp")
+    parts = subset_stem.split("-")
+    if len(parts) >= 4 and parts[-3] == "rand":
+        dataset_name = "-".join(parts[:-3])
+        return {
+            "mode": "random",
+            "dataset": dataset_name,
+            "fraction": _parse_fraction_token(parts[-2], "f"),
+            "seed": _parse_seed_token(parts[-1]),
+        }
+    if len(parts) >= 5 and parts[-4] == "ent":
+        dataset_name = "-".join(parts[:-4])
+        return {
+            "mode": "entity",
+            "dataset": dataset_name,
+            "entity_fraction": _parse_fraction_token(parts[-3], "f"),
+            "per_entity_fraction": _parse_fraction_token(parts[-2], "p"),
+            "seed": _parse_seed_token(parts[-1]),
+        }
+    assert False
 
 def sample_random_fraction_indices(n_items, fraction, seed):
     '''Sample indices uniformly. Args: n_items (int), fraction (float), seed (int). Returns: list[int].'''
@@ -132,11 +167,9 @@ def create_random_subset(dataset_name, n_items, fraction, seed, output_dir):
     save_indices(indices, path)
     return path
 
-def entity_complement_subset_filename(subset_path, per_entity_fraction, seed):
-    '''Build entity complement subset filename. Args: subset_path (str|Path), per_entity_fraction (float), seed (int). Returns: str.'''
-    subset_stem = Path(subset_path).stem
-    per_entity_frac_str = _format_fraction(per_entity_fraction)
-    return f"{subset_stem}-entity-complement-per{per_entity_frac_str}-seed{seed}.pkl"
+def entity_complement_subset_filename(subset_path):
+    '''Build entity complement subset filename. Args: subset_path (str|Path). Returns: str.'''
+    return complement_subset_filename(subset_path)
 
 def create_entity_subset(dataset_name, entity_ids, entity_fraction, per_entity_fraction, seed, output_dir):
     '''Create and save entity subset. Args: dataset_name (str), entity_ids (iterable), entity_fraction (float), per_entity_fraction (float), seed (int), output_dir (str|Path). Returns: Path.'''
@@ -156,18 +189,20 @@ def create_entity_subset(dataset_name, entity_ids, entity_fraction, per_entity_f
     save_indices(indices, path)
     return path
 
-def create_entity_complement_subset(subset_path, entity_ids, per_entity_fraction, seed, output_dir=None):
-    '''Create and save entity complement subset. Args: subset_path (str|Path), entity_ids (iterable), per_entity_fraction (float), seed (int), output_dir (str|Path|None). Returns: Path.'''
+def create_entity_complement_subset(subset_path, entity_ids, output_dir=None):
+    '''Create and save entity complement subset. Args: subset_path (str|Path), entity_ids (iterable), output_dir (str|Path|None). Returns: Path.'''
+    metadata = parse_subset_metadata(subset_path)
+    assert metadata["mode"] == "entity"
     base_indices = load_indices(subset_path)
     complement = sample_entity_complement_fraction_indices(
         entity_ids=entity_ids,
         base_indices=base_indices,
-        per_entity_fraction=per_entity_fraction,
-        seed=seed,
+        per_entity_fraction=metadata["per_entity_fraction"],
+        seed=metadata["seed"],
     )
     if output_dir is None:
         output_dir = Path(subset_path).parent
-    filename = entity_complement_subset_filename(subset_path, per_entity_fraction, seed)
+    filename = entity_complement_subset_filename(subset_path)
     path = Path(output_dir) / filename
     save_indices(complement, path)
     return path
@@ -181,6 +216,8 @@ def complement_indices(indices, n_items):
 
 def create_complement_subset(subset_path, n_items, output_dir=None):
     '''Create and save complement subset. Args: subset_path (str|Path), n_items (int), output_dir (str|Path|None). Returns: Path.'''
+    metadata = parse_subset_metadata(subset_path)
+    assert metadata["mode"] == "random"
     indices = load_indices(subset_path)
     complement = complement_indices(indices, n_items)
     if output_dir is None:
@@ -234,8 +271,6 @@ def main(argv=None):
         return create_entity_complement_subset(
             subset_path=args.subset_path,
             entity_ids=entity_ids,
-            per_entity_fraction=args.per_entity_fraction,
-            seed=args.seed,
             output_dir=output_dir,
         )
     if args.subset_path is None:

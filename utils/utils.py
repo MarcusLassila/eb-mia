@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import subprocess
 import yaml
 
@@ -21,17 +22,66 @@ def get_root():
     except subprocess.CalledProcessError:
         return None
 
-def get_dataset_and_model_from_path(path):
-    ''' Extract dataset and model names from a checkpoint path.
+def parse_properties_from_checkpoint_path(path):
+    '''Parse properties from a checkpoint path. Args: path (str|Path). Returns: dict.'''
+    stem = Path(path).stem
+    epoch_match = re.search(r"-epoch(?P<epoch>\d+)$", stem)
+    epoch = None
+    if epoch_match is not None:
+        epoch = int(epoch_match.group("epoch"))
+        stem = stem[:epoch_match.start()]
+    match = re.match(
+        r"^(?P<model>[^-]+)-(?P<split>.+)-sz(?P<size>\d+)(?P<gray>-gray)?(?P<suffix>(?:-.+)?)$",
+        stem,
+    )
+    assert match is not None
+    model_name = match.group("model")
+    split_stem = match.group("split")
+    size = int(match.group("size"))
+    gray = match.group("gray") is not None
+    suffix = match.group("suffix")
+    suffix = suffix[1:] if suffix else ""
 
-    Args:
-        path: Checkpoint path (str or Path).
+    properties = {
+        "model": model_name,
+        "dataset": None,
+        "size": size,
+        "gray": gray,
+        "split": split_stem,
+        "split_mode": None,
+        "seed": None,
+        "complement": None,
+        "suffix": suffix,
+        "epoch": epoch,
+    }
 
-    Returns:
-        Tuple[str, str]: Dataset name and model name.
-    '''
-    dataset, model, *_ = Path(path).stem.split("-")
-    return dataset, model
+    rand_match = re.match(
+        r"^(?P<dataset>.+)-rand-f(?P<fraction>[^-]+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
+        split_stem,
+    )
+    ent_match = re.match(
+        r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>[^-]+)-p(?P<per_entity_fraction>[^-]+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
+        split_stem,
+    )
+    if rand_match is not None:
+        properties.update({
+            "dataset": rand_match.group("dataset"),
+            "split_mode": "random",
+            "fraction": float(rand_match.group("fraction").replace("p", ".")),
+            "seed": int(rand_match.group("seed")),
+            "complement": rand_match.group("comp") is not None,
+        })
+    else:
+        assert ent_match is not None
+        properties.update({
+            "dataset": ent_match.group("dataset"),
+            "split_mode": "entity",
+            "entity_fraction": float(ent_match.group("entity_fraction").replace("p", ".")),
+            "per_entity_fraction": float(ent_match.group("per_entity_fraction").replace("p", ".")),
+            "seed": int(ent_match.group("seed")),
+            "complement": ent_match.group("comp") is not None,
+        })
+    return properties
 
 def load_checkpoint(path: str, device: torch.device):
     ''' Load a model checkpoint to a target device.

@@ -26,10 +26,6 @@ class FakeCelebA2(FakeDataset):
     pass
 
 
-class FakeCelebA2LowRes(FakeDataset):
-    pass
-
-
 class FakeCelebAHQ(FakeDataset):
     pass
 
@@ -46,7 +42,6 @@ class TestLoadDataset(unittest.TestCase):
             CIFAR10=FakeCIFAR10,
             CelebA=FakeCelebA,
             CelebA2=FakeCelebA2,
-            CelebA2LowRes=FakeCelebA2LowRes,
             CelebAHQ=FakeCelebAHQ,
             Flowers=FakeFlowers,
         ):
@@ -89,18 +84,6 @@ class TestLoadDataset(unittest.TestCase):
                     "transform": "t",
                     "size": 128,
                     "grayscale": False,
-                },
-            )
-
-            dataset = utils_module.load_dataset("CelebA2LowRes", data_dir="root", transform="t")
-            self.assertIsInstance(dataset, FakeCelebA2LowRes)
-            self.assertEqual(
-                dataset.kwargs,
-                {
-                    "data_dir": "root",
-                    "transform": "t",
-                    "size": 32,
-                    "grayscale": True,
                 },
             )
 

@@ -12,6 +12,12 @@ class AbstractGenerativeModel(ABC):
     def move_to(self, device):
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def image_size(self):
+        '''Return model image size. Args: None. Returns: int.'''
+        raise NotImplementedError
+
     @abstractmethod
     def per_sample_loss(self, x, *args, **kwargs):
         raise NotImplementedError

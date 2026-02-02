@@ -27,8 +27,15 @@ def get_train_config(config):
         lr_scheduler=config.lr_scheduler,
     )
 
-def train_model(accelerator, config, savedir, dataset, train_mask, id_):
-    '''Train a single model on a masked dataset split. Args: accelerator, config, savedir (Path), dataset, train_mask (torch.BoolTensor), id_ (int). Returns: None.'''
+def build_checkpoint_savepath(config, savedir, split_stem, is_gray):
+    '''Build checkpoint save path. Args: config, savedir (Path), split_stem (str), is_gray (bool). Returns: Path.'''
+    gray_token = "-gray" if is_gray else ""
+    suffix = f"-{config.suffix}" if config.suffix else ""
+    filename = f"{config.model}-{split_stem}-sz{config.image_resolution}{gray_token}{suffix}.pth"
+    return Path(savedir) / filename
+
+def train_model(accelerator, config, savedir, dataset, train_mask, split_stem):
+    '''Train a single model on a masked dataset split. Args: accelerator, config, savedir (Path), dataset, train_mask (torch.BoolTensor), split_stem (str). Returns: None.'''
     image_dim = dataset[0].shape
     channels, height, width = image_dim
     assert height == width
@@ -40,7 +47,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, id_):
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
     train_config = get_train_config(config)
-    savepath = savedir / Path(f"{config.dataset}-{config.model}-{id_}.pth")
+    savepath = build_checkpoint_savepath(config, savedir, split_stem, channels == 1)
     match config.model:
         case "DDPM":
             image_dim = dataset[0].shape
@@ -83,25 +90,32 @@ def train_model_from_indices_file(
         config,
         savedir,
         train_indices_path,
-        id_,
     ):
-    '''Train a model from explicit training indices. Args: accelerator, config, savedir (Path), train_indices_path (Path), id_ (int). Returns: None.'''
-    dataset = load_dataset(config.dataset, data_dir=config.data_dir, transform=None, size=config.image_resolution)  # Use default transforms
+    '''Train a model from explicit training indices. Args: accelerator, config, savedir (Path), train_indices_path (Path). Returns: None.'''
+    dataset = load_dataset(
+        config.dataset,
+        data_dir=config.data_dir,
+        transform=None,
+        size=config.image_resolution,
+        grayscale=getattr(config, "grayscale", False),
+    )  # Use default transforms
+    split_stem = train_indices_path.stem
     train_indices = torch.tensor(train_split.load_indices(train_indices_path), dtype=torch.long)
     train_mask = utils.index_to_mask(train_indices, len(dataset))
-    train_model(accelerator, config, savedir, dataset, train_mask, id_)
+    train_model(accelerator, config, savedir, dataset, train_mask, split_stem)
 
 
-def main(config_file, id_):
-    '''Load config and train a model from explicit indices. Args: config_file (str), id_ (int). Returns: None.'''
+def main(config_file, suffix=""):
+    '''Load config and train a model from explicit indices. Args: config_file (str), suffix (str). Returns: None.'''
     root = utils.get_root()
     with open(f"{root}/training/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
     _, params = next(iter(config.items()))
     config = utils.Config(params)
-    config.id = id_
+    config.suffix = suffix
     dataloader_config = getattr(config, "dataloader_config", None)
-    accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=42*id_, dataloader_config=dataloader_config)
+    seed = getattr(config, "seed", 0)
+    accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=seed, dataloader_config=dataloader_config)
     savedir = Path(config.save_dir)
     savedir.mkdir(parents=True, exist_ok=True)
     train_indices_path = getattr(config, "train_indices_path", None)
@@ -115,22 +129,17 @@ def main(config_file, id_):
         config=config,
         savedir=savedir,
         train_indices_path=train_indices_path,
-        id_=id_,
     )
 
 if __name__ == "__main__":
     import argparse
     torch.set_float32_matmul_precision('high')
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--id",
-        type=int,
-        required=True,
-    )
+    parser.add_argument("--suffix", type=str, default="")
     parser.add_argument(
         "--config",
         type=str,
         default="config_train_celeba",
     )
     args = parser.parse_args()
-    main(args.config, args.id)
+    main(args.config, args.suffix)
