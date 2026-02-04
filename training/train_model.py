@@ -138,7 +138,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="config_train_celeba",
+        required=True,
     )
     args = parser.parse_args()
     main(args.config, args.suffix)

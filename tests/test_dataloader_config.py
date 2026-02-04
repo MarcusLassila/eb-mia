@@ -52,7 +52,7 @@ class TestDataLoaderConfig(unittest.TestCase):
 
     def test_training_configs_have_dataloader_config(self):
         root = Path(__file__).resolve().parents[1]
-        celeba_config_path = root / "training" / "configs" / "config_train_celeba.yaml"
+        celeba_config_path = root / "training" / "configs" / "config_train_ddpm_celeba.yaml"
         vae_config_path = root / "training" / "configs" / "config_train_vae_celeba.yaml"
 
         with open(celeba_config_path, "r") as file:
