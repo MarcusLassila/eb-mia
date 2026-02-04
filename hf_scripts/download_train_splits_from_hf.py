@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from huggingface_hub import HfFolder, snapshot_download
+from huggingface_hub import get_token, snapshot_download
 
 from hf_utils import authenticate_hf
 
-HF_TOKEN = HfFolder.get_token()
+HF_TOKEN = get_token()
 REPO_ID = "Malassila/eb-mia"
 REPO_TYPE = "model"
 LOCAL_DIR = Path("training")
