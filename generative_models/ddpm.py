@@ -19,6 +19,7 @@ class DDPM(AbstractGenerativeModel):
         base_channels=128,
         channel_mult=(1,1,2,2),
         n_attention_heads=1,
+        channels_per_head=None,
         attention_resolutions=(16,),
         dropout=0.0,
         resample_with_conv=True,
@@ -33,6 +34,7 @@ class DDPM(AbstractGenerativeModel):
         self.base_channels = base_channels
         self.channel_mult = channel_mult
         self.n_attention_heads = n_attention_heads
+        self.channels_per_head = channels_per_head
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.resample_with_conv = resample_with_conv
@@ -55,6 +57,7 @@ class DDPM(AbstractGenerativeModel):
             base_channels=self.base_channels,
             channel_mult=self.channel_mult,
             n_attention_heads=self.n_attention_heads,
+            channels_per_head=self.channels_per_head,
             attention_resolutions=self.attention_resolutions,
             dropout=self.dropout,
             resample_with_conv=self.resample_with_conv,

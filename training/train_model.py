@@ -58,6 +58,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, split_stem):
                 "base_channels": config.base_channels,
                 "channel_mult": config.channel_mult,
                 "n_attention_heads": config.n_attention_heads,
+                "channels_per_head": config.channels_per_head,
                 "attention_resolutions": config.attention_resolutions,
                 "dropout": config.dropout,
                 "resample_with_conv": True,
