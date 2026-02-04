@@ -57,7 +57,10 @@ class TestDataLoaderConfig(unittest.TestCase):
 
         with open(celeba_config_path, "r") as file:
             celeba_config = yaml.safe_load(file)
-        _, celeba_params = next(iter(celeba_config.items()))
+        if "dataloader_config" in celeba_config:
+            celeba_params = celeba_config
+        else:
+            _, celeba_params = next(iter(celeba_config.items()))
         self.assertIn("dataloader_config", celeba_params)
         self.assertEqual(celeba_params["dataloader_config"]["num_workers"], 0)
         self.assertFalse(celeba_params["dataloader_config"]["pin_memory"])
@@ -66,7 +69,10 @@ class TestDataLoaderConfig(unittest.TestCase):
 
         with open(vae_config_path, "r") as file:
             vae_config = yaml.safe_load(file)
-        _, vae_params = next(iter(vae_config.items()))
+        if "dataloader_config" in vae_config:
+            vae_params = vae_config
+        else:
+            _, vae_params = next(iter(vae_config.items()))
         self.assertIn("dataloader_config", vae_params)
         self.assertEqual(vae_params["dataloader_config"]["num_workers"], 8)
         self.assertTrue(vae_params["dataloader_config"]["pin_memory"])

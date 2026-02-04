@@ -110,8 +110,7 @@ def main(config_file, suffix=""):
     root = utils.get_root()
     with open(f"{root}/training/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
-    _, params = next(iter(config.items()))
-    config = utils.Config(params)
+    config = utils.Config(config)
     config.suffix = suffix
     dataloader_config = getattr(config, "dataloader_config", None)
     seed = getattr(config, "seed", 0)

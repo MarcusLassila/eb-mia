@@ -41,12 +41,18 @@ def zero_params(module):
 
 class AttentionBlock(nn.Module):
 
-    def __init__(self, channels, n_heads, use_sdpa=True):
+    def __init__(self, channels, n_heads=None, channels_per_head=None, use_sdpa=True):
         super().__init__()
-        assert channels % n_heads == 0
         self.channels = channels
-        self.n_heads = n_heads
-        self.channels_per_head = channels // n_heads
+        if n_heads is None:
+            assert channels % channels_per_head == 0
+            self.n_heads = channels // channels_per_head
+            self.channels_per_head = channels_per_head
+        else:
+            assert channels_per_head is None
+            assert channels % n_heads == 0
+            self.n_heads = n_heads
+            self.channels_per_head = channels // n_heads
         self.norm = group_norm(channels)
         self.qkv = NIN(dim=1, in_channels=channels, out_channels=3*channels)
         self.proj_out = zero_params(NIN(dim=1, in_channels=channels, out_channels=channels))
@@ -167,6 +173,7 @@ class UNet(nn.Module):
                  base_channels,
                  channel_mult,
                  n_attention_heads=1,
+                 channels_per_head=None,
                  attention_resolutions=(16,),
                  dropout=0.0,
                  resample_with_conv=True,
@@ -184,7 +191,10 @@ class UNet(nn.Module):
         self.out_channels = out_channels
         self.base_channels = base_channels
         self.channel_mult = channel_mult
+
+        assert (n_attention_heads is None) + (channels_per_head is None) == 1
         self.n_attention_heads = n_attention_heads
+        self.channels_per_head = channels_per_head
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.resample_with_conv = resample_with_conv
@@ -227,6 +237,7 @@ class UNet(nn.Module):
                         AttentionBlock(
                             channels=curr_channels,
                             n_heads=self.n_attention_heads,
+                            channels_per_head=self.channels_per_head,
                             use_sdpa=self.use_sdpa,
                         )
                     )
@@ -245,6 +256,7 @@ class UNet(nn.Module):
             AttentionBlock(
                 channels=curr_channels,
                 n_heads=self.n_attention_heads,
+                channels_per_head=self.channels_per_head,
                 use_sdpa=self.use_sdpa,
             ),
             ResBlock(
@@ -274,6 +286,7 @@ class UNet(nn.Module):
                         AttentionBlock(
                             channels=curr_channels,
                             n_heads=self.n_attention_heads,
+                            channels_per_head=self.channels_per_head,
                             use_sdpa=self.use_sdpa,
                         )
                     )
