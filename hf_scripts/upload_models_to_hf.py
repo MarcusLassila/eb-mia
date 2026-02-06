@@ -35,7 +35,7 @@ def parse_args():
     '''Parse CLI arguments. Args: None. Returns: argparse.Namespace.'''
     parser = argparse.ArgumentParser(description="Upload model checkpoints to Hugging Face.")
     parser.add_argument(
-        "models_dir",
+        "--models-dir",
         nargs="?",
         default=str(DEFAULT_MODELS_DIR),
         help="Folder with model checkpoints to upload (default: trained_models).",

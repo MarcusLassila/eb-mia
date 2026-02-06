@@ -26,7 +26,9 @@ def load_model(path: str, device: torch.device):
         case _:
             raise ValueError(f"Unsupported model: {model_type}")
     model.move_to(device)
-    model.network.load_state_dict(checkpoint["network_state_dict"])
+    state_dict = {k.replace("_orig_mod.", ""): v for k, v in checkpoint["network_state_dict"].items()}
+    # TODO: Save _orig.mod.state_dict during training when torch compile
+    model.network.load_state_dict(state_dict)
     model.network.eval()
     train_indices = checkpoint["train_indices"]
     assert model.image_size == properties["size"]
