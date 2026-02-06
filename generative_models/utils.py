@@ -1,6 +1,6 @@
 import torch
 
-from utils import load_checkpoint, parse_properties_from_checkpoint_path
+from utils import has_torch_compile_wrapped_state_dict, load_checkpoint, parse_properties_from_checkpoint_path
 
 from .ddpm import DDPM
 from .vae import VAE
@@ -26,8 +26,12 @@ def load_model(path: str, device: torch.device):
         case _:
             raise ValueError(f"Unsupported model: {model_type}")
     model.move_to(device)
-    state_dict = {k.replace("_orig_mod.", ""): v for k, v in checkpoint["network_state_dict"].items()}
-    # TODO: Save _orig.mod.state_dict during training when torch compile
+    state_dict = checkpoint["network_state_dict"]
+    if has_torch_compile_wrapped_state_dict(state_dict):
+        raise ValueError(
+            "Checkpoint contains torch.compile wrapped keys ('_orig_mod.'). "
+            "Run `python -m utils.unwrap_compiled_checkpoint --input <checkpoint>` before loading."
+        )
     model.network.load_state_dict(state_dict)
     model.network.eval()
     train_indices = checkpoint["train_indices"]

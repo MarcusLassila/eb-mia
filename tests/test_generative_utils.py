@@ -110,6 +110,26 @@ class TestGenerativeUtils(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 load_model(path, torch.device("cpu"))
 
+    def test_load_model_wrapped_state_dict_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "VAE-Dummy-ent-f1-p1-s0-sz8.pth"
+            model_config = {
+                "in_ch": 1,
+                "in_dim": 8,
+                "latent_dim": 4,
+                "n_rsamples": 2,
+            }
+            model = VAE(**model_config)
+            wrapped_state_dict = {f"_orig_mod.{k}": v for k, v in model.network.state_dict().items()}
+            checkpoint = {
+                "model_config": model_config,
+                "network_state_dict": wrapped_state_dict,
+                "train_indices": torch.tensor([3, 4]),
+            }
+            torch.save(checkpoint, path)
+            with self.assertRaisesRegex(ValueError, "_orig_mod"):
+                load_model(path, torch.device("cpu"))
+
 
 if __name__ == "__main__":
     unittest.main()

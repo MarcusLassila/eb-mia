@@ -1,5 +1,6 @@
 from generative_models.agm import AbstractGenerativeModel
 from accelerate.accelerate import AcceleratorLite
+from utils import unwrap_torch_compile_state_dict
 
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
@@ -171,9 +172,9 @@ class TrainLoop:
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {}
                 if self.use_ema:
-                    ema_state_dict = self.ema_network.state_dict()
+                    ema_state_dict = unwrap_torch_compile_state_dict(self.ema_network.state_dict())
                     checkpoint["ema_network_state_dict"] = ema_state_dict
-                raw_state_dict = self.raw_network.state_dict()
+                raw_state_dict = unwrap_torch_compile_state_dict(self.raw_network.state_dict())
                 checkpoint |= {
                     "epoch": epoch,
                     "network_state_dict": ema_state_dict if self.use_ema else raw_state_dict,

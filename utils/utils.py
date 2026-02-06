@@ -95,6 +95,33 @@ def load_checkpoint(path: str, device: torch.device):
     '''
     return torch.load(path, map_location=device)
 
+
+def has_torch_compile_wrapped_state_dict(state_dict):
+    '''Return True if state_dict contains torch.compile wrapped keys. Args: state_dict (Mapping). Returns: bool.'''
+    return any(key.startswith("_orig_mod.") for key in state_dict)
+
+
+def unwrap_torch_compile_state_dict(state_dict):
+    '''Return state_dict with torch.compile wrapper prefix removed from keys. Args: state_dict (Mapping). Returns: Mapping.'''
+    unwrapped_state_dict = state_dict.__class__()
+    for key, value in state_dict.items():
+        unwrapped_key = key.removeprefix("_orig_mod.")
+        if unwrapped_key in unwrapped_state_dict:
+            raise ValueError(f"state_dict key collision after unwrapping: {unwrapped_key}")
+        unwrapped_state_dict[unwrapped_key] = value
+    return unwrapped_state_dict
+
+
+def unwrap_checkpoint_state_dicts(checkpoint):
+    '''Return checkpoint with known model state dicts unwrapped from torch.compile prefix. Args: checkpoint (dict). Returns: dict.'''
+    unwrapped_checkpoint = dict(checkpoint)
+    state_dict_keys = ("network_state_dict", "raw_network_state_dict", "ema_network_state_dict")
+    for state_dict_key in state_dict_keys:
+        if state_dict_key in unwrapped_checkpoint:
+            unwrapped_checkpoint[state_dict_key] = unwrap_torch_compile_state_dict(unwrapped_checkpoint[state_dict_key])
+    return unwrapped_checkpoint
+
+
 def get_train_indices(path: str):
     ''' Load training indices from a checkpoint.
 
