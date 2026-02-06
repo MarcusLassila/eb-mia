@@ -106,11 +106,14 @@ def train_model_from_indices_file(
     train_model(accelerator, config, savedir, dataset, train_mask, split_stem)
 
 
-def main(config_file, suffix=""):
+def main(config_file, suffix="", train_indices_path=None):
     '''Load config and train a model from explicit indices. Args: config_file (str), suffix (str). Returns: None.'''
     root = utils.get_root()
     with open(f"{root}/training/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
+    if train_indices_path is not None:
+        config["train_indices_path"] = train_indices_path
+    print(yaml.dump(config, sort_keys=False))
     config = utils.Config(config)
     config.suffix = suffix
     dataloader_config = getattr(config, "dataloader_config", None)
@@ -141,5 +144,10 @@ if __name__ == "__main__":
         type=str,
         required=True,
     )
+    parser.add_argument(
+        "--train-indices-path",
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
-    main(args.config, args.suffix)
+    main(args.config, args.suffix, args.train_indices_path)

@@ -90,10 +90,6 @@ class TrainLoop:
         accelerator = self.accelerator
         step = 0
 
-        for k, v in self.train_config.items():
-            accelerator.print(f"{k}: {v}")
-        accelerator.print()
-
         # Drop any incomplete accumulated batch for simplicity
         n_batches = len(self.train_dataloader)
         n_full_batches = n_batches - (n_batches % self.grad_accum_steps)

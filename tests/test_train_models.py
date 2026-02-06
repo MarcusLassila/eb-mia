@@ -54,6 +54,56 @@ class TestTrainModels(unittest.TestCase):
                     )
                     self.assertTrue(torch.equal(train_mask, expected_mask))
 
+    def test_main_overrides_train_indices_path_from_cli_and_prints_it(self):
+        config_text = (
+            "save_dir: checkpoints\n"
+            "torch_compile: false\n"
+            "train_indices_path: from_config.pkl\n"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config_dir = root / "training" / "configs"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (config_dir / "test_config.yaml").write_text(config_text)
+            with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
+                with mock.patch.object(train_model, "AcceleratorLite", return_value=object()):
+                    with mock.patch.object(train_model, "train_model_from_indices_file") as mock_train:
+                        with mock.patch("builtins.print") as mock_print:
+                            train_model.main(
+                                config_file="test_config",
+                                suffix="",
+                                train_indices_path="from_cli.pkl",
+                            )
+            train_call_kwargs = mock_train.call_args.kwargs
+            self.assertEqual(train_call_kwargs["train_indices_path"], root / "from_cli.pkl")
+            printed_config = mock_print.call_args.args[0]
+            self.assertIn("train_indices_path: from_cli.pkl", printed_config)
+            self.assertNotIn("train_indices_path: from_config.pkl", printed_config)
+
+    def test_main_uses_config_train_indices_path_when_cli_not_given(self):
+        config_text = (
+            "save_dir: checkpoints\n"
+            "torch_compile: false\n"
+            "train_indices_path: from_config.pkl\n"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config_dir = root / "training" / "configs"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (config_dir / "test_config.yaml").write_text(config_text)
+            with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
+                with mock.patch.object(train_model, "AcceleratorLite", return_value=object()):
+                    with mock.patch.object(train_model, "train_model_from_indices_file") as mock_train:
+                        with mock.patch("builtins.print") as mock_print:
+                            train_model.main(
+                                config_file="test_config",
+                                suffix="",
+                            )
+            train_call_kwargs = mock_train.call_args.kwargs
+            self.assertEqual(train_call_kwargs["train_indices_path"], root / "from_config.pkl")
+            printed_config = mock_print.call_args.args[0]
+            self.assertIn("train_indices_path: from_config.pkl", printed_config)
+
 
 if __name__ == "__main__":
     unittest.main()
