@@ -113,12 +113,12 @@ def main(config_file, suffix="", train_indices_path=None):
         config = yaml.safe_load(file)
     if train_indices_path is not None:
         config["train_indices_path"] = train_indices_path
-    print(yaml.dump(config, sort_keys=False))
     config = utils.Config(config)
     config.suffix = suffix
     dataloader_config = getattr(config, "dataloader_config", None)
     seed = getattr(config, "seed", 0)
     accelerator = AcceleratorLite(torch_compile=config.torch_compile, base_seed=seed, dataloader_config=dataloader_config)
+    accelerator.print(config)
     savedir = Path(config.save_dir)
     savedir.mkdir(parents=True, exist_ok=True)
     train_indices_path = getattr(config, "train_indices_path", None)
