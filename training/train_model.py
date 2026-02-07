@@ -76,6 +76,10 @@ def train_model(accelerator, config, savedir, dataset, train_mask, split_stem):
         case _:
             raise ValueError(f"No generative model named {config.model}.")
 
+    param_counts = utils.count_params(model.network)
+    accelerator.print(f"Total params:     {param_counts['n_params']:_}")
+    accelerator.print(f"Trainable params: {param_counts['n_trainable_params']:_}")
+
     TrainLoop(
         model=model,
         train_dataset=train_dataset,
