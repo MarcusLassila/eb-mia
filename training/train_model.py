@@ -27,6 +27,12 @@ def get_train_config(config):
         lr_scheduler=config.lr_scheduler,
     )
 
+def get_train_config_from_checkpoint(config, checkpoint):
+    '''Build train config from checkpoint and current run. Args: config, checkpoint (dict). Returns: TrainConfig.'''
+    checkpoint_train_config = dict(checkpoint["train_config"])
+    checkpoint_train_config["epochs"] = config.epochs
+    return TrainConfig(**checkpoint_train_config)
+
 def build_checkpoint_savepath(config, savedir, split_stem, is_gray):
     '''Build checkpoint save path. Args: config, savedir (Path), split_stem (str), is_gray (bool). Returns: Path.'''
     gray_token = "-gray" if is_gray else ""
@@ -46,35 +52,47 @@ def train_model(accelerator, config, savedir, dataset, train_mask, split_stem):
     val_indices = nontrain_indices[:val_size]
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
-    train_config = get_train_config(config)
+    checkpoint = None
+    if config.use_checkpoint_configs:
+        if config.resume_checkpoint_path is None:
+            raise ValueError("use_checkpoint_configs=True requires resume_checkpoint_path.")
+        checkpoint = torch.load(config.resume_checkpoint_path, map_location="cpu")
+        train_config = get_train_config_from_checkpoint(config, checkpoint)
+    else:
+        train_config = get_train_config(config)
     savepath = build_checkpoint_savepath(config, savedir, split_stem, channels == 1)
-    match config.model:
+    model_name = config.model
+    if config.use_checkpoint_configs:
+        model_config = dict(checkpoint["model_config"])
+    match model_name:
         case "DDPM":
-            image_dim = dataset[0].shape
-            model_config = {
-                "image_dim": image_dim,
-                "time_steps": 1000,
-                "beta_schedule": "linear",
-                "base_channels": config.base_channels,
-                "channel_mult": config.channel_mult,
-                "n_attention_heads": config.n_attention_heads,
-                "channels_per_head": config.channels_per_head,
-                "attention_resolutions": config.attention_resolutions,
-                "dropout": config.dropout,
-                "resample_with_conv": True,
-                "use_sdpa": config.use_sdpa,
-            }
+            if not config.use_checkpoint_configs:
+                image_dim = dataset[0].shape
+                model_config = {
+                    "image_dim": image_dim,
+                    "time_steps": 1000,
+                    "beta_schedule": "linear",
+                    "base_channels": config.base_channels,
+                    "channel_mult": config.channel_mult,
+                    "n_attention_heads": config.n_attention_heads,
+                    "channels_per_head": config.channels_per_head,
+                    "attention_resolutions": config.attention_resolutions,
+                    "dropout": config.dropout,
+                    "resample_with_conv": True,
+                    "use_sdpa": config.use_sdpa,
+                }
             model = DDPM(**model_config)
         case "VAE":
-            model_config = {
-                "in_ch": channels,
-                "in_dim": height,
-                "latent_dim": config.latent_dim,
-                "n_rsamples": 1,
-            }
+            if not config.use_checkpoint_configs:
+                model_config = {
+                    "in_ch": channels,
+                    "in_dim": height,
+                    "latent_dim": config.latent_dim,
+                    "n_rsamples": 1,
+                }
             model = VAE(**model_config)
         case _:
-            raise ValueError(f"No generative model named {config.model}.")
+            raise ValueError(f"No generative model named {model_name}.")
 
     param_counts = utils.count_params(model.network)
     accelerator.print(f"Total params:     {param_counts['n_params']:_}")
@@ -88,6 +106,7 @@ def train_model(accelerator, config, savedir, dataset, train_mask, split_stem):
         model_config=model_config,
         accelerator=accelerator,
         savepath=savepath,
+        resume_checkpoint_path=config.resume_checkpoint_path,
     ).train()
 
 def train_model_from_indices_file(
@@ -110,13 +129,16 @@ def train_model_from_indices_file(
     train_model(accelerator, config, savedir, dataset, train_mask, split_stem)
 
 
-def main(config_file, suffix="", train_indices_path=None):
+def main(config_file, suffix="", train_indices_path=None, resume_checkpoint_path=None, use_checkpoint_configs=False):
     '''Load config and train a model from explicit indices. Args: config_file (str), suffix (str). Returns: None.'''
     root = utils.get_root()
     with open(f"{root}/training/configs/{config_file}.yaml", "r") as file:
         config = yaml.safe_load(file)
     if train_indices_path is not None:
         config["train_indices_path"] = train_indices_path
+    config["resume_checkpoint_path"] = resume_checkpoint_path
+    config["use_checkpoint_configs"] = use_checkpoint_configs
+    print(yaml.dump(config, sort_keys=False))
     config = utils.Config(config)
     config.suffix = suffix
     dataloader_config = getattr(config, "dataloader_config", None)
@@ -131,6 +153,12 @@ def main(config_file, suffix="", train_indices_path=None):
     train_indices_path = Path(train_indices_path)
     if not train_indices_path.is_absolute() and root is not None:
         train_indices_path = Path(root) / train_indices_path
+    resume_checkpoint_path = getattr(config, "resume_checkpoint_path", None)
+    if resume_checkpoint_path is not None:
+        resume_checkpoint_path = Path(resume_checkpoint_path)
+        if not resume_checkpoint_path.is_absolute() and root is not None:
+            resume_checkpoint_path = Path(root) / resume_checkpoint_path
+        config.resume_checkpoint_path = resume_checkpoint_path
     train_model_from_indices_file(
         accelerator=accelerator,
         config=config,
@@ -153,5 +181,14 @@ if __name__ == "__main__":
         type=str,
         default=None,
     )
+    parser.add_argument(
+        "--resume-checkpoint-path",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--use-checkpoint-configs",
+        action="store_true",
+    )
     args = parser.parse_args()
-    main(args.config, args.suffix, args.train_indices_path)
+    main(args.config, args.suffix, args.train_indices_path, args.resume_checkpoint_path, args.use_checkpoint_configs)

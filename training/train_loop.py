@@ -39,6 +39,7 @@ class TrainLoop:
         model_config: dict,
         accelerator: AcceleratorLite,
         savepath: Union[str, Path],
+        resume_checkpoint_path: Union[Path, None] = None,
     ):
         self.train_config = asdict(train_config)
         self.model_config = model_config
@@ -47,6 +48,7 @@ class TrainLoop:
         self.accelerator = accelerator
         self.device = self.accelerator.device
         self.savepath = Path(savepath)
+        self.resume_checkpoint_path = resume_checkpoint_path
 
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
@@ -85,6 +87,9 @@ class TrainLoop:
         accelerator.print(f"Using fused AdamW: {use_fused}")
         self.optimizer = torch.optim.AdamW(params=self.raw_network.parameters(), lr=self.lr, weight_decay=self.weight_decay, fused=use_fused)
         self.scheduler = self._get_lr_scheduler(self.optimizer)
+        self.start_epoch = 0
+        if self.resume_checkpoint_path is not None:
+            self._resume_from_checkpoint(self.resume_checkpoint_path)
     
     def train(self):
         accelerator = self.accelerator
@@ -95,9 +100,10 @@ class TrainLoop:
         n_full_batches = n_batches - (n_batches % self.grad_accum_steps)
 
         for epoch in range(1, self.epochs + 1):
+            absolute_epoch = self.start_epoch + epoch
             t0 = time.time()
             if accelerator.running_ddp:
-                self.train_dataloader.sampler.set_epoch(epoch)
+                self.train_dataloader.sampler.set_epoch(absolute_epoch)
             self.network.train()
             self.optimizer.zero_grad()
             train_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
@@ -152,7 +158,7 @@ class TrainLoop:
                 torch.cuda.synchronize()
             t1 = time.time()
             log_msg = (
-                f"epoch: {epoch} "
+                f"epoch: {absolute_epoch} "
                 f"| step: {step} "
                 f"| train loss: {(train_accum_loss / n_simul_train_batches).item():.6f} "
                 f"| val loss: {(val_accum_loss / n_val_batches).item():.6f} "
@@ -162,9 +168,9 @@ class TrainLoop:
             )
             accelerator.print(log_msg, flush=True)
 
-            if accelerator.is_master_process and (epoch % self.epochs_per_checkpoint == 0 or epoch == self.epochs):
+            if accelerator.is_master_process and (absolute_epoch % self.epochs_per_checkpoint == 0 or epoch == self.epochs):
                 savepath = self.savepath
-                name = savepath.stem + f"-epoch{epoch}" + savepath.suffix
+                name = savepath.stem + f"-epoch{absolute_epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
                 checkpoint = {}
                 if self.use_ema:
@@ -172,10 +178,11 @@ class TrainLoop:
                     checkpoint["ema_network_state_dict"] = ema_state_dict
                 raw_state_dict = unwrap_torch_compile_state_dict(self.raw_network.state_dict())
                 checkpoint |= {
-                    "epoch": epoch,
+                    "epoch": absolute_epoch,
                     "network_state_dict": ema_state_dict if self.use_ema else raw_state_dict,
                     "raw_network_state_dict": raw_state_dict,
                     "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": self.scheduler.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
                     "model_config": self.model_config,
                     "train_config": self.train_config,
@@ -183,6 +190,21 @@ class TrainLoop:
                     "val_indices": self.val_dataset.indices,
                 }
                 torch.save(checkpoint, current_epoch_savepath)
+
+    def _resume_from_checkpoint(self, checkpoint_path):
+        '''Resume train loop state from checkpoint. Args: checkpoint_path (str|Path). Returns: None.'''
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        self.raw_network.load_state_dict(checkpoint["raw_network_state_dict"])
+        if self.use_ema:
+            self.ema_network.load_state_dict(checkpoint["ema_network_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if "scheduler_state_dict" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        else:
+            self.lr_scheduler = "none"
+            self.scheduler = self._get_lr_scheduler(self.optimizer)
+        self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
+        self.start_epoch = int(checkpoint["epoch"])
 
     def _ema_create(self):
         ema_network = copy.deepcopy(self.raw_network)

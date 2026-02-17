@@ -232,6 +232,149 @@ class TestDDPMTrain(unittest.TestCase):
             self.assertTrue(all(not key.startswith("_orig_mod.") for key in checkpoint["network_state_dict"]))
             self.assertTrue(all(not key.startswith("_orig_mod.") for key in checkpoint["raw_network_state_dict"]))
 
+    def test_resume_training_continues_epoch_numbering(self):
+        torch.manual_seed(0)
+        data = torch.randn(8, 1, 4, 4)
+        dataset = _TensorImageDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 6))
+        val_dataset = Subset(dataset, indices=torch.arange(6, 8))
+
+        image_dim = (1, 4, 4)
+        ddpm_config = {
+            "image_dim": image_dim,
+            "time_steps": 10,
+            "beta_schedule": "linear",
+            "base_channels": 32,
+            "channel_mult": (1,),
+            "n_attention_heads": 1,
+            "attention_resolutions": (4,),
+            "dropout": 0.0,
+            "resample_with_conv": True,
+            "use_sdpa": True,
+        }
+
+        train_config = TrainConfig(
+            batch_size=2,
+            simul_batch_size=2,
+            epochs=2,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="float16",
+            lr_scheduler="none",
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "ddpm_test.pth"
+            TrainLoop(
+                model=DDPM(**ddpm_config),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config=ddpm_config,
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            resume_checkpoint_path = Path(tmpdir) / "ddpm_test-epoch2.pth"
+            resumed_train_config = TrainConfig(
+                batch_size=2,
+                simul_batch_size=2,
+                epochs=2,
+                epochs_per_checkpoint=1,
+                lr=1e-3,
+                weight_decay=0.0,
+                ema_decay=0.0,
+                grad_clip=0.0,
+                autocast_dtype="float16",
+                lr_scheduler="none",
+            )
+            TrainLoop(
+                model=DDPM(**ddpm_config),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=resumed_train_config,
+                model_config=ddpm_config,
+                accelerator=accelerator,
+                savepath=savepath,
+                resume_checkpoint_path=resume_checkpoint_path,
+            ).train()
+            self.assertTrue((Path(tmpdir) / "ddpm_test-epoch3.pth").exists())
+            self.assertTrue((Path(tmpdir) / "ddpm_test-epoch4.pth").exists())
+
+    def test_resume_uses_none_scheduler_when_scheduler_state_missing(self):
+        torch.manual_seed(0)
+        data = torch.randn(8, 1, 4, 4)
+        dataset = _TensorImageDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 6))
+        val_dataset = Subset(dataset, indices=torch.arange(6, 8))
+
+        ddpm_config = {
+            "image_dim": (1, 4, 4),
+            "time_steps": 10,
+            "beta_schedule": "linear",
+            "base_channels": 32,
+            "channel_mult": (1,),
+            "n_attention_heads": 1,
+            "attention_resolutions": (4,),
+            "dropout": 0.0,
+            "resample_with_conv": True,
+            "use_sdpa": True,
+        }
+        train_config = TrainConfig(
+            batch_size=2,
+            simul_batch_size=2,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="float16",
+            lr_scheduler="cosine",
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "ddpm_test.pth"
+            TrainLoop(
+                model=DDPM(**ddpm_config),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config=ddpm_config,
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            resume_checkpoint_path = Path(tmpdir) / "ddpm_test-epoch1.pth"
+            checkpoint = torch.load(resume_checkpoint_path, map_location="cpu")
+            del checkpoint["scheduler_state_dict"]
+            torch.save(checkpoint, resume_checkpoint_path)
+
+            resumed_train_config = TrainConfig(
+                batch_size=2,
+                simul_batch_size=2,
+                epochs=1,
+                epochs_per_checkpoint=1,
+                lr=1e-3,
+                weight_decay=0.0,
+                ema_decay=0.0,
+                grad_clip=0.0,
+                autocast_dtype="float16",
+                lr_scheduler="cosine",
+            )
+            train_loop = TrainLoop(
+                model=DDPM(**ddpm_config),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=resumed_train_config,
+                model_config=ddpm_config,
+                accelerator=accelerator,
+                savepath=savepath,
+                resume_checkpoint_path=resume_checkpoint_path,
+            )
+            self.assertEqual(train_loop.lr_scheduler, "none")
+
 
 if __name__ == "__main__":
     unittest.main()

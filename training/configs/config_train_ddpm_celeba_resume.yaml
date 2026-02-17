@@ -1,0 +1,39 @@
+batch_size: 32
+simul_batch_size: 128
+torch_compile: false
+dataset: "CelebA"
+data_dir: "./datasets"
+epochs: 800
+epochs_per_checkpoint: 400
+lr: 0.0001
+weight_decay: 0.0
+ema_decay: 0.9999
+grad_clip: 1.0
+autocast_dtype: "bfloat16"
+lr_scheduler: "none"
+image_resolution: 128
+dataloader_config:
+  num_workers: 0
+  pin_memory: false
+  persistent_workers: false
+  prefetch_factor: null
+val_frac: 0.02
+model: "DDPM"
+base_channels: 256
+channel_mult:
+- 1
+- 1
+- 2
+- 3
+- 4
+- 4
+n_attention_heads: null
+channels_per_head: 64
+attention_resolutions:
+- 8
+- 16
+- 32
+dropout: 0.0
+use_sdpa: false
+resume_checkpoint_path: "./checkpoints/DDPM-REPLACE_SPLIT-sz128-epoch400.pth"
+use_checkpoint_configs: true
