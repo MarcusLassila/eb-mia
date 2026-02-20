@@ -39,6 +39,7 @@ class TrainLoop:
         model_config: dict,
         accelerator: AcceleratorLite,
         savepath: Union[str, Path],
+        resume_checkpoint: Union[dict, None]=None,
     ):
         self.train_config = asdict(train_config)
         self.model_config = model_config
@@ -85,6 +86,9 @@ class TrainLoop:
         accelerator.print(f"Using fused AdamW: {use_fused}")
         self.optimizer = torch.optim.AdamW(params=self.raw_network.parameters(), lr=self.lr, weight_decay=self.weight_decay, fused=use_fused)
         self.scheduler = self._get_lr_scheduler(self.optimizer)
+        self.start_epoch = 0
+        if resume_checkpoint is not None:
+            self._load_resume_checkpoint(resume_checkpoint)
     
     def train(self):
         accelerator = self.accelerator
@@ -93,8 +97,9 @@ class TrainLoop:
         # Drop any incomplete accumulated batch for simplicity
         n_batches = len(self.train_dataloader)
         n_full_batches = n_batches - (n_batches % self.grad_accum_steps)
+        end_epoch = self.start_epoch + self.epochs
 
-        for epoch in range(1, self.epochs + 1):
+        for epoch in range(self.start_epoch + 1, end_epoch + 1):
             t0 = time.time()
             if accelerator.running_ddp:
                 self.train_dataloader.sampler.set_epoch(epoch)
@@ -162,7 +167,7 @@ class TrainLoop:
             )
             accelerator.print(log_msg, flush=True)
 
-            if accelerator.is_master_process and (epoch % self.epochs_per_checkpoint == 0 or epoch == self.epochs):
+            if accelerator.is_master_process and (epoch % self.epochs_per_checkpoint == 0 or epoch == end_epoch):
                 savepath = self.savepath
                 name = savepath.stem + f"-epoch{epoch}" + savepath.suffix
                 current_epoch_savepath = savepath.parent / name
@@ -176,6 +181,7 @@ class TrainLoop:
                     "network_state_dict": ema_state_dict if self.use_ema else raw_state_dict,
                     "raw_network_state_dict": raw_state_dict,
                     "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": self.scheduler.state_dict(),
                     "scaler_state_dict": self.scaler.state_dict(),
                     "model_config": self.model_config,
                     "train_config": self.train_config,
@@ -183,6 +189,24 @@ class TrainLoop:
                     "val_indices": self.val_dataset.indices,
                 }
                 torch.save(checkpoint, current_epoch_savepath)
+
+    def _load_resume_checkpoint(self, checkpoint):
+        self.start_epoch = int(checkpoint.get("epoch", 0))
+        raw_state_dict = checkpoint["raw_network_state_dict"]
+        self.raw_network.load_state_dict(raw_state_dict)
+        if self.use_ema:
+            ema_state_dict = checkpoint.get("ema_network_state_dict", checkpoint["network_state_dict"])
+            self.ema_network.load_state_dict(ema_state_dict)
+        if "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        for group in self.optimizer.param_groups:
+            group["lr"] = self.lr
+            group["weight_decay"] = self.weight_decay
+        checkpoint_train_config = checkpoint.get("train_config", None)
+        if "scheduler_state_dict" in checkpoint and checkpoint_train_config == self.train_config:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        if "scaler_state_dict" in checkpoint:
+            self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
     def _ema_create(self):
         ema_network = copy.deepcopy(self.raw_network)

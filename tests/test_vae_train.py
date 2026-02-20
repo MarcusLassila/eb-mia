@@ -157,6 +157,60 @@ class TestVAETrain(unittest.TestCase):
                 ema_tensor = ema_state[key]
                 self.assertTrue(torch.equal(ema_tensor, raw_tensor))
 
+    def test_resume_checkpoint_continues_epoch_numbering(self):
+        torch.manual_seed(0)
+        data = torch.randn(8, 1, 8, 8)
+        dataset = _TensorImageDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 6))
+        val_dataset = Subset(dataset, indices=torch.arange(6, 8))
+        model_config = {
+            "in_ch": 1,
+            "in_dim": 8,
+            "latent_dim": 4,
+            "n_rsamples": 1,
+        }
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        train_config = TrainConfig(
+            batch_size=2,
+            simul_batch_size=2,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="float16",
+            lr_scheduler="none",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "vae_resume.pth"
+            first_model = VAE(**model_config)
+            TrainLoop(
+                model=first_model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config=model_config,
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            resume_checkpoint = torch.load(Path(tmpdir) / "vae_resume-epoch1.pth", map_location="cpu")
+            second_model = VAE(**model_config)
+            TrainLoop(
+                model=second_model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config=model_config,
+                accelerator=accelerator,
+                savepath=savepath,
+                resume_checkpoint=resume_checkpoint,
+            ).train()
+            resumed_path = Path(tmpdir) / "vae_resume-epoch2.pth"
+            self.assertTrue(resumed_path.exists())
+            resumed_checkpoint = torch.load(resumed_path, map_location="cpu")
+            self.assertEqual(resumed_checkpoint["epoch"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
