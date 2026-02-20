@@ -195,6 +195,12 @@ class TestVAETrain(unittest.TestCase):
                 savepath=savepath,
             ).train()
             resume_checkpoint = torch.load(Path(tmpdir) / "vae_resume-epoch1.pth", map_location="cpu")
+            resume_checkpoint["network_state_dict"] = {
+                f"_orig_mod.{k}": v for k, v in resume_checkpoint["network_state_dict"].items()
+            }
+            resume_checkpoint["raw_network_state_dict"] = {
+                f"_orig_mod.{k}": v for k, v in resume_checkpoint["raw_network_state_dict"].items()
+            }
             second_model = VAE(**model_config)
             TrainLoop(
                 model=second_model,

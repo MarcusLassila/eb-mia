@@ -177,7 +177,7 @@ def train_model_from_checkpoint(
         resume_checkpoint=checkpoint,
     ).train()
 
-def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=None, data_dir=None, save_dir=None):
+def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=None, data_dir=None, save_dir=None, torch_compile=False):
     '''Load config and train from indices or resume from checkpoint. Args: config_file (str|None), suffix (str), train_indices_path (str|None), checkpoint_path (str|None), data_dir (str|Path), save_dir (str|Path). Returns: None.'''
     root = utils.get_root()
     if data_dir is None or save_dir is None:
@@ -205,7 +205,7 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
         if train_indices_path is None:
             raise ValueError("must provide a path to the train indices unless resuming from a checkpoint.")
         accelerator = AcceleratorLite(
-            torch_compile=config.torch_compile,
+            torch_compile=bool(config.torch_compile or torch_compile),
             base_seed=getattr(config, "seed", 0),
             dataloader_config=getattr(config, "dataloader_config", None),
         )
@@ -220,10 +220,10 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
     else:
         checkpoint = utils.load_checkpoint(str(checkpoint_path), torch.device("cpu"))
         if config is None:
-            accelerator = AcceleratorLite(torch_compile=False, base_seed=0, dataloader_config=None)
+            accelerator = AcceleratorLite(torch_compile=torch_compile, base_seed=0, dataloader_config=None)
         else:
             accelerator = AcceleratorLite(
-                torch_compile=config.torch_compile,
+                torch_compile=bool(config.torch_compile or torch_compile),
                 base_seed=getattr(config, "seed", 0),
                 dataloader_config=getattr(config, "dataloader_config", None),
             )
@@ -268,7 +268,11 @@ if __name__ == "__main__":
         type=str,
         required=True,
     )
+    parser.add_argument(
+        "--torch-compile",
+        action="store_true",
+    )
     args = parser.parse_args()
     if args.checkpoint_path is None and (args.config is None or args.train_indices_path is None):
         parser.error("--config and --train-indices-path are required unless --checkpoint-path is provided.")
-    main(args.config, args.suffix, args.train_indices_path, args.checkpoint_path, args.data_dir, args.save_dir)
+    main(args.config, args.suffix, args.train_indices_path, args.checkpoint_path, args.data_dir, args.save_dir, args.torch_compile)

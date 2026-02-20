@@ -180,6 +180,22 @@ class TestTrainModels(unittest.TestCase):
             self.assertEqual(train_call_kwargs["data_dir"], root / "datasets")
             self.assertEqual(train_call_kwargs["savedir"], root / "checkpoints")
 
+    def test_main_resume_without_config_allows_cli_torch_compile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            checkpoint = {"train_config": {}, "model_config": {}}
+            with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
+                with mock.patch.object(train_model.utils, "load_checkpoint", return_value=checkpoint):
+                    with mock.patch.object(train_model, "AcceleratorLite", return_value=_DummyAccelerator()) as mock_accelerator:
+                        with mock.patch.object(train_model, "train_model_from_checkpoint"):
+                            train_model.main(
+                                checkpoint_path="checkpoint.pth",
+                                data_dir="datasets",
+                                save_dir="checkpoints",
+                                torch_compile=True,
+                            )
+            self.assertTrue(mock_accelerator.call_args.kwargs["torch_compile"])
+
     def test_main_resume_with_config_and_cli_train_indices(self):
         config_text = (
             "torch_compile: false\n"
