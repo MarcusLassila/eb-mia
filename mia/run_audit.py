@@ -49,13 +49,16 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
-def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode):
-    '''Build an entity -> Subset table with a selection mode. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str). Returns: dict[int, Subset].'''
+def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode, min_samples_per_entity=None, max_samples_per_entity=None):
+    '''Build an entity -> Subset table with optional size filtering. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None). Returns: dict[int, Subset].'''
     table = data_population.get_entity_index_table()
-    audit_samples = {}
+    selected_index_table = {}
+    target_entities = set()
     target_train_index = set(target_train_index.tolist())
     for entity_id, indices in table.items():
         indices = set(indices)
+        if indices & target_train_index:
+            target_entities.add(entity_id)
         match mode:
             case "all":
                 selected_indices = indices
@@ -71,7 +74,29 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
                 selected_indices = indices - target_train_index
             case _:
                 raise ValueError(f"Unknown entity audit mode: {mode}")
-        audit_samples[entity_id] = Subset(data_population, sorted(selected_indices))
+        n_selected = len(selected_indices)
+        if n_selected == 0:
+            continue
+        if min_samples_per_entity is not None and n_selected < min_samples_per_entity:
+            continue
+        if max_samples_per_entity is not None and n_selected > max_samples_per_entity:
+            continue
+        selected_index_table[entity_id] = sorted(selected_indices)
+
+    entity_ids = sorted(selected_index_table.keys())
+    target_entity_ids = [entity_id for entity_id in entity_ids if entity_id in target_entities]
+    non_target_entity_ids = [entity_id for entity_id in entity_ids if entity_id not in target_entities]
+    if target_entity_ids and non_target_entity_ids:
+        n_keep_per_group = min(len(target_entity_ids), len(non_target_entity_ids))
+        keep_entity_ids = set(target_entity_ids[:n_keep_per_group] + non_target_entity_ids[:n_keep_per_group])
+        entity_ids = [entity_id for entity_id in entity_ids if entity_id in keep_entity_ids]
+    else:
+        raise RuntimeError("Failed to include both target and non-target entities in the audit table.")
+
+    audit_samples = {
+        entity_id: Subset(data_population, selected_index_table[entity_id])
+        for entity_id in entity_ids
+    }
     return audit_samples
 
 def get_attacker(attack_config, batch_size, device, shadow_model_paths):
@@ -139,7 +164,13 @@ def run_entity_audit(config, device):
 
         target_train_index = utils.get_train_indices(target_path)
         train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
-        audit_table = get_entity_audit_table(data_population, target_train_index, mode=config.entity_audit_mode)
+        audit_table = get_entity_audit_table(
+            data_population,
+            target_train_index,
+            mode=config.entity_audit_mode,
+            min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
+            max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
+        )
 
         ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
         for entity_id in train_entity_ids:
