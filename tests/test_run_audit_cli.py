@@ -25,6 +25,7 @@ class TestRunAuditCli(unittest.TestCase):
         ):
             run_audit_module.main(["--config", path])
         run_audit_fn.assert_called_once()
+        self.assertIn("audit_config", run_audit_fn.call_args.kwargs)
         run_entity_fn.assert_not_called()
         os.remove(path)
 
@@ -37,6 +38,7 @@ class TestRunAuditCli(unittest.TestCase):
         ):
             run_audit_module.main(["--config", path])
         run_entity_fn.assert_called_once()
+        self.assertIn("audit_config", run_entity_fn.call_args.kwargs)
         run_audit_fn.assert_not_called()
         os.remove(path)
 

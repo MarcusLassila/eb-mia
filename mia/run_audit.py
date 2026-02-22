@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from pathlib import Path
 import pickle
 import yaml
+import numpy as np
 
 def load_partition_fn(model_path):
     pathdir = model_path.parent / Path("partition-functions")
@@ -121,9 +122,41 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
             raise ValueError(f"No attack: {attack_config.attack}")
     return attacker
 
-def run_audit(config, device):
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=config.image_size)
+def metrics_pickle_name(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None):
+    '''Return normalized metrics pickle filename. Args: target_path (str|Path), attack (str), audit_mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None). Returns: str.'''
+    parts = [
+        "metrics",
+        f"attack-{attack}",
+        f"target-{Path(target_path).stem}",
+        f"mode-{audit_mode}",
+    ]
+    if audit_mode == "entity":
+        min_value = "none" if min_samples_per_entity is None else str(min_samples_per_entity)
+        max_value = "none" if max_samples_per_entity is None else str(max_samples_per_entity)
+        parts.append(f"min-{min_value}")
+        parts.append(f"max-{max_value}")
+    return "_".join(parts) + ".pkl"
+
+def print_average_metrics_table(attack, metrics_list):
+    '''Print mean audit metrics over target models. Args: attack (str), metrics_list (list[dict]). Returns: None.'''
+    mean_auc = float(np.mean([metrics["AUC"] for metrics in metrics_list]))
+    mean_tpr_1pct = float(np.mean([metrics["TPR@1%FPR"] for metrics in metrics_list]))
+    mean_tpr_0p1pct = float(np.mean([metrics["TPR@0.1%FPR"] for metrics in metrics_list]))
+    print("")
+    print(f"Audit summary ({attack})")
+    print(f"{'Metric':<16} {'Mean':>10}")
+    print(f"{'-' * 16} {'-' * 10}")
+    print(f"{'AUC':<16} {mean_auc:>10.4f}")
+    print(f"{'TPR@1%FPR':<16} {mean_tpr_1pct:>10.4f}")
+    print(f"{'TPR@0.1%FPR':<16} {mean_tpr_0p1pct:>10.4f}")
+
+def run_audit(config, device, audit_config=None):
+    image_size = utils.parse_properties_from_checkpoint_path(config.target_model_paths[0])["size"]
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     target_model_paths = list(map(Path, config.target_model_paths))
+    attack_config = utils.Config(config.attack)
+    attack = attack_config.attack
+    all_metrics = []
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
     for target_idx, target_path in tqdm(enumerate(target_model_paths), total=len(target_model_paths), desc="Running audit"):
@@ -135,25 +168,31 @@ def run_audit(config, device):
         audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
         audit_samples = Subset(data_population, audit_indices)
         ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
-        for attack, attack_dict in config.attacks.items():
-            attacker = get_attacker(
-                attack_config=utils.Config(attack_dict),
-                batch_size=config.batch_size,
-                device=device,
-                shadow_model_paths=shadow_model_paths,
-            )
-            score = attacker.run_attack(audit_samples, target_path)
-            metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
-            Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
-            model_id = target_path.stem
-            with open(f"{config.res_dir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
-                pickle.dump(metrics, f)
+        attacker = get_attacker(
+            attack_config=attack_config,
+            batch_size=config.batch_size,
+            device=device,
+            shadow_model_paths=shadow_model_paths,
+        )
+        score = attacker.run_attack(audit_samples, target_path)
+        metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
+        all_metrics.append(metrics)
+        metrics["audit_config"] = dict(config.__dict__) if audit_config is None else dict(audit_config)
+        Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
+        filename = metrics_pickle_name(target_path, attack, config.audit_mode)
+        with open(f"{config.res_dir}/{attack}/{filename}", "wb") as f:
+            pickle.dump(metrics, f)
+    print_average_metrics_table(attack, all_metrics)
 
-def run_entity_audit(config, device):
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=config.image_size)
+def run_entity_audit(config, device, audit_config=None):
+    image_size = utils.parse_properties_from_checkpoint_path(config.target_model_paths[0])["size"]
+    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
  
     target_model_paths = list(map(Path, config.target_model_paths))
+    attack_config = utils.Config(config.attack)
+    attack = attack_config.attack
+    all_metrics = []
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
     for target_idx, target_path in enumerate(target_model_paths):
@@ -179,20 +218,28 @@ def run_entity_audit(config, device):
                 ground_truth[entity_id] = 1
         ground_truth = torch.tensor(list(ground_truth.values()), dtype=torch.long)
 
-        for attack, attack_dict in config.attacks.items():
-            attacker = get_attacker(
-                attack_config=utils.Config(attack_dict),
-                batch_size=config.batch_size,
-                device=device,
-                shadow_model_paths=shadow_model_paths,
-            )
-            score = attacker.run_attack(audit_table, target_path)
-            score = torch.tensor(list(score.values()), dtype=torch.float32)
-            metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
-            Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
-            model_id = target_path.stem
-            with open(f"{config.res_dir}/{attack}/metrics_{model_id}.pkl", "wb") as f:
-                pickle.dump(metrics, f)
+        attacker = get_attacker(
+            attack_config=attack_config,
+            batch_size=config.batch_size,
+            device=device,
+            shadow_model_paths=shadow_model_paths,
+        )
+        score = attacker.run_attack(audit_table, target_path)
+        score = torch.tensor(list(score.values()), dtype=torch.float32)
+        metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
+        all_metrics.append(metrics)
+        metrics["audit_config"] = dict(config.__dict__) if audit_config is None else dict(audit_config)
+        Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
+        filename = metrics_pickle_name(
+            target_path,
+            attack,
+            config.audit_mode,
+            min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
+            max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
+        )
+        with open(f"{config.res_dir}/{attack}/{filename}", "wb") as f:
+            pickle.dump(metrics, f)
+    print_average_metrics_table(attack, all_metrics)
 
 def default_config_path():
     '''Return default audit config path. Args: None. Returns: str.'''
@@ -219,9 +266,9 @@ def main(argv=None):
     config = utils.Config(config_dict)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if config.audit_mode == "sample":
-        run_audit(config=config, device=device)
+        run_audit(config=config, device=device, audit_config=config_dict)
     elif config.audit_mode == "entity":
-        run_entity_audit(config=config, device=device)
+        run_entity_audit(config=config, device=device, audit_config=config_dict)
     else:
         raise ValueError(f"Unknown audit_mode: {config.audit_mode}")
 

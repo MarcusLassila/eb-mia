@@ -14,8 +14,12 @@ def evaluate_MIA(score, ground_truth):
         ground_truth = np.array(ground_truth)
     auc = roc_auc_score(y_true=ground_truth, y_score=score)
     fpr, tpr, thresholds = roc_curve(y_true=ground_truth, y_score=score)
+    tpr_at_1pct_fpr = float(np.interp(1e-2, fpr, tpr))
+    tpr_at_0p1pct_fpr = float(np.interp(1e-3, fpr, tpr))
     return {
         "AUC": auc,
+        "TPR@1%FPR": tpr_at_1pct_fpr,
+        "TPR@0.1%FPR": tpr_at_0p1pct_fpr,
         "FPR": fpr,
         "TPR": tpr,
         "thresholds": thresholds,
