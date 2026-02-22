@@ -193,10 +193,10 @@ class TrainLoop:
     def _load_resume_checkpoint(self, checkpoint):
         self.start_epoch = int(checkpoint.get("epoch", 0))
         raw_state_dict = unwrap_torch_compile_state_dict(checkpoint["raw_network_state_dict"])
-        self.raw_network.load_state_dict(raw_state_dict)
+        getattr(self.raw_network, "_orig_mod", self.raw_network).load_state_dict(raw_state_dict)
         if self.use_ema:
             ema_state_dict = unwrap_torch_compile_state_dict(checkpoint.get("ema_network_state_dict", checkpoint["network_state_dict"]))
-            self.ema_network.load_state_dict(ema_state_dict)
+            getattr(self.ema_network, "_orig_mod", self.ema_network).load_state_dict(ema_state_dict)
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         for group in self.optimizer.param_groups:
