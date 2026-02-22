@@ -16,10 +16,11 @@ REPO_TYPE = "model"
 def upload_directory(
     local_dir,
     remote_dir,
+    file_pattern=None,
     repo_id=REPO_ID,
     repo_type=REPO_TYPE,
 ):
-    '''Upload a local directory to a directory in a Hugging Face repo. Args: local_dir (str|Path), remote_dir (str), repo_id (str), repo_type (str). Returns: str.'''
+    '''Upload a local directory or matching files to a directory in a Hugging Face repo. Args: local_dir (str|Path), remote_dir (str), file_pattern (str|None), repo_id (str), repo_type (str). Returns: str.'''
     local_dir = Path(local_dir)
     if not local_dir.exists():
         raise FileNotFoundError(f"local directory not found: {local_dir}")
@@ -28,6 +29,7 @@ def upload_directory(
         repo_type=repo_type,
         folder_path=str(local_dir),
         path_in_repo=remote_dir,
+        allow_patterns=file_pattern,
     )
 
 
@@ -43,6 +45,11 @@ def parse_args():
         "--remote-dir",
         required=True,
         help="Target directory path in the Hugging Face repo.",
+    )
+    parser.add_argument(
+        "--file-pattern",
+        default=None,
+        help="Optional glob pattern (relative to --local-dir) to upload matching files only, e.g. '*-epoch10.pth'.",
     )
     parser.add_argument(
         "--repo-id",
@@ -64,6 +71,7 @@ def main():
     commit_url = upload_directory(
         local_dir=args.local_dir,
         remote_dir=args.remote_dir,
+        file_pattern=args.file_pattern,
         repo_id=args.repo_id,
         repo_type=args.repo_type,
     )
