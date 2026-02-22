@@ -1,6 +1,11 @@
 import torch
 
-from utils import has_torch_compile_wrapped_state_dict, load_checkpoint, parse_properties_from_checkpoint_path
+from utils import (
+    has_torch_compile_wrapped_state_dict,
+    load_checkpoint,
+    parse_properties_from_checkpoint_path,
+    unwrap_torch_compile_state_dict,
+)
 
 from .ddpm import DDPM
 from .vae import VAE
@@ -28,10 +33,11 @@ def load_model(path: str, device: torch.device):
     model.move_to(device)
     state_dict = checkpoint["network_state_dict"]
     if has_torch_compile_wrapped_state_dict(state_dict):
-        raise ValueError(
-            "Checkpoint contains torch.compile wrapped keys ('_orig_mod.'). "
-            "Run `python -m utils.unwrap_compiled_checkpoint --input <checkpoint>` before loading."
+        print(
+            "Warning: checkpoint contains torch.compile wrapped keys ('_orig_mod.'); "
+            "unwrapping keys during load."
         )
+        state_dict = unwrap_torch_compile_state_dict(state_dict)
     model.network.load_state_dict(state_dict)
     model.network.eval()
     train_indices = checkpoint["train_indices"]

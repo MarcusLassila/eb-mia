@@ -1,5 +1,7 @@
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import torch
@@ -110,7 +112,7 @@ class TestGenerativeUtils(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 load_model(path, torch.device("cpu"))
 
-    def test_load_model_wrapped_state_dict_raises(self):
+    def test_load_model_wrapped_state_dict_unwraps_and_warns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "VAE-Dummy-ent-f1-p1-s0-sz8.pth"
             model_config = {
@@ -127,8 +129,14 @@ class TestGenerativeUtils(unittest.TestCase):
                 "train_indices": torch.tensor([3, 4]),
             }
             torch.save(checkpoint, path)
-            with self.assertRaisesRegex(ValueError, "_orig_mod"):
-                load_model(path, torch.device("cpu"))
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                loaded_model, train_indices = load_model(path, torch.device("cpu"))
+            self.assertIsInstance(loaded_model, VAE)
+            self.assertTrue(torch.equal(train_indices, checkpoint["train_indices"]))
+            self.assertIn("Warning: checkpoint contains torch.compile wrapped keys", stdout.getvalue())
+            for key, tensor in model.network.state_dict().items():
+                self.assertTrue(torch.equal(tensor, loaded_model.network.state_dict()[key]))
 
 
 if __name__ == "__main__":
