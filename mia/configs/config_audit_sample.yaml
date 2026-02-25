@@ -1,0 +1,12 @@
+dataset: "CelebA2"
+data_dir: ""
+res_dir: ""
+n_audit_samples: 30000
+audit_mode: "sample"
+target_model_paths:
+  # DDPM target checkpoint paths
+  - ""
+attack:
+  attack: "BASE"
+  prior: 0.5
+  n_loss_samples: null

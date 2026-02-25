@@ -29,17 +29,18 @@ class DummyEntityDataset:
 
 
 class TestRunAuditMetrics(unittest.TestCase):
-    def test_metrics_pickle_name_entity_includes_min_max(self):
+    def test_metrics_pickle_name_entity_includes_exact_min_max(self):
         filename = run_audit_module.metrics_pickle_name(
             "/tmp/VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth",
             "CompositeBASE",
             "entity",
+            n_audit_samples_per_entity=2,
             min_samples_per_entity=1,
             max_samples_per_entity=3,
         )
         self.assertEqual(
             filename,
-            "metrics_attack-CompositeBASE_target-VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_min-1_max-3.pkl",
+            "metrics_attack-CompositeBASE_target-VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-3.pkl",
         )
 
     def test_run_sample_audit_infers_image_size_and_saves_audit_config(self):
@@ -117,6 +118,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "batch_size": 2,
                 "audit_mode": "entity",
                 "entity_audit_mode": "all",
+                "entity_audit_n_audit_samples_per_entity": 2,
                 "entity_audit_min_samples_per_entity": 1,
                 "entity_audit_max_samples_per_entity": 2,
                 "round_robin": False,
@@ -156,7 +158,7 @@ class TestRunAuditMetrics(unittest.TestCase):
             metrics_path = (
                 Path(tmpdir)
                 / "CompositeBASE"
-                / "metrics_attack-CompositeBASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_min-1_max-2.pkl"
+                / "metrics_attack-CompositeBASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

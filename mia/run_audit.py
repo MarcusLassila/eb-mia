@@ -29,8 +29,8 @@ def get_audit_indices(n_audit_samples, membership_mask):
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
-def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode, min_samples_per_entity=None, max_samples_per_entity=None):
-    '''Build an entity -> Subset table with optional size filtering. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None). Returns: dict[int, Subset].'''
+def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
+    '''Build an entity -> Subset table with optional size filtering. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None), n_audit_samples_per_entity (int|None). Returns: dict[int, Subset].'''
     table = data_population.get_entity_index_table()
     selected_index_table = {}
     target_entities = set()
@@ -57,6 +57,22 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
         n_selected = len(selected_indices)
         if n_selected == 0:
             continue
+        if n_audit_samples_per_entity is not None:
+            if n_selected < n_audit_samples_per_entity:
+                continue
+            if n_selected > n_audit_samples_per_entity:
+                selected_indices_sorted = sorted(selected_indices)
+                if mode == "max_one_train_sample":
+                    selected_target_indices = sorted(selected_indices & target_train_index)
+                    if selected_target_indices:
+                        keep = selected_target_indices[0]
+                        selected_indices_sorted = [keep] + [idx for idx in selected_indices_sorted if idx != keep][:n_audit_samples_per_entity - 1]
+                    else:
+                        selected_indices_sorted = selected_indices_sorted[:n_audit_samples_per_entity]
+                else:
+                    selected_indices_sorted = selected_indices_sorted[:n_audit_samples_per_entity]
+                selected_indices = set(selected_indices_sorted)
+                n_selected = len(selected_indices)
         if min_samples_per_entity is not None and n_selected < min_samples_per_entity:
             continue
         if max_samples_per_entity is not None and n_selected > max_samples_per_entity:
@@ -87,14 +103,15 @@ def get_attacker(attack_config):
             raise ValueError(f"No composite MIA: {attack_config.attack}")
     return attacker
 
-def metrics_pickle_name(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None):
-    '''Return normalized metrics pickle filename. Args: target_path (str|Path), attack (str), audit_mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None). Returns: str.'''
+def metrics_pickle_name(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
+    '''Return normalized metrics pickle filename. Args: target_path (str|Path), attack (str), audit_mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None), n_audit_samples_per_entity (int|None). Returns: str.'''
     return scores_pickle_name(
         target_path,
         attack,
         audit_mode,
         min_samples_per_entity=min_samples_per_entity,
-        max_samples_per_entity=max_samples_per_entity
+        max_samples_per_entity=max_samples_per_entity,
+        n_audit_samples_per_entity=n_audit_samples_per_entity
     ).replace("scores", "metrics", 1)
 
 def load_scores(res_dir, attack, target_path):
@@ -160,6 +177,7 @@ def run_entity_audit(config):
             mode=config.entity_audit_mode,
             min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
             max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
+            n_audit_samples_per_entity=getattr(config, "entity_audit_n_audit_samples_per_entity", None),
         )
 
         ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
@@ -187,6 +205,7 @@ def run_entity_audit(config):
             config.audit_mode,
             min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
             max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
+            n_audit_samples_per_entity=getattr(config, "entity_audit_n_audit_samples_per_entity", None),
         )
         with open(f"{config.res_dir}/{attack}/{filename}", "wb") as f:
             pickle.dump(metrics, f)

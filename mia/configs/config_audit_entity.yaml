@@ -1,0 +1,14 @@
+dataset: "CelebA2"
+data_dir: ""
+res_dir: ""
+audit_mode: "entity"
+entity_audit_mode: "all"
+entity_audit_n_audit_samples_per_entity: null
+entity_audit_min_samples_per_entity: null
+entity_audit_max_samples_per_entity: null
+target_model_paths:
+  # DDPM target checkpoint paths
+  - ""
+attack:
+  attack: "CompositeBASE"
+  prior: 0.5

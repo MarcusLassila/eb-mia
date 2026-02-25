@@ -74,6 +74,32 @@ class TestGetEntityAuditTable(unittest.TestCase):
         self.assertEqual(audit_table[0].indices, [1])
         self.assertEqual(audit_table[1].indices, [2])
 
+    def test_exact_samples_per_entity_preserves_kept_target_sample_in_max_one_train_mode(self):
+        dataset = DummyEntityDataset([
+            0, 0, 0, 0,
+            1, 1, 1, 1,
+            2, 2,
+            3, 3, 3,
+            4,
+        ])
+        target_train_index = torch.tensor([2, 3, 4], dtype=torch.long)  # target entities: 0, 1
+
+        audit_table = get_entity_audit_table(
+            dataset,
+            target_train_index,
+            mode="max_one_train_sample",
+            n_audit_samples_per_entity=2,
+        )
+
+        self.assertEqual(list(audit_table.keys()), [0, 1, 2, 3])
+        self.assertEqual(len(audit_table[0].indices), 2)
+        self.assertEqual(len(audit_table[1].indices), 2)
+        self.assertEqual(len(audit_table[2].indices), 2)
+        self.assertEqual(len(audit_table[3].indices), 2)
+        self.assertNotIn(4, audit_table)
+        self.assertIn(2, audit_table[0].indices)
+        self.assertIn(4, audit_table[1].indices)
+
 
 if __name__ == "__main__":
     unittest.main()
