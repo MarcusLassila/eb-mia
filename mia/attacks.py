@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 class MIA(ABC):
 
@@ -56,7 +57,7 @@ class BASE(MIA):
     def loss_signal(self, audit_loader, model_path):
         model = self.load_model(model_path)
         sig = []
-        for samples in audit_loader:
+        for samples in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing loss signal for {str(model_path)}"):
             samples = samples.to(self.device)
             sig.append(compute_averaged_loss(model, samples, self.n_loss_samples))
         sig = torch.concat(sig, dim=0)

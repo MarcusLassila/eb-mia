@@ -76,7 +76,7 @@ def run_mia(config, device):
     attack = attack_config.attack
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
-    for target_idx, target_path in tqdm(enumerate(target_model_paths), total=len(target_model_paths), desc="Running MIA"):
+    for target_idx, target_path in enumerate(target_model_paths):
         if config.round_robin:
             shadow_model_indices = indices_of_shadow_models(target_idx, len(target_model_paths))
             shadow_model_paths = [model_path for i, model_path in enumerate(target_model_paths) if i in shadow_model_indices]
