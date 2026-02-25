@@ -34,13 +34,6 @@ def build_checkpoint_savepath(config, savedir, split_stem, is_gray):
     filename = f"{config.model}-{split_stem}-sz{config.image_resolution}{gray_token}{suffix}.pth"
     return Path(savedir) / filename
 
-def resolve_path(path_str, root):
-    '''Resolve a path string to absolute path using repository root for relative inputs. Args: path_str (str|Path), root (str|Path|None). Returns: Path.'''
-    path = Path(path_str)
-    if not path.is_absolute() and root is not None:
-        return Path(root) / path
-    return path
-
 def train_model_from_scratch(
         accelerator,
         config,
@@ -183,18 +176,18 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
     if data_dir is None or save_dir is None:
         raise ValueError("must provide data_dir and save_dir.")
 
-    data_dir = resolve_path(data_dir, root)
-    save_dir = resolve_path(save_dir, root)
+    data_dir = utils.resolve_path(data_dir, root)
+    save_dir = utils.resolve_path(save_dir, root)
     save_dir.mkdir(parents=True, exist_ok=True)
     if train_indices_path is not None:
-        train_indices_path = resolve_path(train_indices_path, root)
+        train_indices_path = utils.resolve_path(train_indices_path, root)
     if checkpoint_path is not None:
-        checkpoint_path = resolve_path(checkpoint_path, root)
+        checkpoint_path = utils.resolve_path(checkpoint_path, root)
 
     if config_file is None:
         config = None
     else:
-        config_path = resolve_path(Path("training") / "configs" / f"{config_file}.yaml", root)
+        config_path = utils.resolve_path(Path("training") / "configs" / f"{config_file}.yaml", root)
         with open(config_path, "r") as file:
             config = utils.Config(yaml.safe_load(file))
         config.suffix = suffix

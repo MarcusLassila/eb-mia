@@ -22,6 +22,13 @@ def get_root():
     except subprocess.CalledProcessError:
         return None
 
+def resolve_path(path_str, root):
+    '''Resolve a path string to absolute path using repository root for relative inputs. Args: path_str (str|Path), root (str|Path|None). Returns: Path.'''
+    path = Path(path_str)
+    if not path.is_absolute() and root is not None:
+        return Path(root) / path
+    return path
+
 def parse_properties_from_checkpoint_path(path):
     '''Parse properties from a checkpoint path. Args: path (str|Path). Returns: dict.'''
     stem = Path(path).stem

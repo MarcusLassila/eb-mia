@@ -53,7 +53,8 @@ def plot_average_roc_curves(resdir, low_exponent=-4):
     plt.ylabel('TPR')
     plt.legend()
     plt.savefig(f"{resdir}/average_roc_curves.png")
+    print(f"Saved average roc plot in {resdir}")
 
 if __name__ == "__main__":
-    resdir = f"{utils.get_root()}/mia/results/CelebA-DDPM"
+    resdir = f"{utils.get_root()}/mia/results/entity_level"
     plot_average_roc_curves(resdir)

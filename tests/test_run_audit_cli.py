@@ -19,27 +19,27 @@ class TestRunAuditCli(unittest.TestCase):
     def test_main_calls_sample_audit(self):
         path = self._write_config({"audit_mode": "sample"})
         with (
-            patch.object(run_audit_module, "run_audit") as run_audit_fn,
+            patch.object(run_audit_module, "run_sample_audit") as run_sample_audit_fn,
             patch.object(run_audit_module, "run_entity_audit") as run_entity_fn,
             patch.object(run_audit_module.torch.cuda, "is_available", return_value=False),
         ):
             run_audit_module.main(["--config", path])
-        run_audit_fn.assert_called_once()
-        self.assertIn("audit_config", run_audit_fn.call_args.kwargs)
+        run_sample_audit_fn.assert_called_once()
+        self.assertEqual(set(run_sample_audit_fn.call_args.kwargs.keys()), {"config"})
         run_entity_fn.assert_not_called()
         os.remove(path)
 
     def test_main_calls_entity_audit(self):
         path = self._write_config({"audit_mode": "entity"})
         with (
-            patch.object(run_audit_module, "run_audit") as run_audit_fn,
+            patch.object(run_audit_module, "run_sample_audit") as run_sample_audit_fn,
             patch.object(run_audit_module, "run_entity_audit") as run_entity_fn,
             patch.object(run_audit_module.torch.cuda, "is_available", return_value=False),
         ):
             run_audit_module.main(["--config", path])
         run_entity_fn.assert_called_once()
-        self.assertIn("audit_config", run_entity_fn.call_args.kwargs)
-        run_audit_fn.assert_not_called()
+        self.assertEqual(set(run_entity_fn.call_args.kwargs.keys()), {"config"})
+        run_sample_audit_fn.assert_not_called()
         os.remove(path)
 
 

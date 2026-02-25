@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
 
 class MIA(ABC):
 
@@ -17,7 +16,7 @@ class MIA(ABC):
 class CompositeMIA(ABC):
 
     @abstractmethod
-    def run_attack(self, audit_entities, target_model_path):
+    def run_attack(self, sample_scores_by_entity):
         raise NotImplementedError
 
 def compute_averaged_loss(model, samples, n_loss_samples):
@@ -25,7 +24,7 @@ def compute_averaged_loss(model, samples, n_loss_samples):
         case "DDPM":
             loss_samples = []
             for _ in range(n_loss_samples):
-                t = torch.randint(1, int(model.time_steps * 0.1), device=samples.device)
+                t = torch.ones(size=samples.shape[0], device=samples.device, dtype=torch.long) * int(model.time_steps * 0.1)
                 loss = model.per_sample_loss(samples, t).cpu()
                 loss_samples.append(loss)
             avg_loss = torch.stack(loss_samples).mean(dim=0)
@@ -78,20 +77,15 @@ class BASE(MIA):
 
 class CompositeBASE(CompositeMIA):
 
-    def __init__(self, batch_size, device, shadow_model_paths, prior=0.5, n_loss_samples=1):
-        self.base_mia = BASE(
-            batch_size=batch_size,
-            device=device,
-            shadow_model_paths=shadow_model_paths,
-            prior=prior,
-            n_loss_samples=n_loss_samples,
-        )
+    def __init__(self, prior=0.5):
+        self.prior = prior
 
-    def run_attack(self, audit_table, target_model_path):
+    def run_attack(self, sample_scores_by_entity):
+        assert isinstance(sample_scores_by_entity, dict)
         score = {}
-        for entity_id, audit_samples in tqdm(audit_table.items(), total=len(audit_table), desc="Running composite BASE"):
-            base_probs = self.base_mia.run_attack(audit_samples=audit_samples, target_model_path=target_model_path)
-            base_probs.clamp(min=0.0, max=1.0-1e-12)
+        for entity_id, sample_scores in sample_scores_by_entity.items():
+            assert isinstance(sample_scores, torch.Tensor)
+            base_probs = sample_scores.to(dtype=torch.float32).clamp(min=0.0, max=1.0 - 1e-12)
             # Numerically stable implementation of 1 - (1 - base_probs).prod()
             score[entity_id] = -torch.expm1(torch.log1p(-base_probs).sum())
         return score
