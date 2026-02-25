@@ -24,7 +24,7 @@ def compute_averaged_loss(model, samples, n_loss_samples):
         case "DDPM":
             loss_samples = []
             for _ in range(n_loss_samples):
-                t = torch.ones(size=samples.shape[0], device=samples.device, dtype=torch.long) * int(model.time_steps * 0.1)
+                t = torch.ones(size=(samples.shape[0],), device=samples.device, dtype=torch.long) * int(model.time_steps * 0.1)
                 loss = model.per_sample_loss(samples, t).cpu()
                 loss_samples.append(loss)
             avg_loss = torch.stack(loss_samples).mean(dim=0)
