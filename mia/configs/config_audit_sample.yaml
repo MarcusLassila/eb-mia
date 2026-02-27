@@ -1,12 +1,6 @@
 dataset: "CelebA2"
-data_dir: ""
-res_dir: ""
-n_audit_samples: 30000
+data_dir: "./datasets"
+res_dir: "./mia/results"
 audit_mode: "sample"
 score_paths:
-  # Score pickle file/folder paths
-  - ""
-attack:
-  attack: "BASE"
-  prior: 0.5
-  n_loss_samples: null
+  - "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/scores"

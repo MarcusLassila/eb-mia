@@ -161,10 +161,7 @@ def metrics_folder_label(metrics_dir, common_meta):
     match = re.match(pattern, parent_name)
     if match is None:
         return metrics_dir.name
-    return "/".join([
-        f"{match.group('attack')}-{match.group('split_info')}-{match.group('epoch')}",
-        metrics_dir.name,
-    ])
+    return f"{match.group('attack')}-{match.group('split_info')}-{match.group('epoch')}"
 
 def resolve_evaluation_paths(config, metrics_folders_override=None):
     '''Resolve output audit dir and metric folder paths. Args: config (Config), metrics_folders_override (list[str]|None). Returns: tuple[Path, list[Path]].'''

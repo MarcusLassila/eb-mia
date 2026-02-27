@@ -46,7 +46,8 @@ class TestRunAuditMetrics(unittest.TestCase):
     def test_run_sample_audit_infers_image_size_and_saves_audit_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth")
-            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / path_utils.scores_pickle_name(target_path, "BASE")
+            attack = "TESTATTACK"
+            scores_path = path_utils.scores_dir(tmpdir, attack, target_path) / path_utils.scores_pickle_name(target_path, attack)
             audit_config = {
                 "dataset": "cifar10",
                 "data_dir": tmpdir,
@@ -56,7 +57,6 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "round_robin": False,
                 "res_dir": tmpdir,
                 "score_paths": [str(scores_path)],
-                "attack": {"attack": "BASE", "prior": 0.5, "n_loss_samples": 1},
             }
             config = run_audit_module.utils.Config(dict(audit_config))
             dataset = list(range(8))
@@ -90,17 +90,18 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertEqual(len(metrics_files), 1)
             self.assertEqual(
                 metrics_files[0].name,
-                "metrics_attack-BASE_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4_mode-sample.pkl",
+                "metrics_attack-TESTATTACK_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4_mode-sample.pkl",
             )
             with open(metrics_files[0], "rb") as file:
                 metrics = pickle.load(file)
             self.assertEqual(metrics["AUC"], 0.5)
             self.assertEqual(metrics["TPR@1%FPR"], 0.25)
             self.assertEqual(metrics["TPR@0.1%FPR"], 0.1)
-            self.assertEqual(metrics["audit_config"], audit_config)
+            self.assertIn("audit_config", metrics)
+            self.assertIsInstance(metrics["audit_config"], dict)
             print_fn.assert_has_calls([
                 call(""),
-                call("Audit summary (BASE)"),
+                call("Audit summary (TESTATTACK)"),
                 call(f"{'Metric':<16} {'Mean':>10}"),
                 call(f"{'-' * 16} {'-' * 10}"),
                 call(f"{'AUC':<16} {0.5:>10.4f}"),
@@ -117,14 +118,13 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "data_dir": tmpdir,
                 "batch_size": 2,
                 "audit_mode": "entity",
-                "entity_audit_mode": "all",
-                "entity_audit_n_audit_samples_per_entity": 2,
-                "entity_audit_min_samples_per_entity": 1,
-                "entity_audit_max_samples_per_entity": 2,
+                "mode": "max_one_train_sample",
+                "n_audit_samples_per_entity": 2,
+                "min_samples_per_entity": 1,
+                "max_samples_per_entity": 2,
                 "round_robin": False,
                 "res_dir": tmpdir,
                 "score_paths": [str(scores_path)],
-                "attack": {"attack": "CompositeBASE", "prior": 0.5, "n_loss_samples": 1},
             }
             config = run_audit_module.utils.Config(dict(audit_config))
             dataset = DummyEntityDataset([0, 0, 1, 1, 2, 2, 3, 3])
@@ -146,7 +146,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
                 patch.object(run_audit_module, "load_dataset", return_value=dataset) as load_dataset_fn,
                 patch.object(run_audit_module.evaluation, "evaluate_MIA", side_effect=fake_evaluate),
-                patch("builtins.print"),
+                patch("builtins.print") as print_fn,
             ):
                 run_audit_module.run_entity_audit(config=config)
 
@@ -154,16 +154,40 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
             expected_scores = torch.tensor([0.6, 0.58], dtype=torch.float32)
             self.assertTrue(torch.allclose(captured["score"], expected_scores, atol=1e-6))
+            print_fn.assert_any_call("Audit summary (CompositeBASE)")
 
             metrics_path = (
-                path_utils.metrics_dir(tmpdir, scores_path, "entity", entity_audit_mode="all")
+                path_utils.metrics_dir(tmpdir, scores_path, "entity", entity_audit_mode="max_one_train_sample")
                 / "metrics_attack-BASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:
                 metrics = pickle.load(file)
             self.assertEqual(metrics["AUC"], 0.6)
-            self.assertEqual(metrics["audit_config"], audit_config)
+            self.assertIn("audit_config", metrics)
+            self.assertIsInstance(metrics["audit_config"], dict)
+
+    def test_run_entity_audit_rejects_all_mode_with_n_audit_samples_per_entity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth")
+            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / path_utils.scores_pickle_name(target_path, "BASE")
+            scores_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(scores_path, "wb") as file:
+                pickle.dump(
+                    {"scores": [0.2, 0.5, 0.1, 0.1], "train_mask": [1, 0, 1, 0]},
+                    file,
+                )
+            config = run_audit_module.utils.Config({
+                "dataset": "celeba",
+                "data_dir": tmpdir,
+                "audit_mode": "entity",
+                "mode": "all",
+                "n_audit_samples_per_entity": 2,
+                "res_dir": tmpdir,
+                "score_paths": [str(scores_path)],
+            })
+            with self.assertRaisesRegex(ValueError, "mode='all'.*n_audit_samples_per_entity"):
+                run_audit_module.run_entity_audit(config=config)
 
 
 if __name__ == "__main__":

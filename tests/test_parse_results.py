@@ -81,10 +81,54 @@ class TestEvaluationCli(unittest.TestCase):
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
             label = summaries[0]["label"]
-            self.assertIn("BASE-ent-f0p5-p0p5-epoch1000/sample", label)
+            self.assertEqual(label, "BASE-ent-f0p5-p0p5-epoch1000")
+            self.assertNotIn("/", label)
             self.assertNotIn("DDPM", label)
             self.assertNotIn("CelebA2", label)
             self.assertNotIn("sz64", label)
+
+    def test_collect_metrics_folder_summaries_label_ignores_metrics_subfolder_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "entity-all"
+            folder.mkdir(parents=True)
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity-all.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder])
+            self.assertEqual(summaries[0]["label"], "BASE-ent-f0p5-p0p5-epoch1000")
+
+    def test_plot_average_roc_curves_uses_compact_title(self):
+        fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
+        summaries = [{
+            "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
+            "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
+            "AUC": {"mean": 0.75, "std": 0.05},
+            "label": "BASE-ent-f0p5-p0p5-epoch1000",
+            "path": Path("sample"),
+        }]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("mia.evaluation.plt.title") as title_fn:
+                evaluation.plot_average_roc_curves(tmpdir, fpr_space, summaries)
+        title = title_fn.call_args.args[0]
+        self.assertEqual(title, "DDPM-CelebA2-sz64 | 1 target models")
+        self.assertNotIn("Average ROC", title)
+
+    def test_plot_average_roc_curves_adds_mode_stem_to_label(self):
+        fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
+        summaries = [{
+            "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
+            "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
+            "AUC": {"mean": 0.75, "std": 0.05},
+            "label": "BASE-ent-f0p5-p0p5-epoch1000",
+            "path": Path("entity-all"),
+        }]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("mia.evaluation.plt.loglog") as loglog_fn:
+                evaluation.plot_average_roc_curves(tmpdir, fpr_space, summaries)
+        first_label = loglog_fn.call_args_list[0].kwargs["label"]
+        self.assertIn("BASE-ent-f0p5-p0p5-epoch1000-entity-all | AUC:", first_label)
 
     def test_collect_metrics_folder_summaries_asserts_fixed_fpr_metrics_consistency(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -100,7 +144,7 @@ class TestEvaluationCli(unittest.TestCase):
 
     def test_print_metrics_table_formats_percentages(self):
         summaries = [{
-            "label": "BASE-ent-f0p5-p0p5-epoch1000/sample",
+            "label": "BASE-ent-f0p5-p0p5-epoch1000",
             "AUC": {"mean": 0.75, "std": 0.05},
             "TPR@1%FPR": {"mean": 0.12, "std": 0.01},
             "TPR@0.1%FPR": {"mean": 0.03, "std": 0.005},

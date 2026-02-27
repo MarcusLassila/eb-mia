@@ -100,18 +100,19 @@ def plot_average_roc_curves(output_dir, fpr_space, summaries):
     common_meta = path_utils.common_target_meta(reference_targets)
     size_label = f"sz{common_meta['size']}" + ("-gray" if common_meta["gray"] else "")
     title = (
-        f"Average ROC Curves | {common_meta['model']}-{common_meta['dataset']}-{size_label}"
+        f"{common_meta['model']}-{common_meta['dataset']}-{size_label}"
         f" | {len(reference_targets)} target models"
     )
 
     plt.figure()
     for summary in summaries:
         auc_stats = summary["AUC"]
+        mode_suffix = f"-{summary['path'].stem}"
         plt.loglog(
             fpr_space,
             summary["mean_tpr"],
             label=(
-                f"{summary['label']} | "
+                f"{summary['label']}{mode_suffix} | "
                 f"AUC: {100*auc_stats['mean']:.2f}% ± {100*auc_stats['std']:.2f}%"
             ),
         )
@@ -124,7 +125,7 @@ def plot_average_roc_curves(output_dir, fpr_space, summaries):
     plt.title(title)
     plt.legend()
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "average_roc_curves.png")
+    plt.savefig(output_dir / f"average_roc_curves_{summaries[0]['path'].stem}.png")
     plt.close()
     print(f"Saved average roc plot in {output_dir}")
 

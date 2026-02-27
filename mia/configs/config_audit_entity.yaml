@@ -1,14 +1,10 @@
 dataset: "CelebA2"
-data_dir: ""
-res_dir: ""
+data_dir: "./datasets"
+res_dir: "./mia/results"
 audit_mode: "entity"
-entity_audit_mode: "all"
-entity_audit_n_audit_samples_per_entity: null
-entity_audit_min_samples_per_entity: null
-entity_audit_max_samples_per_entity: null
+mode: "all"
+n_audit_samples_per_entity: null
+min_samples_per_entity: null
+max_samples_per_entity: null
 score_paths:
-  # BASE score pickle file/folder paths
-  - ""
-attack:
-  attack: "CompositeBASE"
-  prior: 0.5
+  - "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/scores"

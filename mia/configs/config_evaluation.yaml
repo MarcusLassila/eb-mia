@@ -1,5 +1,5 @@
-res_dir: ""
-attack: "BASE"
+res_dir: "./mia/results/BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
 metrics_folders:
   - "sample"
+  - "entity-all"
 low_exponent: -4

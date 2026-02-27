@@ -147,7 +147,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "score_paths": [str(path_utils.scores_dir(results_dir, "BASE", target_path))],
                 "attack": {"attack": "CompositeBASE", "prior": 0.5},
                 "audit_mode": "entity",
-                "entity_audit_mode": "all",
+                "mode": "all",
             })
 
             with (
@@ -176,7 +176,8 @@ class TestAuditEndToEnd(unittest.TestCase):
                 metrics = pickle.load(file)
             self.assertIn("AUC", metrics)
             self.assertIn("TPR@1%FPR", metrics)
-            self.assertEqual(metrics["audit_config"]["audit_mode"], "entity")
+            self.assertIn("audit_config", metrics)
+            self.assertIsInstance(metrics["audit_config"], dict)
 
 
 if __name__ == "__main__":

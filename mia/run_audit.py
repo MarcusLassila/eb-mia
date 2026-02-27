@@ -14,11 +14,17 @@ import pickle
 import yaml
 import numpy as np
 
+def infer_attack_from_score_paths(score_paths):
+    '''Infer a unique sample attack from score pickle paths. Args: score_paths (list[Path]). Returns: str.'''
+    attacks = sorted({path_utils.score_attack_from_scores_pickle_path(path) for path in score_paths})
+    if len(attacks) != 1:
+        raise ValueError(f"Expected score files for one attack, got: {attacks}")
+    return attacks[0]
+
 def get_audit_indices(n_audit_samples, membership_mask):
     '''
     Get indices of audit samples with 50% target training member samples.
     '''
-    assert n_audit_samples % 2 == 0
     member_indices = utils.mask_to_index(membership_mask)
     non_member_indices = utils.mask_to_index(~membership_mask)
     rand_mask = torch.randperm(member_indices.shape[0])
@@ -94,14 +100,6 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
     }
     return audit_samples
 
-def get_attacker(attack_config):
-    match attack_config.attack:
-        case "CompositeBASE":
-            attacker = attacks.CompositeBASE(prior=attack_config.prior)
-        case _:
-            raise ValueError(f"No composite MIA: {attack_config.attack}")
-    return attacker
-
 def load_scores(scores_path):
     '''Load sample-level MIA scores and train mask from a score pickle. Args: scores_path (str|Path). Returns: tuple[torch.Tensor, torch.Tensor].'''
     with open(scores_path, "rb") as file:
@@ -130,20 +128,16 @@ def print_average_metrics_table(attack, metrics_list):
     print(f"{'TPR@0.1%FPR':<16} {mean_tpr_0p1pct:>10.4f}")
 
 def run_sample_audit(config):
-    attack_config = utils.Config(config.attack)
-    attack = attack_config.attack
     score_paths = path_utils.resolve_audit_score_paths(config)
-    score_paths = [path for path in score_paths if path_utils.score_attack_from_scores_pickle_path(path) == attack]
-    if not score_paths:
-        raise ValueError(f"No score pickle files found for attack {attack}.")
+    attack = infer_attack_from_score_paths(score_paths)
     image_size = path_utils.target_properties_from_scores_pickle_path(score_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     all_metrics = []
-    for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running audit"):
+    for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running sample-level audit"):
         scores, membership_mask = load_scores(scores_path)
         if len(scores) != len(data_population):
             raise ValueError(f"Unexpected score length in {scores_path}: got {len(scores)}, expected {len(data_population)}.")
-        audit_indices = get_audit_indices(config.n_audit_samples, membership_mask)
+        audit_indices = get_audit_indices(getattr(config, "n_audit_samples", len(data_population)), membership_mask)
         ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
         audit_scores = scores[audit_indices]
         metrics = evaluation.evaluate_MIA(score=audit_scores, ground_truth=ground_truth)
@@ -158,19 +152,21 @@ def run_sample_audit(config):
 
 def run_entity_audit(config):
     score_paths = path_utils.resolve_audit_score_paths(config)
-    score_paths = [path for path in score_paths if path_utils.score_attack_from_scores_pickle_path(path) == "BASE"]
-    if not score_paths:
-        raise ValueError("No BASE score pickle files found.")
+    sample_attack = infer_attack_from_score_paths(score_paths)
+    n_audit_samples_per_entity = getattr(config, "n_audit_samples_per_entity", None)
+    if config.mode == "all" and n_audit_samples_per_entity is not None:
+        raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
     image_size = path_utils.target_properties_from_scores_pickle_path(score_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
-    attack_config = utils.Config(config.attack)
-    attack = attack_config.attack
-    attacker = get_attacker(attack_config)
+    attack = f"Composite{sample_attack}"
+    attacker_cls = getattr(attacks, attack, None)
+    if attacker_cls is None:
+        raise ValueError(f"No composite MIA: {attack}")
+    attacker = attacker_cls()
     all_metrics = []
-    for target_idx, scores_path in enumerate(score_paths):
-        print(f"Running audit number {target_idx}")
+    for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running entity-level audit"):
         sample_scores, train_mask = load_scores(scores_path)
         if len(sample_scores) != len(data_population):
             raise ValueError(f"Unexpected score length in {scores_path}: got {len(sample_scores)}, expected {len(data_population)}.")
@@ -179,10 +175,10 @@ def run_entity_audit(config):
         audit_table = get_entity_audit_table(
             data_population,
             target_train_index,
-            mode=config.entity_audit_mode,
-            min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
-            max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
-            n_audit_samples_per_entity=getattr(config, "entity_audit_n_audit_samples_per_entity", None),
+            mode=config.mode,
+            min_samples_per_entity=getattr(config, "min_samples_per_entity", None),
+            max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
+            n_audit_samples_per_entity=n_audit_samples_per_entity,
         )
 
         ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
@@ -199,6 +195,7 @@ def run_entity_audit(config):
 
         score = attacker.run_attack(entity_sample_scores)
         score = torch.stack([score[entity_id] for entity_id in audit_table.keys()]).to(dtype=torch.float32)
+        assert len(score) == len(ground_truth)
         metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
         all_metrics.append(metrics)
         metrics["audit_config"] = dict(config.__dict__)
@@ -206,15 +203,15 @@ def run_entity_audit(config):
             config.res_dir,
             scores_path,
             config.audit_mode,
-            entity_audit_mode=config.entity_audit_mode,
+            entity_audit_mode=config.mode,
         )
         result_metrics_dir.mkdir(parents=True, exist_ok=True)
         filename = path_utils.metrics_pickle_name(
             scores_path,
             config.audit_mode,
-            min_samples_per_entity=getattr(config, "entity_audit_min_samples_per_entity", None),
-            max_samples_per_entity=getattr(config, "entity_audit_max_samples_per_entity", None),
-            n_audit_samples_per_entity=getattr(config, "entity_audit_n_audit_samples_per_entity", None),
+            min_samples_per_entity=getattr(config, "min_samples_per_entity", None),
+            max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
+            n_audit_samples_per_entity=n_audit_samples_per_entity,
         )
         with open(result_metrics_dir / filename, "wb") as f:
             pickle.dump(metrics, f)

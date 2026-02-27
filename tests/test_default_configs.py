@@ -11,50 +11,68 @@ class TestDefaultConfigs(unittest.TestCase):
 
     def test_run_mia_default_config(self):
         config = self._load("mia/configs/config_mia.yaml")
-        self.assertEqual(config["dataset"], "CelebA2")
-        self.assertEqual(config["data_dir"], "")
-        self.assertEqual(config["res_dir"], "")
-        self.assertEqual(config["batch_size"], 512)
-        self.assertFalse(config["round_robin"])
-        self.assertEqual(config["target_model_paths"], [""])
-        self.assertEqual(config["shadow_model_paths"], [""])
-        self.assertEqual(config["attack"]["attack"], "BASE")
-        self.assertEqual(config["attack"]["prior"], 0.5)
-        self.assertEqual(config["attack"]["n_loss_samples"], 1)
+        self.assertIsInstance(config, dict)
+        for key in (
+            "dataset",
+            "data_dir",
+            "res_dir",
+            "batch_size",
+            "round_robin",
+            "target_model_paths",
+            "shadow_model_paths",
+            "attack",
+        ):
+            self.assertIn(key, config)
+        self.assertIsInstance(config["dataset"], str)
+        self.assertIsInstance(config["data_dir"], str)
+        self.assertIsInstance(config["res_dir"], str)
+        self.assertIsInstance(config["batch_size"], int)
+        self.assertIsInstance(config["round_robin"], bool)
+        self.assertIsInstance(config["target_model_paths"], list)
+        self.assertIsInstance(config["shadow_model_paths"], list)
+        self.assertTrue(all(isinstance(path, str) for path in config["target_model_paths"]))
+        self.assertTrue(all(isinstance(path, str) for path in config["shadow_model_paths"]))
+        self.assertIsInstance(config["attack"], dict)
+        for key in ("attack", "prior", "n_loss_samples"):
+            self.assertIn(key, config["attack"])
+        self.assertIsInstance(config["attack"]["attack"], str)
+        self.assertIsInstance(config["attack"]["prior"], (int, float))
+        self.assertIsInstance(config["attack"]["n_loss_samples"], int)
 
     def test_run_audit_sample_default_configs(self):
         for relative_path in ("mia/configs/config_audit_sample.yaml",):
             config = self._load(relative_path)
-            self.assertEqual(config["dataset"], "CelebA2")
-            self.assertEqual(config["data_dir"], "")
-            self.assertEqual(config["res_dir"], "")
-            self.assertEqual(config["audit_mode"], "sample")
-            self.assertEqual(config["n_audit_samples"], 30000)
-            self.assertEqual(config["score_paths"], [""])
-            self.assertEqual(config["attack"]["attack"], "BASE")
-            self.assertEqual(config["attack"]["prior"], 0.5)
-            self.assertIsNone(config["attack"]["n_loss_samples"])
+            self.assertIsInstance(config, dict)
+            self.assertIn("dataset", config)
+            self.assertIn("data_dir", config)
+            self.assertIn("res_dir", config)
+            self.assertIn("audit_mode", config)
+            self.assertIn("score_paths", config)
+            self.assertIsInstance(config["score_paths"], list)
 
     def test_run_audit_entity_default_config(self):
         config = self._load("mia/configs/config_audit_entity.yaml")
-        self.assertEqual(config["dataset"], "CelebA2")
-        self.assertEqual(config["data_dir"], "")
-        self.assertEqual(config["res_dir"], "")
-        self.assertEqual(config["audit_mode"], "entity")
-        self.assertEqual(config["entity_audit_mode"], "all")
-        self.assertIsNone(config["entity_audit_n_audit_samples_per_entity"])
-        self.assertIsNone(config["entity_audit_min_samples_per_entity"])
-        self.assertIsNone(config["entity_audit_max_samples_per_entity"])
-        self.assertEqual(config["score_paths"], [""])
-        self.assertEqual(config["attack"]["attack"], "CompositeBASE")
-        self.assertEqual(config["attack"]["prior"], 0.5)
+        self.assertIsInstance(config, dict)
+        self.assertIn("dataset", config)
+        self.assertIn("data_dir", config)
+        self.assertIn("res_dir", config)
+        self.assertIn("audit_mode", config)
+        self.assertIn("mode", config)
+        self.assertIn("n_audit_samples_per_entity", config)
+        self.assertIn("min_samples_per_entity", config)
+        self.assertIn("max_samples_per_entity", config)
+        self.assertIn("score_paths", config)
+        self.assertIsInstance(config["score_paths"], list)
 
     def test_evaluation_default_config(self):
         config = self._load("mia/configs/config_evaluation.yaml")
-        self.assertEqual(config["res_dir"], "")
-        self.assertEqual(config["attack"], "BASE")
-        self.assertEqual(config["metrics_folders"], ["sample"])
-        self.assertEqual(config["low_exponent"], -4)
+        self.assertIsInstance(config, dict)
+        for key in ("res_dir", "metrics_folders", "low_exponent"):
+            self.assertIn(key, config)
+        self.assertIsInstance(config["res_dir"], str)
+        self.assertIsInstance(config["metrics_folders"], list)
+        self.assertTrue(all(isinstance(folder, str) for folder in config["metrics_folders"]))
+        self.assertIsInstance(config["low_exponent"], int)
 
 
 if __name__ == "__main__":

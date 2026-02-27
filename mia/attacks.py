@@ -73,13 +73,15 @@ class BASE(MIA):
             sig = self.loss_signal(audit_loader, model_path)
             sig_shadow_models.append(sig)
         sig_shadow_models = torch.stack(sig_shadow_models)
-        score = -sig_target - torch.logsumexp(-sig_shadow_models, dim=0) + np.log(self.prior / (1 - self.prior))
+        ref = torch.logsumexp(-sig_shadow_models, dim=0) - np.log(sig_shadow_models.shape[0])
+        lam = np.log(self.prior / (1 - self.prior))
+        score = -sig_target - ref + lam
         return score.sigmoid()
 
 class CompositeBASE(CompositeMIA):
 
-    def __init__(self, prior=0.5):
-        self.prior = prior
+    def __init__(self):
+        pass
 
     def run_attack(self, sample_scores_by_entity):
         assert isinstance(sample_scores_by_entity, dict)
