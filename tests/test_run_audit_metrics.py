@@ -7,6 +7,7 @@ from unittest.mock import patch, call
 
 import torch
 
+from mia import path_utils
 from mia import run_audit as run_audit_module
 
 
@@ -30,9 +31,8 @@ class DummyEntityDataset:
 
 class TestRunAuditMetrics(unittest.TestCase):
     def test_metrics_pickle_name_entity_includes_exact_min_max(self):
-        filename = run_audit_module.metrics_pickle_name(
-            "/tmp/VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth",
-            "CompositeBASE",
+        filename = path_utils.metrics_pickle_name(
+            "/tmp/scores_attack-BASE_target-VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10.pkl",
             "entity",
             n_audit_samples_per_entity=2,
             min_samples_per_entity=1,
@@ -40,13 +40,13 @@ class TestRunAuditMetrics(unittest.TestCase):
         )
         self.assertEqual(
             filename,
-            "metrics_attack-CompositeBASE_target-VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-3.pkl",
+            "metrics_attack-BASE_target-VAE-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-3.pkl",
         )
 
     def test_run_sample_audit_infers_image_size_and_saves_audit_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth")
-            shadow_path = str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s4-sz32-epoch4.pth")
+            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / path_utils.scores_pickle_name(target_path, "BASE")
             audit_config = {
                 "dataset": "cifar10",
                 "data_dir": tmpdir,
@@ -55,20 +55,20 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "audit_mode": "sample",
                 "round_robin": False,
                 "res_dir": tmpdir,
-                "target_model_paths": [target_path],
-                "shadow_model_paths": [shadow_path],
+                "score_paths": [str(scores_path)],
                 "attack": {"attack": "BASE", "prior": 0.5, "n_loss_samples": 1},
             }
             config = run_audit_module.utils.Config(dict(audit_config))
             dataset = list(range(8))
-            scores_dir = Path(tmpdir) / "BASE"
-            scores_dir.mkdir(parents=True, exist_ok=True)
-            with open(scores_dir / run_audit_module.scores_pickle_name(target_path, "BASE", "sample"), "wb") as file:
-                pickle.dump([0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6], file)
+            scores_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(scores_path, "wb") as file:
+                pickle.dump(
+                    {"scores": [0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6], "train_mask": [1, 1, 1, 1, 0, 0, 0, 0]},
+                    file,
+                )
 
             with (
                 patch.object(run_audit_module, "load_dataset", return_value=dataset) as load_dataset_fn,
-                patch.object(run_audit_module.utils, "get_train_indices", return_value=torch.tensor([0, 1, 2, 3])),
                 patch.object(run_audit_module, "get_audit_indices", return_value=torch.tensor([0, 4])),
                 patch.object(
                     run_audit_module.evaluation,
@@ -84,7 +84,7 @@ class TestRunAuditMetrics(unittest.TestCase):
             eval_kwargs = eval_fn.call_args.kwargs
             self.assertTrue(torch.equal(eval_kwargs["score"], torch.tensor([0.1, 0.9], dtype=torch.float32)))
             self.assertTrue(torch.equal(eval_kwargs["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
-            metrics_dir = Path(tmpdir) / "BASE"
+            metrics_dir = path_utils.metrics_dir(tmpdir, scores_path, "sample")
             metrics_files = sorted(metrics_dir.glob("*.pkl"))
             metrics_files = [path for path in metrics_files if path.name.startswith("metrics_")]
             self.assertEqual(len(metrics_files), 1)
@@ -111,7 +111,7 @@ class TestRunAuditMetrics(unittest.TestCase):
     def test_run_entity_audit_composes_base_scores_and_saves_metrics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth")
-            shadow_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s1-sz64-epoch10.pth")
+            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / path_utils.scores_pickle_name(target_path, "BASE")
             audit_config = {
                 "dataset": "celeba",
                 "data_dir": tmpdir,
@@ -123,16 +123,17 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "entity_audit_max_samples_per_entity": 2,
                 "round_robin": False,
                 "res_dir": tmpdir,
-                "target_model_paths": [target_path],
-                "shadow_model_paths": [shadow_path],
+                "score_paths": [str(scores_path)],
                 "attack": {"attack": "CompositeBASE", "prior": 0.5, "n_loss_samples": 1},
             }
             config = run_audit_module.utils.Config(dict(audit_config))
             dataset = DummyEntityDataset([0, 0, 1, 1, 2, 2, 3, 3])
-            scores_dir = Path(tmpdir) / "BASE"
-            scores_dir.mkdir(parents=True, exist_ok=True)
-            with open(scores_dir / run_audit_module.scores_pickle_name(target_path, "BASE", "sample"), "wb") as file:
-                pickle.dump([0.2, 0.5, 0.1, 0.1, 0.1, 0.1, 0.3, 0.4], file)
+            scores_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(scores_path, "wb") as file:
+                pickle.dump(
+                    {"scores": [0.2, 0.5, 0.1, 0.1, 0.1, 0.1, 0.3, 0.4], "train_mask": [1, 0, 1, 0, 1, 0, 0, 0]},
+                    file,
+                )
 
             captured = {}
 
@@ -144,7 +145,6 @@ class TestRunAuditMetrics(unittest.TestCase):
             with (
                 patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
                 patch.object(run_audit_module, "load_dataset", return_value=dataset) as load_dataset_fn,
-                patch.object(run_audit_module.utils, "get_train_indices", return_value=torch.tensor([0, 2, 4], dtype=torch.long)),
                 patch.object(run_audit_module.evaluation, "evaluate_MIA", side_effect=fake_evaluate),
                 patch("builtins.print"),
             ):
@@ -156,9 +156,8 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertTrue(torch.allclose(captured["score"], expected_scores, atol=1e-6))
 
             metrics_path = (
-                Path(tmpdir)
-                / "CompositeBASE"
-                / "metrics_attack-CompositeBASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
+                path_utils.metrics_dir(tmpdir, scores_path, "entity", entity_audit_mode="all")
+                / "metrics_attack-BASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

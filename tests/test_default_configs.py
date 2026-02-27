@@ -30,7 +30,7 @@ class TestDefaultConfigs(unittest.TestCase):
             self.assertEqual(config["res_dir"], "")
             self.assertEqual(config["audit_mode"], "sample")
             self.assertEqual(config["n_audit_samples"], 30000)
-            self.assertEqual(config["target_model_paths"], [""])
+            self.assertEqual(config["score_paths"], [""])
             self.assertEqual(config["attack"]["attack"], "BASE")
             self.assertEqual(config["attack"]["prior"], 0.5)
             self.assertIsNone(config["attack"]["n_loss_samples"])
@@ -45,9 +45,16 @@ class TestDefaultConfigs(unittest.TestCase):
         self.assertIsNone(config["entity_audit_n_audit_samples_per_entity"])
         self.assertIsNone(config["entity_audit_min_samples_per_entity"])
         self.assertIsNone(config["entity_audit_max_samples_per_entity"])
-        self.assertEqual(config["target_model_paths"], [""])
+        self.assertEqual(config["score_paths"], [""])
         self.assertEqual(config["attack"]["attack"], "CompositeBASE")
         self.assertEqual(config["attack"]["prior"], 0.5)
+
+    def test_evaluation_default_config(self):
+        config = self._load("mia/configs/config_evaluation.yaml")
+        self.assertEqual(config["res_dir"], "")
+        self.assertEqual(config["attack"], "BASE")
+        self.assertEqual(config["metrics_folders"], ["sample"])
+        self.assertEqual(config["low_exponent"], -4)
 
 
 if __name__ == "__main__":

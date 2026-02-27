@@ -3,8 +3,8 @@ data_dir: ""
 res_dir: ""
 n_audit_samples: 30000
 audit_mode: "sample"
-target_model_paths:
-  # DDPM target checkpoint paths
+score_paths:
+  # Score pickle file/folder paths
   - ""
 attack:
   attack: "BASE"

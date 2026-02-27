@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import torch
 
+from mia import path_utils
 from mia import run_mia as run_mia_module
 
 
@@ -41,7 +42,7 @@ class TestRunMia(unittest.TestCase):
             with (
                 patch.object(run_mia_module, "load_dataset", return_value=dataset) as load_dataset_fn,
                 patch.object(run_mia_module, "get_attacker", return_value=attacker) as get_attacker_fn,
-                patch.object(run_mia_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
+                patch.object(run_mia_module.utils, "get_train_indices", return_value=torch.tensor([1, 3], dtype=torch.long)),
             ):
                 run_mia_module.run_mia(config=config, device=torch.device("cpu"))
 
@@ -51,17 +52,16 @@ class TestRunMia(unittest.TestCase):
             self.assertIs(attacker.calls[0][0], dataset)
             self.assertEqual(attacker.calls[0][1], Path(target_path))
 
-            scores_path = (
-                Path(tmpdir)
-                / "BASE"
-                / "scores_attack-BASE_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4_mode-sample.pkl"
-            )
+            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / "scores_attack-BASE_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pkl"
             self.assertTrue(scores_path.exists())
             with open(scores_path, "rb") as file:
                 scores = pickle.load(file)
-            self.assertEqual(len(scores), 4)
-            for score, expected in zip(scores, [0.1, 0.2, 0.3, 0.4]):
+            self.assertEqual(sorted(scores.keys()), ["scores", "train_mask"])
+            self.assertEqual(len(scores["scores"]), 4)
+            self.assertEqual(len(scores["train_mask"]), 4)
+            for score, expected in zip(scores["scores"], [0.1, 0.2, 0.3, 0.4]):
                 self.assertAlmostEqual(score, expected, places=6)
+            self.assertEqual(scores["train_mask"], [0, 1, 0, 1])
 
 
 if __name__ == "__main__":

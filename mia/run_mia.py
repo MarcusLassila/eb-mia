@@ -1,10 +1,10 @@
 from data.utils import load_dataset
 from . import attacks
+from . import path_utils
 import utils
 
 import argparse
 import torch
-from tqdm.auto import tqdm
 
 from pathlib import Path
 import pickle
@@ -39,34 +39,6 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths):
             raise ValueError(f"No MIA: {attack_config.attack}")
     return attacker
 
-def scores_pickle_name(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
-    '''Return normalized score pickle filename. Args: target_path (str|Path), attack (str), audit_mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None), n_audit_samples_per_entity (int|None). Returns: str.'''
-    parts = [
-        "scores",
-        f"attack-{attack}",
-        f"target-{Path(target_path).stem}",
-        f"mode-{audit_mode}",
-    ]
-    if audit_mode == "entity":
-        if n_audit_samples_per_entity is not None:
-            parts.append(f"n-{n_audit_samples_per_entity}")
-        min_value = "none" if min_samples_per_entity is None else str(min_samples_per_entity)
-        max_value = "none" if max_samples_per_entity is None else str(max_samples_per_entity)
-        parts.append(f"min-{min_value}")
-        parts.append(f"max-{max_value}")
-    return "_".join(parts) + ".pkl"
-
-def parse_args(argv=None):
-    '''Parse CLI arguments for sample-level MIA scoring. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
-    parser = argparse.ArgumentParser(description="Run sample-level membership inference and save scores.")
-    default_config_path = str(utils.resolve_path(Path("mia") / "configs" / "config_mia.yaml", utils.get_root()))
-    parser.add_argument(
-        "--config",
-        default=default_config_path,
-        help="Path to audit config yaml file.",
-    )
-    return parser.parse_args(argv)
-
 def run_mia(config, device):
     '''Run sample-level MIA on the full dataset and save score lists. Args: config (Config), device (torch.device)'''
     image_size = utils.parse_properties_from_checkpoint_path(config.target_model_paths[0])["size"]
@@ -88,10 +60,24 @@ def run_mia(config, device):
         )
         score = attacker.run_attack(data_population, target_path)
         assert len(score) == len(data_population)
-        Path(f"{config.res_dir}/{attack}").mkdir(parents=True, exist_ok=True)
-        filename = scores_pickle_name(target_path, attack, "sample")
-        with open(f"{config.res_dir}/{attack}/{filename}", "wb") as file:
-            pickle.dump(score.tolist(), file)
+        train_indices = utils.get_train_indices(target_path)
+        train_mask = utils.index_to_mask(train_indices, len(data_population)).to(dtype=torch.long)
+        result_scores_dir = path_utils.scores_dir(config.res_dir, attack, target_path)
+        result_scores_dir.mkdir(parents=True, exist_ok=True)
+        filename = path_utils.scores_pickle_name(target_path, attack)
+        with open(result_scores_dir / filename, "wb") as file:
+            pickle.dump({"scores": score.tolist(), "train_mask": train_mask.tolist()}, file)
+
+def parse_args(argv=None):
+    '''Parse CLI arguments for sample-level MIA scoring. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
+    parser = argparse.ArgumentParser(description="Run sample-level membership inference and save scores.")
+    default_config_path = str(utils.resolve_path(Path("mia") / "configs" / "config_mia.yaml", utils.get_root()))
+    parser.add_argument(
+        "--config",
+        default=default_config_path,
+        help="Path to audit config yaml file.",
+    )
+    return parser.parse_args(argv)
 
 def main(argv=None):
     '''Entry point for sample-level MIA CLI. Args: argv (list[str]|None). Returns: None.'''

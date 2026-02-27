@@ -10,6 +10,7 @@ from torch.utils.data import Subset
 from accelerate.accelerate import AcceleratorLite
 from data.data import EntityDataset
 from generative_models.ddpm import DDPM
+from mia import path_utils
 from mia import run_audit as run_audit_module
 from mia import run_mia as run_mia_module
 from training.train_loop import TrainConfig, TrainLoop
@@ -143,7 +144,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "dataset": "CelebA2",
                 "data_dir": str(tmpdir_path),
                 "res_dir": str(results_dir),
-                "target_model_paths": [str(target_path)],
+                "score_paths": [str(path_utils.scores_dir(results_dir, "BASE", target_path))],
                 "attack": {"attack": "CompositeBASE", "prior": 0.5},
                 "audit_mode": "entity",
                 "entity_audit_mode": "all",
@@ -151,26 +152,24 @@ class TestAuditEndToEnd(unittest.TestCase):
 
             with (
                 patch.object(run_mia_module, "load_dataset", return_value=dataset),
-                patch.object(run_mia_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
                 patch.object(run_audit_module, "load_dataset", return_value=dataset),
             ):
                 run_mia_module.run_mia(config=mia_config, device=torch.device("cpu"))
                 run_audit_module.run_entity_audit(config=audit_config)
 
             scores_path = (
-                results_dir
-                / "BASE"
-                / run_mia_module.scores_pickle_name(target_path, "BASE", "sample")
+                path_utils.scores_dir(results_dir, "BASE", target_path)
+                / path_utils.scores_pickle_name(target_path, "BASE")
             )
             self.assertTrue(scores_path.exists())
             with open(scores_path, "rb") as file:
                 sample_scores = pickle.load(file)
-            self.assertEqual(len(sample_scores), len(dataset))
+            self.assertEqual(len(sample_scores["scores"]), len(dataset))
+            self.assertEqual(len(sample_scores["train_mask"]), len(dataset))
 
             metrics_path = (
-                results_dir
-                / "CompositeBASE"
-                / run_audit_module.metrics_pickle_name(target_path, "CompositeBASE", "entity")
+                path_utils.metrics_dir(results_dir, scores_path, "entity", entity_audit_mode="all")
+                / path_utils.metrics_pickle_name(scores_path, "entity")
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:
