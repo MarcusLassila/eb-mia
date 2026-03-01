@@ -26,6 +26,7 @@ def evaluate_MIA(score, ground_truth):
         "FPR": fpr,
         "TPR": tpr,
         "thresholds": thresholds,
+        "n_audit_points": len(ground_truth),
     }
 
 def _assert_fixed_fpr_metrics_consistent(metrics):
@@ -67,7 +68,7 @@ def _collect_metrics_folder_summary(metrics_dir, fpr_space):
     interpolated_tprs = np.stack(interpolated_tprs, axis=0)
     return {
         "path": metrics_dir,
-        "target_stems": tuple(sorted(target_stems)),
+        "target_stems": tuple(sorted(set(target_stems))),
         "mean_tpr": np.mean(interpolated_tprs, axis=0),
         "AUC": {"mean": float(np.mean(auc_values)), "std": float(np.std(auc_values))},
         "TPR@1%FPR": {"mean": float(np.mean(tpr_1pct_values)), "std": float(np.std(tpr_1pct_values))},
@@ -107,12 +108,11 @@ def plot_average_roc_curves(output_dir, fpr_space, summaries):
     plt.figure()
     for summary in summaries:
         auc_stats = summary["AUC"]
-        mode_suffix = f"-{summary['path'].stem}"
         plt.loglog(
             fpr_space,
             summary["mean_tpr"],
             label=(
-                f"{summary['label']}{mode_suffix} | "
+                f"{summary['label']} | "
                 f"AUC: {100*auc_stats['mean']:.2f}% ± {100*auc_stats['std']:.2f}%"
             ),
         )

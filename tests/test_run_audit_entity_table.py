@@ -87,7 +87,7 @@ class TestGetEntityAuditTable(unittest.TestCase):
         audit_table = get_entity_audit_table(
             dataset,
             target_train_index,
-            mode="max_one_train_sample",
+            mode="max_one_train",
             n_audit_samples_per_entity=2,
         )
 

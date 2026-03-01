@@ -63,11 +63,13 @@ def score_pickle_paths(res_dir, attack):
     pattern = f"**/scores/scores_attack-{attack}_target-*.pkl"
     return sorted(res_dir.glob(pattern))
 
-def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None):
-    '''Return audit metrics directory derived from a score path. Args: res_dir (str|Path), scores_path (str|Path), audit_mode (str), entity_audit_mode (str|None). Returns: Path.'''
+def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None, n_audit_samples_per_entity=None):
+    '''Return audit metrics directory derived from a score path. Args: res_dir (str|Path), scores_path (str|Path), audit_mode (str), entity_audit_mode (str|None), n_audit_samples_per_entity (int|None). Returns: Path.'''
     if audit_mode == "entity":
         assert entity_audit_mode is not None
         folder_name = f"entity-{entity_audit_mode}"
+        if n_audit_samples_per_entity is not None:
+            folder_name += f"-n{n_audit_samples_per_entity}"
     else:
         folder_name = audit_mode
     score_meta = _parse_scores_filename(scores_path)
@@ -152,6 +154,16 @@ def metrics_folder_label(metrics_dir, common_meta):
     '''Return concise metrics folder label excluding model, dataset and size. Args: metrics_dir (str|Path), common_meta (dict). Returns: str.'''
     metrics_dir = Path(metrics_dir)
     parent_name = metrics_dir.parent.name
+    mode = metrics_dir.name
+    n_audit_samples_per_entity = None
+    entity_n_match = re.match(r"^(entity-.+)-n(?P<n>\d+)$", mode)
+    if entity_n_match is not None:
+        mode = entity_n_match.group(1)
+        n_audit_samples_per_entity = int(entity_n_match.group("n"))
+    if mode.startswith("entity-"):
+        mode = "ent-" + mode[len("entity-"):]
+    mode = mode.replace("max_one_train", "max_one")
+    mode = mode.replace("exclude_train", "excl_train")
     size_label = f"sz{common_meta['size']}" + ("-gray" if common_meta["gray"] else "")
     pattern = (
         rf"^(?P<attack>[^-]+)-{re.escape(common_meta['model'])}-"
@@ -159,9 +171,17 @@ def metrics_folder_label(metrics_dir, common_meta):
         rf"{re.escape(size_label)}-(?P<epoch>epoch.+)$"
     )
     match = re.match(pattern, parent_name)
-    if match is None:
-        return metrics_dir.name
-    return f"{match.group('attack')}-{match.group('split_info')}-{match.group('epoch')}"
+    assert match is not None
+    split_info = match.group("split_info")
+    if split_info.startswith("ent-"):
+        split_info = split_info[len("ent-"):]
+    elif split_info.startswith("rand-"):
+        split_info = split_info[len("rand-"):]
+    epoch = re.sub(r"^epoch", "e", match.group("epoch"))
+    label = f"{match.group('attack')}-{split_info}-{epoch}-{mode}"
+    if mode.startswith("ent-") and n_audit_samples_per_entity is not None:
+        label += f"-n{n_audit_samples_per_entity}"
+    return label
 
 def resolve_evaluation_paths(config, metrics_folders_override=None):
     '''Resolve output audit dir and metric folder paths. Args: config (Config), metrics_folders_override (list[str]|None). Returns: tuple[Path, list[Path]].'''

@@ -47,7 +47,7 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
         match mode:
             case "all":
                 selected_indices = indices
-            case "max_one_train_sample":
+            case "max_one_train":
                 overlap = sorted(indices & target_train_index)
                 if len(overlap) > 1:
                     keep = overlap[0]
@@ -67,7 +67,7 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
                 continue
             if n_selected > n_audit_samples_per_entity:
                 selected_indices_sorted = sorted(selected_indices)
-                if mode == "max_one_train_sample":
+                if mode == "max_one_train":
                     selected_target_indices = sorted(selected_indices & target_train_index)
                     if selected_target_indices:
                         keep = selected_target_indices[0]
@@ -119,6 +119,7 @@ def print_average_metrics_table(attack, metrics_list):
     mean_auc = float(np.mean([metrics["AUC"] for metrics in metrics_list]))
     mean_tpr_1pct = float(np.mean([metrics["TPR@1%FPR"] for metrics in metrics_list]))
     mean_tpr_0p1pct = float(np.mean([metrics["TPR@0.1%FPR"] for metrics in metrics_list]))
+    mean_num_audit_points = float(np.mean([metrics["n_audit_points"] for metrics in metrics_list]))
     print("")
     print(f"Audit summary ({attack})")
     print(f"{'Metric':<16} {'Mean':>10}")
@@ -126,6 +127,7 @@ def print_average_metrics_table(attack, metrics_list):
     print(f"{'AUC':<16} {mean_auc:>10.4f}")
     print(f"{'TPR@1%FPR':<16} {mean_tpr_1pct:>10.4f}")
     print(f"{'TPR@0.1%FPR':<16} {mean_tpr_0p1pct:>10.4f}")
+    print(f"{'n_audit_points':<16} {mean_num_audit_points:>10.4f}")
 
 def run_sample_audit(config):
     score_paths = path_utils.resolve_audit_score_paths(config)
@@ -186,7 +188,7 @@ def run_entity_audit(config):
             entity_id = entity_id.item()
             if entity_id in ground_truth:
                 ground_truth[entity_id] = 1
-        ground_truth = torch.tensor(list(ground_truth.values()), dtype=torch.long)
+        ground_truth = torch.tensor([ground_truth[entity_id] for entity_id in sorted(ground_truth.keys())], dtype=torch.long)
 
         entity_sample_scores = {
             entity_id: sample_scores[audit_samples.indices]
@@ -194,7 +196,7 @@ def run_entity_audit(config):
         }
 
         score = attacker.run_attack(entity_sample_scores)
-        score = torch.stack([score[entity_id] for entity_id in audit_table.keys()]).to(dtype=torch.float32)
+        score = torch.stack([score[entity_id] for entity_id in sorted(audit_table.keys())]).to(dtype=torch.float32)
         assert len(score) == len(ground_truth)
         metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
         all_metrics.append(metrics)
@@ -204,6 +206,7 @@ def run_entity_audit(config):
             scores_path,
             config.audit_mode,
             entity_audit_mode=config.mode,
+            n_audit_samples_per_entity=getattr(config, "n_audit_samples_per_entity", None),
         )
         result_metrics_dir.mkdir(parents=True, exist_ok=True)
         filename = path_utils.metrics_pickle_name(

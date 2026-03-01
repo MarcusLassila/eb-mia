@@ -81,7 +81,7 @@ class TestEvaluationCli(unittest.TestCase):
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
             label = summaries[0]["label"]
-            self.assertEqual(label, "BASE-ent-f0p5-p0p5-epoch1000")
+            self.assertEqual(label, "BASE-f0p5-p0p5-e1000-sample")
             self.assertNotIn("/", label)
             self.assertNotIn("DDPM", label)
             self.assertNotIn("CelebA2", label)
@@ -97,7 +97,70 @@ class TestEvaluationCli(unittest.TestCase):
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
-            self.assertEqual(summaries[0]["label"], "BASE-ent-f0p5-p0p5-epoch1000")
+            self.assertEqual(summaries[0]["label"], "BASE-f0p5-p0p5-e1000-ent-all")
+
+    def test_collect_metrics_folder_summaries_compacts_rand_and_max_one_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-DDPM-cifar10-rand-f0p5-sz32-epoch4"
+            folder = parent / "entity-max_one_train"
+            folder.mkdir(parents=True)
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-cifar10-rand-f0p5-s0-sz32-epoch4_mode-entity.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder])
+            self.assertEqual(summaries[0]["label"], "BASE-f0p5-e4-ent-max_one")
+
+    def test_collect_metrics_folder_summaries_compacts_exclude_train_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "entity-exclude_train"
+            folder.mkdir(parents=True)
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder])
+            self.assertEqual(summaries[0]["label"], "BASE-f0p5-p0p5-e1000-ent-excl_train")
+
+    def test_collect_metrics_folder_summaries_adds_n_suffix_from_metrics_dir_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "entity-max_one_train-n10"
+            folder.mkdir(parents=True)
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder])
+            self.assertEqual(summaries[0]["label"], "BASE-f0p5-p0p5-e1000-ent-max_one-n10")
+
+    def test_collect_metrics_folder_summaries_allows_different_entity_sampling_multiplicities(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder_a = parent / "entity-max_one_train"
+            folder_b = parent / "entity-exclude_train"
+            folder_a.mkdir(parents=True)
+            folder_b.mkdir(parents=True)
+            targets = [
+                "DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",
+                "DDPM-CelebA2-ent-f0p5-p0p5-s1-sz64-epoch1000",
+            ]
+            for target in targets:
+                metrics_a_1 = folder_a / f"metrics_attack-BASE_target-{target}_mode-entity_n-2_min-none_max-none.pkl"
+                metrics_a_2 = folder_a / f"metrics_attack-BASE_target-{target}_mode-entity_n-10_min-none_max-none.pkl"
+                metrics_b = folder_b / f"metrics_attack-BASE_target-{target}_mode-entity_min-none_max-none.pkl"
+                with open(metrics_a_1, "wb") as f:
+                    pickle.dump(_metrics_dict(), f)
+                with open(metrics_a_2, "wb") as f:
+                    pickle.dump(_metrics_dict(), f)
+                with open(metrics_b, "wb") as f:
+                    pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder_a, folder_b])
+            expected_targets = tuple(sorted(targets))
+            self.assertEqual(summaries[0]["target_stems"], expected_targets)
+            self.assertEqual(summaries[1]["target_stems"], expected_targets)
 
     def test_plot_average_roc_curves_uses_compact_title(self):
         fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
@@ -105,7 +168,7 @@ class TestEvaluationCli(unittest.TestCase):
             "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
             "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
             "AUC": {"mean": 0.75, "std": 0.05},
-            "label": "BASE-ent-f0p5-p0p5-epoch1000",
+            "label": "BASE-f0p5-p0p5-e1000-sample",
             "path": Path("sample"),
         }]
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -121,14 +184,14 @@ class TestEvaluationCli(unittest.TestCase):
             "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
             "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
             "AUC": {"mean": 0.75, "std": 0.05},
-            "label": "BASE-ent-f0p5-p0p5-epoch1000",
+            "label": "BASE-f0p5-p0p5-e1000-ent-all",
             "path": Path("entity-all"),
         }]
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("mia.evaluation.plt.loglog") as loglog_fn:
                 evaluation.plot_average_roc_curves(tmpdir, fpr_space, summaries)
         first_label = loglog_fn.call_args_list[0].kwargs["label"]
-        self.assertIn("BASE-ent-f0p5-p0p5-epoch1000-entity-all | AUC:", first_label)
+        self.assertIn("BASE-f0p5-p0p5-e1000-ent-all | AUC:", first_label)
 
     def test_collect_metrics_folder_summaries_asserts_fixed_fpr_metrics_consistency(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -144,7 +207,7 @@ class TestEvaluationCli(unittest.TestCase):
 
     def test_print_metrics_table_formats_percentages(self):
         summaries = [{
-            "label": "BASE-ent-f0p5-p0p5-epoch1000",
+            "label": "BASE-f0p5-p0p5-e1000-sample",
             "AUC": {"mean": 0.75, "std": 0.05},
             "TPR@1%FPR": {"mean": 0.12, "std": 0.01},
             "TPR@0.1%FPR": {"mean": 0.03, "std": 0.005},

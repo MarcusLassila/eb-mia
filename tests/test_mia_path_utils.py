@@ -19,6 +19,17 @@ class TestMiaPathUtils(unittest.TestCase):
             result_dir,
             Path("/results/BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/entity-all"),
         )
+        result_dir_with_n = path_utils.metrics_dir(
+            "/results",
+            scores_path,
+            "entity",
+            entity_audit_mode="max_one_train",
+            n_audit_samples_per_entity=10,
+        )
+        self.assertEqual(
+            result_dir_with_n,
+            Path("/results/BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/entity-max_one_train-n10"),
+        )
         filename = path_utils.metrics_pickle_name(scores_path, "entity", min_samples_per_entity=1, max_samples_per_entity=2)
         self.assertEqual(
             filename,

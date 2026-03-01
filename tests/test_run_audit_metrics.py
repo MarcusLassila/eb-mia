@@ -118,7 +118,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "data_dir": tmpdir,
                 "batch_size": 2,
                 "audit_mode": "entity",
-                "mode": "max_one_train_sample",
+                "mode": "max_one_train",
                 "n_audit_samples_per_entity": 2,
                 "min_samples_per_entity": 1,
                 "max_samples_per_entity": 2,
@@ -157,7 +157,13 @@ class TestRunAuditMetrics(unittest.TestCase):
             print_fn.assert_any_call("Audit summary (CompositeBASE)")
 
             metrics_path = (
-                path_utils.metrics_dir(tmpdir, scores_path, "entity", entity_audit_mode="max_one_train_sample")
+                path_utils.metrics_dir(
+                    tmpdir,
+                    scores_path,
+                    "entity",
+                    entity_audit_mode="max_one_train",
+                    n_audit_samples_per_entity=2,
+                )
                 / "metrics_attack-BASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
             )
             self.assertTrue(metrics_path.exists())
