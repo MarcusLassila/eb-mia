@@ -6,6 +6,17 @@ import utils
 _SCORES_FILENAME_RE = re.compile(r"^scores_attack-(?P<attack>.+)_target-(?P<target>.+)\.pkl$")
 _METRICS_FILENAME_RE = re.compile(r"^metrics_attack-(?P<attack>.+)_target-(?P<target>.+)_mode-(?P<mode>.+)\.pkl$")
 
+def attack_name(attack, offline=False):
+    '''Return attack name with offline suffix when requested. Args: attack (str), offline (bool). Returns: str.'''
+    return f"{attack}-off" if offline else attack
+
+def parse_attack_name(attack):
+    '''Split attack name into base name and offline flag. Args: attack (str). Returns: tuple[str, bool].'''
+    suffix = "-off"
+    if attack.endswith(suffix):
+        return attack[:-len(suffix)], True
+    return attack, False
+
 def audit_result_name(attack, target_path):
     '''Return canonical audit result folder name. Args: attack (str), target_path (str|Path). Returns: str.'''
     props = utils.parse_properties_from_checkpoint_path(target_path)
@@ -52,6 +63,13 @@ def _parse_scores_filename(path):
         "attack": match.group("attack"),
         "target_stem": match.group("target"),
     }
+
+def infer_attack_from_score_paths(score_paths):
+    '''Infer a unique sample attack from score pickle paths. Args: score_paths (list[Path]). Returns: str.'''
+    attacks = sorted({score_attack_from_scores_pickle_path(path) for path in score_paths})
+    if len(attacks) != 1:
+        raise ValueError(f"Expected score files for one attack, got: {attacks}")
+    return attacks[0]
 
 def score_attack_from_scores_pickle_path(path):
     '''Extract attack from score pickle filename. Args: path (str|Path). Returns: str.'''
@@ -166,7 +184,7 @@ def metrics_folder_label(metrics_dir, common_meta):
     mode = mode.replace("exclude_train", "excl_train")
     size_label = f"sz{common_meta['size']}" + ("-gray" if common_meta["gray"] else "")
     pattern = (
-        rf"^(?P<attack>[^-]+)-{re.escape(common_meta['model'])}-"
+        rf"^(?P<attack>.+?)-{re.escape(common_meta['model'])}-"
         rf"{re.escape(common_meta['dataset'])}-(?P<split_info>.+)-"
         rf"{re.escape(size_label)}-(?P<epoch>epoch.+)$"
     )

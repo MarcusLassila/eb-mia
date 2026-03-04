@@ -56,7 +56,7 @@ def run_mia(config, device):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     target_model_paths = list(map(Path, config.target_model_paths))
     attack_config = utils.Config(config.attack)
-    attack = attack_config.attack
+    attack = path_utils.attack_name(attack_config.attack, offline=attack_config.offline)
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
     for target_idx, target_path in enumerate(target_model_paths):

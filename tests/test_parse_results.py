@@ -87,6 +87,18 @@ class TestEvaluationCli(unittest.TestCase):
             self.assertNotIn("CelebA2", label)
             self.assertNotIn("sz64", label)
 
+    def test_collect_metrics_folder_summaries_preserves_offline_attack_suffix_in_label(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            parent = tmpdir / "BASE-off-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "sample"
+            folder.mkdir(parents=True)
+            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(_metrics_dict(), f)
+            _, summaries = evaluation.collect_metrics_folder_summaries([folder])
+            self.assertEqual(summaries[0]["label"], "BASE-off-f0p5-p0p5-e1000-sample")
+
     def test_collect_metrics_folder_summaries_label_ignores_metrics_subfolder_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)

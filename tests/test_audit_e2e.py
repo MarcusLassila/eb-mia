@@ -144,7 +144,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "dataset": "CelebA2",
                 "data_dir": str(tmpdir_path),
                 "res_dir": str(results_dir),
-                "score_paths": [str(path_utils.scores_dir(results_dir, "BASE", target_path))],
+                "score_paths": [str(path_utils.scores_dir(results_dir, "BASE-off", target_path))],
                 "attack": {"attack": "CompositeBASE", "prior": 0.5},
                 "audit_mode": "entity",
                 "mode": "all",
@@ -160,8 +160,8 @@ class TestAuditEndToEnd(unittest.TestCase):
                 run_audit_module.run_entity_audit(config=audit_config)
 
             scores_path = (
-                path_utils.scores_dir(results_dir, "BASE", target_path)
-                / path_utils.scores_pickle_name(target_path, "BASE")
+                path_utils.scores_dir(results_dir, "BASE-off", target_path)
+                / path_utils.scores_pickle_name(target_path, "BASE-off")
             )
             self.assertTrue(scores_path.exists())
             with open(scores_path, "rb") as file:

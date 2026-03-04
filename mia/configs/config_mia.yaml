@@ -2,7 +2,6 @@ dataset: "CelebA2"
 data_dir: ""
 batch_size: 512
 round_robin: false
-offline: true
 res_dir: ""
 target_model_paths:
   # DDPM target checkpoint paths
@@ -12,5 +11,6 @@ shadow_model_paths:
   - ""
 attack:
   attack: "BASE"
+  offline: true
   prior: 0.5
   n_loss_samples: 1

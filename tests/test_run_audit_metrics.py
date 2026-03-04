@@ -113,7 +113,7 @@ class TestRunAuditMetrics(unittest.TestCase):
     def test_run_entity_audit_composes_base_scores_and_saves_metrics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth")
-            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / path_utils.scores_pickle_name(target_path, "BASE")
+            scores_path = path_utils.scores_dir(tmpdir, "BASE-off", target_path) / path_utils.scores_pickle_name(target_path, "BASE-off")
             audit_config = {
                 "dataset": "celeba",
                 "data_dir": tmpdir,
@@ -155,7 +155,7 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
             expected_scores = torch.tensor([0.6, 0.58], dtype=torch.float32)
             self.assertTrue(torch.allclose(captured["score"], expected_scores, atol=1e-6))
-            print_fn.assert_any_call("Audit summary (CompositeBASE)")
+            print_fn.assert_any_call("Audit summary (CompositeBASE-off)")
 
             metrics_path = (
                 path_utils.metrics_dir(
@@ -165,7 +165,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                     entity_audit_mode="max_one_train",
                     n_audit_samples_per_entity=2,
                 )
-                / "metrics_attack-BASE_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
+                / "metrics_attack-BASE-off_target-DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10_mode-entity_n-2_min-1_max-2.pkl"
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

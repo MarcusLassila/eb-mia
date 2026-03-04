@@ -14,13 +14,6 @@ import pickle
 import yaml
 import numpy as np
 
-def infer_attack_from_score_paths(score_paths):
-    '''Infer a unique sample attack from score pickle paths. Args: score_paths (list[Path]). Returns: str.'''
-    attacks = sorted({path_utils.score_attack_from_scores_pickle_path(path) for path in score_paths})
-    if len(attacks) != 1:
-        raise ValueError(f"Expected score files for one attack, got: {attacks}")
-    return attacks[0]
-
 def get_audit_indices(n_audit_samples, membership_mask):
     '''
     Get indices of audit samples with 50% target training member samples.
@@ -131,7 +124,7 @@ def print_average_metrics_table(attack, metrics_list):
 
 def run_sample_audit(config):
     score_paths = path_utils.resolve_audit_score_paths(config)
-    attack = infer_attack_from_score_paths(score_paths)
+    attack = path_utils.infer_attack_from_score_paths(score_paths)
     image_size = path_utils.target_properties_from_scores_pickle_path(score_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     all_metrics = []
@@ -154,7 +147,7 @@ def run_sample_audit(config):
 
 def run_entity_audit(config):
     score_paths = path_utils.resolve_audit_score_paths(config)
-    sample_attack = infer_attack_from_score_paths(score_paths)
+    sample_attack, is_offline_attack = path_utils.parse_attack_name(path_utils.infer_attack_from_score_paths(score_paths))
     n_audit_samples_per_entity = getattr(config, "n_audit_samples_per_entity", None)
     if config.mode == "all" and n_audit_samples_per_entity is not None:
         raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
@@ -162,11 +155,12 @@ def run_entity_audit(config):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
-    attack = f"Composite{sample_attack}"
-    attacker_cls = getattr(attacks, attack, None)
+    composite_attack = f"Composite{sample_attack}"
+    attacker_cls = getattr(attacks, composite_attack, None)
     if attacker_cls is None:
-        raise ValueError(f"No composite MIA: {attack}")
+        raise ValueError(f"No composite MIA: {composite_attack}")
     attacker = attacker_cls()
+    attack = composite_attack + ("-off" if is_offline_attack else "")
     all_metrics = []
     for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running entity-level audit"):
         sample_scores, train_mask = load_scores(scores_path)

@@ -55,7 +55,7 @@ class TestRunMia(unittest.TestCase):
             self.assertIs(attacker.calls[0][0], dataset)
             self.assertEqual(attacker.calls[0][1], Path(target_path))
 
-            scores_path = path_utils.scores_dir(tmpdir, "BASE", target_path) / "scores_attack-BASE_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pkl"
+            scores_path = path_utils.scores_dir(tmpdir, "BASE-off", target_path) / "scores_attack-BASE-off_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pkl"
             self.assertTrue(scores_path.exists())
             with open(scores_path, "rb") as file:
                 scores = pickle.load(file)
@@ -96,7 +96,7 @@ class TestRunMia(unittest.TestCase):
             self.assertIs(run_attack_args[0], dataset)
             self.assertEqual(run_attack_args[1], Path(target_path))
 
-            scores_path = path_utils.scores_dir(tmpdir, "LiRA", target_path) / path_utils.scores_pickle_name(target_path, "LiRA")
+            scores_path = path_utils.scores_dir(tmpdir, "LiRA-off", target_path) / path_utils.scores_pickle_name(target_path, "LiRA-off")
             self.assertTrue(scores_path.exists())
 
             audit_config = run_audit_module.utils.Config({
