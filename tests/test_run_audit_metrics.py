@@ -73,7 +73,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 patch.object(
                     run_audit_module.evaluation,
                     "evaluate_MIA",
-                    return_value={"AUC": 0.5, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1},
+                    return_value={"AUC": 0.5, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1, "n_audit_points": 2},
                 ) as eval_fn,
                 patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
                 patch("builtins.print") as print_fn,
@@ -107,6 +107,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 call(f"{'AUC':<16} {0.5:>10.4f}"),
                 call(f"{'TPR@1%FPR':<16} {0.25:>10.4f}"),
                 call(f"{'TPR@0.1%FPR':<16} {0.1:>10.4f}"),
+                call(f"{'n_audit_points':<16} {2.0:>10.4f}"),
             ])
 
     def test_run_entity_audit_composes_base_scores_and_saves_metrics(self):
@@ -140,7 +141,7 @@ class TestRunAuditMetrics(unittest.TestCase):
             def fake_evaluate(score, ground_truth):
                 captured["score"] = score.clone()
                 captured["ground_truth"] = ground_truth.clone()
-                return {"AUC": 0.6, "TPR@1%FPR": 0.3, "TPR@0.1%FPR": 0.2}
+                return {"AUC": 0.6, "TPR@1%FPR": 0.3, "TPR@0.1%FPR": 0.2, "n_audit_points": 2}
 
             with (
                 patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),

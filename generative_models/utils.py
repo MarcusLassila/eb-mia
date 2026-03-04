@@ -1,14 +1,13 @@
-import torch
-
 from utils import (
     has_torch_compile_wrapped_state_dict,
     load_checkpoint,
     parse_properties_from_checkpoint_path,
     unwrap_torch_compile_state_dict,
 )
-
 from .ddpm import DDPM
 from .vae import VAE
+
+import torch
 
 def load_model(path: str, device: torch.device):
     ''' Load a generative model and its training indices from a checkpoint.

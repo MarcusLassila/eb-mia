@@ -138,7 +138,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "res_dir": str(results_dir),
                 "target_model_paths": [str(target_path)],
                 "shadow_model_paths": [str(path) for path in shadow_paths],
-                "attack": {"attack": "BASE", "prior": 0.5, "n_loss_samples": 1},
+                "attack": {"attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
             })
             audit_config = run_audit_module.utils.Config({
                 "dataset": "CelebA2",
@@ -149,10 +149,12 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "audit_mode": "entity",
                 "mode": "all",
             })
+            base_scores = torch.linspace(0.1, 0.9, steps=len(dataset), dtype=torch.float32)
 
             with (
                 patch.object(run_mia_module, "load_dataset", return_value=dataset),
                 patch.object(run_audit_module, "load_dataset", return_value=dataset),
+                patch.object(run_mia_module.attacks.BASE, "run_attack", return_value=base_scores),
             ):
                 run_mia_module.run_mia(config=mia_config, device=torch.device("cpu"))
                 run_audit_module.run_entity_audit(config=audit_config)

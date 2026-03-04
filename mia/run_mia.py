@@ -25,14 +25,25 @@ def indices_of_shadow_models(index_target, n_models):
     index_shadow_models = sorted(set(range(n_models)) - excluded_indices)
     return index_shadow_models
 
-def get_attacker(attack_config, batch_size, device, shadow_model_paths):
+def get_attacker(attack_config, batch_size, device, shadow_model_paths, len_dataset):
     match attack_config.attack:
         case "BASE":
             attacker = attacks.BASE(
                 batch_size=batch_size,
                 device=device,
                 shadow_model_paths=shadow_model_paths,
+                len_dataset=len_dataset,
+                offline=attack_config.offline,
                 prior=attack_config.prior,
+                n_loss_samples=attack_config.n_loss_samples,
+            )
+        case "LiRA":
+            attacker = attacks.LiRA(
+                batch_size=batch_size,
+                device=device,
+                shadow_model_paths=shadow_model_paths,
+                len_dataset=len_dataset,
+                offline=attack_config.offline,
                 n_loss_samples=attack_config.n_loss_samples,
             )
         case _:
@@ -57,11 +68,12 @@ def run_mia(config, device):
             batch_size=config.batch_size,
             device=device,
             shadow_model_paths=shadow_model_paths,
+            len_dataset=len(data_population),
         )
         score = attacker.run_attack(data_population, target_path)
         assert len(score) == len(data_population)
         train_indices = utils.get_train_indices(target_path)
-        train_mask = utils.index_to_mask(train_indices, len(data_population)).to(dtype=torch.long)
+        train_mask = utils.index_to_mask(train_indices, len(data_population)).to(dtype=torch.bool)
         result_scores_dir = path_utils.scores_dir(config.res_dir, attack, target_path)
         result_scores_dir.mkdir(parents=True, exist_ok=True)
         filename = path_utils.scores_pickle_name(target_path, attack)
