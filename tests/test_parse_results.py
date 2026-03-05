@@ -73,8 +73,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_uses_short_labels(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder = parent / "sample"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-sample"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
             with open(metrics_path, "wb") as f:
@@ -90,8 +90,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_preserves_offline_attack_suffix_in_label(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-off-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder = parent / "sample"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-off-sample"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
             with open(metrics_path, "wb") as f:
@@ -102,8 +102,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_label_ignores_metrics_subfolder_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder = parent / "entity-all"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-entity-all"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity-all.pkl"
             with open(metrics_path, "wb") as f:
@@ -114,8 +114,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_compacts_rand_and_max_one_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-cifar10-rand-f0p5-sz32-epoch4"
-            folder = parent / "entity-max_one_train"
+            parent = tmpdir / "DDPM-cifar10-rand-f0p5-sz32-epoch4"
+            folder = parent / "BASE-entity-max_one_train"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE_target-DDPM-cifar10-rand-f0p5-s0-sz32-epoch4_mode-entity.pkl"
             with open(metrics_path, "wb") as f:
@@ -126,8 +126,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_compacts_exclude_train_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder = parent / "entity-exclude_train"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-entity-exclude_train"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity.pkl"
             with open(metrics_path, "wb") as f:
@@ -138,8 +138,8 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_adds_n_suffix_from_metrics_dir_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder = parent / "entity-max_one_train-n10"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-entity-max_one_train-n10"
             folder.mkdir(parents=True)
             metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
             with open(metrics_path, "wb") as f:
@@ -150,9 +150,9 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_allows_different_entity_sampling_multiplicities(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-            folder_a = parent / "entity-max_one_train"
-            folder_b = parent / "entity-exclude_train"
+            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder_a = parent / "BASE-entity-max_one_train"
+            folder_b = parent / "BASE-entity-exclude_train"
             folder_a.mkdir(parents=True)
             folder_b.mkdir(parents=True)
             targets = [

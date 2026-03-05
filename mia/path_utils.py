@@ -17,8 +17,8 @@ def parse_attack_name(attack):
         return attack[:-len(suffix)], True
     return attack, False
 
-def audit_result_name(attack, target_path):
-    '''Return canonical audit result folder name. Args: attack (str), target_path (str|Path). Returns: str.'''
+def audit_result_name(target_path):
+    '''Return canonical audit result folder name without attack prefix. Args: target_path (str|Path). Returns: str.'''
     props = utils.parse_properties_from_checkpoint_path(target_path)
     split_stem = props["split"]
     dataset_prefix = f"{props['dataset']}-"
@@ -30,7 +30,6 @@ def audit_result_name(attack, target_path):
         size_part += "-gray"
     epoch_part = "none" if props["epoch"] is None else str(props["epoch"])
     return "-".join([
-        attack,
         props["model"],
         props["dataset"],
         split_info,
@@ -38,13 +37,13 @@ def audit_result_name(attack, target_path):
         f"epoch{epoch_part}",
     ])
 
-def audit_result_dir(res_dir, attack, target_path):
-    '''Return canonical audit result directory. Args: res_dir (str|Path), attack (str), target_path (str|Path). Returns: Path.'''
-    return Path(res_dir) / audit_result_name(attack, target_path)
+def audit_result_dir(res_dir, target_path):
+    '''Return canonical audit result directory without attack prefix. Args: res_dir (str|Path), target_path (str|Path). Returns: Path.'''
+    return Path(res_dir) / audit_result_name(target_path)
 
 def scores_dir(res_dir, attack, target_path):
-    '''Return sample score directory. Args: res_dir (str|Path), attack (str), target_path (str|Path). Returns: Path.'''
-    return audit_result_dir(res_dir, attack, target_path) / "scores"
+    '''Return sample score directory with attack prefix. Args: res_dir (str|Path), attack (str), target_path (str|Path). Returns: Path.'''
+    return audit_result_dir(res_dir, target_path) / f"{attack}-scores"
 
 def scores_pickle_name(target_path, attack):
     '''Return normalized score pickle filename. Args: target_path (str|Path), attack (str). Returns: str.'''
@@ -78,7 +77,7 @@ def score_attack_from_scores_pickle_path(path):
 def score_pickle_paths(res_dir, attack):
     '''Return score pickle paths for one attack under res_dir. Args: res_dir (str|Path), attack (str). Returns: list[Path].'''
     res_dir = Path(res_dir)
-    pattern = f"**/scores/scores_attack-{attack}_target-*.pkl"
+    pattern = f"**/{attack}-scores/scores_attack-{attack}_target-*.pkl"
     return sorted(res_dir.glob(pattern))
 
 def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None, n_audit_samples_per_entity=None):
@@ -92,7 +91,7 @@ def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None, n_audi
         folder_name = audit_mode
     score_meta = _parse_scores_filename(scores_path)
     target_path = Path(f"{score_meta['target_stem']}.pth")
-    return audit_result_dir(res_dir, score_meta["attack"], target_path) / folder_name
+    return audit_result_dir(res_dir, target_path) / f"{score_meta['attack']}-{folder_name}"
 
 def target_stem_from_metrics_pickle_path(path):
     '''Extract target checkpoint stem from a metrics pickle filename. Args: path (str|Path). Returns: str.'''
@@ -172,7 +171,11 @@ def metrics_folder_label(metrics_dir, common_meta):
     '''Return concise metrics folder label excluding model, dataset and size. Args: metrics_dir (str|Path), common_meta (dict). Returns: str.'''
     metrics_dir = Path(metrics_dir)
     parent_name = metrics_dir.parent.name
-    mode = metrics_dir.name
+    folder_name = metrics_dir.name
+    folder_match = re.match(r"^(?P<attack>.+)-(?P<mode>sample|entity-.+)$", folder_name)
+    assert folder_match is not None
+    attack = folder_match.group("attack")
+    mode = folder_match.group("mode")
     n_audit_samples_per_entity = None
     entity_n_match = re.match(r"^(entity-.+)-n(?P<n>\d+)$", mode)
     if entity_n_match is not None:
@@ -184,8 +187,7 @@ def metrics_folder_label(metrics_dir, common_meta):
     mode = mode.replace("exclude_train", "excl_train")
     size_label = f"sz{common_meta['size']}" + ("-gray" if common_meta["gray"] else "")
     pattern = (
-        rf"^(?P<attack>.+?)-{re.escape(common_meta['model'])}-"
-        rf"{re.escape(common_meta['dataset'])}-(?P<split_info>.+)-"
+        rf"^{re.escape(common_meta['model'])}-{re.escape(common_meta['dataset'])}-(?P<split_info>.+)-"
         rf"{re.escape(size_label)}-(?P<epoch>epoch.+)$"
     )
     match = re.match(pattern, parent_name)
@@ -196,7 +198,7 @@ def metrics_folder_label(metrics_dir, common_meta):
     elif split_info.startswith("rand-"):
         split_info = split_info[len("rand-"):]
     epoch = re.sub(r"^epoch", "e", match.group("epoch"))
-    label = f"{match.group('attack')}-{split_info}-{epoch}-{mode}"
+    label = f"{attack}-{split_info}-{epoch}-{mode}"
     if mode.startswith("ent-") and n_audit_samples_per_entity is not None:
         label += f"-n{n_audit_samples_per_entity}"
     return label

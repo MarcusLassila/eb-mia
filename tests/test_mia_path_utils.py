@@ -15,15 +15,15 @@ class TestMiaPathUtils(unittest.TestCase):
 
     def test_audit_result_name_matches_task_format(self):
         target_path = "/tmp/DDPM-CelebA2-ent-f0p5-p0p5-s3-sz64-epoch1000.pth"
-        result_name = path_utils.audit_result_name("BASE", target_path)
-        self.assertEqual(result_name, "BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000")
+        result_name = path_utils.audit_result_name(target_path)
+        self.assertEqual(result_name, "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000")
 
     def test_metrics_dir_and_filename_are_derived_from_scores_path(self):
         scores_path = Path("/tmp/scores_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000.pkl")
         result_dir = path_utils.metrics_dir("/results", scores_path, "entity", entity_audit_mode="all")
         self.assertEqual(
             result_dir,
-            Path("/results/BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/entity-all"),
+            Path("/results/DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/BASE-entity-all"),
         )
         result_dir_with_n = path_utils.metrics_dir(
             "/results",
@@ -34,7 +34,7 @@ class TestMiaPathUtils(unittest.TestCase):
         )
         self.assertEqual(
             result_dir_with_n,
-            Path("/results/BASE-DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/entity-max_one_train-n10"),
+            Path("/results/DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/BASE-entity-max_one_train-n10"),
         )
         filename = path_utils.metrics_pickle_name(scores_path, "entity", min_samples_per_entity=1, max_samples_per_entity=2)
         self.assertEqual(
