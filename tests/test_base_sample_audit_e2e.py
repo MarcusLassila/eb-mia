@@ -20,37 +20,44 @@ class _MockModel:
 
 
 class TestBaseSampleAuditEndToEnd(unittest.TestCase):
-    def test_base_scores_feed_sample_audit_and_evaluation_outputs(self):
+    def _run_base_scores_feed_sample_audit_and_evaluation_outputs(
+        self,
+        dataset_name,
+        target_split_spec,
+        shadow_split_and_indices,
+        expect_exact_half_inclusion,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
-            target_path = tmpdir_path / "DDPM-cifar10-rand-f0p5-s0-sz32-epoch4.pth"
+            target_path = tmpdir_path / f"DDPM-{dataset_name}-{target_split_spec}-s0-sz32-epoch4.pth"
             shadow_paths = [
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s1-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s2-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s4-sz32-epoch4.pth",
+                tmpdir_path / f"DDPM-{dataset_name}-{shadow_split_spec}-sz32-epoch4.pth"
+                for shadow_split_spec, _ in shadow_split_and_indices
             ]
-            dataset = list(range(4))
+            dataset = list(range(10))
 
             train_indices_by_path = {
-                target_path: torch.tensor([0, 2], dtype=torch.long),
-                shadow_paths[0]: torch.tensor([0, 1], dtype=torch.long),
-                shadow_paths[1]: torch.tensor([0, 2], dtype=torch.long),
-                shadow_paths[2]: torch.tensor([1, 3], dtype=torch.long),
-                shadow_paths[3]: torch.tensor([2, 3], dtype=torch.long),
+                target_path: torch.tensor([0, 2, 4, 6, 8], dtype=torch.long),
             }
+            for (_, train_indices), shadow_path in zip(shadow_split_and_indices, shadow_paths):
+                train_indices_by_path[shadow_path] = torch.tensor(train_indices, dtype=torch.long)
+            target_loss_signal = torch.linspace(0.2, 1.1, steps=len(dataset), dtype=torch.float32)
+            shadow_loss_signal = torch.linspace(1.0, 1.9, steps=len(dataset), dtype=torch.float32)
             loss_signal_by_path = {
-                target_path: torch.tensor([0.2, 0.4, 0.6, 0.8], dtype=torch.float32),
-                shadow_paths[0]: torch.tensor([0.1, 1.0, 1.1, 1.2], dtype=torch.float32),
-                shadow_paths[1]: torch.tensor([1.0, 0.2, 1.1, 1.2], dtype=torch.float32),
-                shadow_paths[2]: torch.tensor([1.0, 1.1, 0.3, 1.2], dtype=torch.float32),
-                shadow_paths[3]: torch.tensor([1.0, 1.1, 1.2, 0.4], dtype=torch.float32),
+                target_path: target_loss_signal,
             }
+            for shadow_index, shadow_path in enumerate(shadow_paths):
+                signal = shadow_loss_signal.clone()
+                signal[shadow_index] = 0.1 + 0.1 * shadow_index
+                loss_signal_by_path[shadow_path] = signal
             n_in_per_sample = torch.zeros(len(dataset), dtype=torch.long)
             for path in shadow_paths:
                 n_in_per_sample[train_indices_by_path[path]] += 1
             expected_n_in = len(shadow_paths) // 2
-            self.assertTrue(torch.all(n_in_per_sample == expected_n_in))
+            if expect_exact_half_inclusion:
+                self.assertTrue(torch.all(n_in_per_sample == expected_n_in))
+            else:
+                self.assertTrue(torch.all(n_in_per_sample != expected_n_in))
 
             def fake_load_model(self, path):
                 path = Path(path)
@@ -60,7 +67,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 return loss_signal_by_path[model.path]
 
             mia_config = run_mia_module.utils.Config({
-                "dataset": "cifar10",
+                "dataset": dataset_name,
                 "data_dir": str(tmpdir_path),
                 "batch_size": 2,
                 "round_robin": False,
@@ -87,19 +94,44 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 scores_payload = pickle.load(file)
             self.assertEqual(len(scores_payload["scores"]), len(dataset))
             self.assertEqual(len(scores_payload["train_mask"]), len(dataset))
+            self.assertEqual(scores_path.parent.name, "BASE-off-scores")
+            self.assertIn("scores_attack-BASE-off_target-", scores_path.name)
+
+            target_signal = loss_signal_by_path[target_path]
+            shadow_train_sets = {
+                shadow_path: set(train_indices_by_path[shadow_path].tolist())
+                for shadow_path in shadow_paths
+            }
+            expected_scores = []
+            for sample_index in range(len(dataset)):
+                out_losses = [
+                    loss_signal_by_path[shadow_path][sample_index]
+                    for shadow_path in shadow_paths
+                    if sample_index not in shadow_train_sets[shadow_path]
+                ]
+                ref = torch.logsumexp(-torch.stack(out_losses), dim=0) - torch.log(torch.tensor(float(len(out_losses))))
+                expected_scores.append((-target_signal[sample_index] - ref).sigmoid())
+            self.assertTrue(
+                torch.allclose(
+                    torch.tensor(scores_payload["scores"], dtype=torch.float32),
+                    torch.stack(expected_scores),
+                    atol=1e-6,
+                )
+            )
 
             audit_config = run_audit_module.utils.Config({
-                "dataset": "cifar10",
+                "dataset": dataset_name,
                 "data_dir": str(tmpdir_path),
                 "res_dir": str(tmpdir_path),
                 "audit_mode": "sample",
-                "n_audit_samples": 4,
+                "n_audit_samples": len(dataset),
                 "score_paths": [str(scores_path)],
             })
 
+            all_audit_indices = torch.arange(len(dataset), dtype=torch.long)
             with (
                 patch.object(run_audit_module, "load_dataset", return_value=dataset),
-                patch.object(run_audit_module, "get_audit_indices", return_value=torch.tensor([0, 1, 2, 3], dtype=torch.long)),
+                patch.object(run_audit_module, "get_audit_indices", return_value=all_audit_indices),
             ):
                 run_audit_module.run_sample_audit(config=audit_config)
 
@@ -113,6 +145,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             self.assertIn("AUC", metrics)
             self.assertIn("TPR@1%FPR", metrics)
             self.assertIn("TPR@0.1%FPR", metrics)
+            self.assertEqual(metrics["n_audit_points"], len(dataset))
 
             eval_config = run_mia_module.utils.Config({
                 "res_dir": str(tmpdir_path),
@@ -123,6 +156,36 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             self.assertEqual(len(summaries), 1)
             roc_plot_path = tmpdir_path / f"average_roc_curves_{metrics_path.parent.stem}.png"
             self.assertTrue(roc_plot_path.exists())
+
+            return scores_path, metrics_path
+
+    def test_base_scores_feed_sample_audit_and_evaluation_outputs_with_complement_pairs(self):
+        self._run_base_scores_feed_sample_audit_and_evaluation_outputs(
+            dataset_name="cifar10",
+            target_split_spec="rand-f0p5",
+            shadow_split_and_indices=[
+                ("rand-f0p5-s1", [0, 2, 4, 6, 8]),
+                ("rand-f0p5-s1-comp", [1, 3, 5, 7, 9]),
+                ("rand-f0p5-s2", [0, 1, 2, 3, 4]),
+                ("rand-f0p5-s2-comp", [5, 6, 7, 8, 9]),
+            ],
+            expect_exact_half_inclusion=True,
+        )
+
+    def test_base_scores_feed_sample_audit_and_evaluation_outputs_for_entity_split_without_half_inclusion(self):
+        scores_path, metrics_path = self._run_base_scores_feed_sample_audit_and_evaluation_outputs(
+            dataset_name="CelebA2",
+            target_split_spec="ent-f0p5-p0p5",
+            shadow_split_and_indices=[
+                ("ent-f0p5-p0p5-s1", [0, 1, 2]),
+                ("ent-f0p5-p0p5-s2", [0, 3, 4]),
+                ("ent-f0p5-p0p5-s3", [0, 5, 6]),
+                ("ent-f0p5-p0p5-s4", [7, 8, 9]),
+            ],
+            expect_exact_half_inclusion=False,
+        )
+        self.assertIn("ent-f0p5-p0p5", str(scores_path))
+        self.assertIn("ent-f0p5-p0p5", str(metrics_path))
 
 
 if __name__ == "__main__":

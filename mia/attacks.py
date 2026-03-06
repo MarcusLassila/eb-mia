@@ -78,19 +78,25 @@ class BASE(MIA):
         sig_target = self.loss_signal(audit_loader, target_model)
         del target_model
         sig_shadow_models = []
-        masks = []
+        mask = []
         for model_path in self.shadow_model_paths:
             shadow_model, shadow_train_index = self.load_model(model_path)
-            masks.append(~index_to_mask(shadow_train_index, self.len_dataset))  # audit_samples is currently assumed to be the entire dataset 
+            mask.append(~index_to_mask(shadow_train_index, self.len_dataset))  # audit_samples is currently assumed to be the entire dataset
             sig = self.loss_signal(audit_loader, shadow_model)
             sig_shadow_models.append(sig)
         sig_shadow_models = torch.stack(sig_shadow_models, dim=1)
-        masks = torch.stack(masks, dim=1)
+        mask = torch.stack(mask, dim=1)
+        assert sig_shadow_models.shape == (len(audit_samples), len(self.shadow_model_paths))
+        assert mask.shape == sig_shadow_models.shape
         if self.offline:
-            sig_shadow_models = sig_shadow_models[masks].reshape(-1, len(self.shadow_model_paths) // 2)
-        ref = torch.logsumexp(-sig_shadow_models, dim=1) - np.log(sig_shadow_models.shape[1])
+            sig_shadow_models = sig_shadow_models.masked_fill(~mask, torch.inf)
+            n_shadow_models = mask.to(torch.int32).sum(dim=1)
+        else:
+            n_shadow_models = torch.tensor([len(self.shadow_model_paths)], torch.int32)
+        ref = torch.logsumexp(-sig_shadow_models, dim=1) - torch.log(n_shadow_models)
         lam = np.log(self.prior / (1 - self.prior))
         score = -sig_target - ref + lam
+        assert score.shape == (len(audit_samples),)
         return score.sigmoid()
 
 class LiRA(MIA):
