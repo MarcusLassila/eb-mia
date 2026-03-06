@@ -15,15 +15,22 @@ import yaml
 import numpy as np
 
 def get_audit_indices(n_audit_samples, membership_mask):
-    '''
-    Get indices of audit samples with 50% target training member samples.
-    '''
+    assert n_audit_samples <= membership_mask.shape[0]
     member_indices = utils.mask_to_index(membership_mask)
     non_member_indices = utils.mask_to_index(~membership_mask)
+    if 2 * member_indices.shape[0] < n_audit_samples:
+        n_in_samples = member_indices.shape[0]
+        n_out_samples = n_audit_samples - n_in_samples
+    elif 2 * non_member_indices.shape[0] < n_audit_samples:
+        n_out_samples = non_member_indices.shape[0]
+        n_in_samples = n_audit_samples - n_out_samples
+    else:
+        n_in_samples = n_audit_samples // 2
+        n_out_samples = n_audit_samples // 2 + n_audit_samples % 2
     rand_mask = torch.randperm(member_indices.shape[0])
-    selected_members = member_indices[rand_mask][:n_audit_samples // 2]
+    selected_members = member_indices[rand_mask][:n_in_samples]
     rand_mask = torch.randperm(non_member_indices.shape[0])
-    selected_non_members = non_member_indices[rand_mask][:n_audit_samples // 2]
+    selected_non_members = non_member_indices[rand_mask][:n_out_samples]
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
