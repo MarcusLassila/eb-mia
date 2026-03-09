@@ -138,7 +138,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "res_dir": str(results_dir),
                 "target_model_paths": [str(target_path)],
                 "shadow_model_paths": [str(path) for path in shadow_paths],
-                "attack": {"attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
+                "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
             })
             audit_config = run_audit_module.utils.Config({
                 "dataset": "CelebA2",

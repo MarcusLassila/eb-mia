@@ -6,17 +6,6 @@ import utils
 _SCORES_FILENAME_RE = re.compile(r"^scores_attack-(?P<attack>.+)_target-(?P<target>.+)\.pkl$")
 _METRICS_FILENAME_RE = re.compile(r"^metrics_attack-(?P<attack>.+)_target-(?P<target>.+)_mode-(?P<mode>.+)\.pkl$")
 
-def attack_name(attack, offline=False):
-    '''Return attack name with offline suffix when requested. Args: attack (str), offline (bool). Returns: str.'''
-    return f"{attack}-off" if offline else attack
-
-def parse_attack_name(attack):
-    '''Split attack name into base name and offline flag. Args: attack (str). Returns: tuple[str, bool].'''
-    suffix = "-off"
-    if attack.endswith(suffix):
-        return attack[:-len(suffix)], True
-    return attack, False
-
 def audit_result_name(target_path):
     '''Return canonical audit result folder name without attack prefix. Args: target_path (str|Path). Returns: str.'''
     props = utils.parse_properties_from_checkpoint_path(target_path)

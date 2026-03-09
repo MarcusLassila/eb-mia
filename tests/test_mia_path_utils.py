@@ -7,12 +7,6 @@ from mia import run_audit as run_audit_module
 
 
 class TestMiaPathUtils(unittest.TestCase):
-    def test_attack_name_and_parse_attack_name_roundtrip(self):
-        offline_attack = path_utils.attack_name("BASE", offline=True)
-        self.assertEqual(offline_attack, "BASE-off")
-        self.assertEqual(path_utils.parse_attack_name(offline_attack), ("BASE", True))
-        self.assertEqual(path_utils.parse_attack_name("LiRA"), ("LiRA", False))
-
     def test_audit_result_name_matches_task_format(self):
         target_path = "/tmp/DDPM-CelebA2-ent-f0p5-p0p5-s3-sz64-epoch1000.pth"
         result_name = path_utils.audit_result_name(target_path)

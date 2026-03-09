@@ -33,8 +33,9 @@ class TestDefaultConfigs(unittest.TestCase):
         self.assertTrue(all(isinstance(path, str) for path in config["target_model_paths"]))
         self.assertTrue(all(isinstance(path, str) for path in config["shadow_model_paths"]))
         self.assertIsInstance(config["attack"], dict)
-        for key in ("attack", "offline", "prior", "n_loss_samples"):
+        for key in ("name", "attack", "offline", "prior", "n_loss_samples"):
             self.assertIn(key, config["attack"])
+        self.assertIsInstance(config["attack"]["name"], str)
         self.assertIsInstance(config["attack"]["attack"], str)
         self.assertIsInstance(config["attack"]["offline"], bool)
         self.assertIsInstance(config["attack"]["prior"], (int, float))

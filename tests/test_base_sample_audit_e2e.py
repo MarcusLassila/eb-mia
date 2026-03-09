@@ -74,7 +74,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 "res_dir": str(tmpdir_path),
                 "target_model_paths": [str(target_path)],
                 "shadow_model_paths": [str(path) for path in shadow_paths],
-                "attack": {"attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
+                "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
             })
 
             with (

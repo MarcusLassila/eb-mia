@@ -174,6 +174,38 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertIn("audit_config", metrics)
             self.assertIsInstance(metrics["audit_config"], dict)
 
+    def test_run_entity_audit_preserves_custom_base_attack_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth")
+            attack = "BASE-prior-0p5"
+            scores_path = path_utils.scores_dir(tmpdir, attack, target_path) / path_utils.scores_pickle_name(target_path, attack)
+            scores_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(scores_path, "wb") as file:
+                pickle.dump(
+                    {"scores": [0.2, 0.5, 0.1, 0.1, 0.1, 0.1, 0.3, 0.4], "train_mask": [1, 0, 1, 0, 1, 0, 0, 0]},
+                    file,
+                )
+            config = run_audit_module.utils.Config({
+                "dataset": "celeba",
+                "data_dir": tmpdir,
+                "audit_mode": "entity",
+                "mode": "max_one_train",
+                "n_audit_samples_per_entity": 2,
+                "res_dir": tmpdir,
+                "score_paths": [str(scores_path)],
+            })
+            dataset = DummyEntityDataset([0, 0, 1, 1, 2, 2, 3, 3])
+
+            with (
+                patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
+                patch.object(run_audit_module, "load_dataset", return_value=dataset),
+                patch.object(run_audit_module.evaluation, "evaluate_MIA", return_value={"AUC": 0.5, "TPR@1%FPR": 0.2, "TPR@0.1%FPR": 0.1, "n_audit_points": 2}),
+                patch("builtins.print") as print_fn,
+            ):
+                run_audit_module.run_entity_audit(config=config)
+
+            print_fn.assert_any_call("Audit summary (CompositeBASE-prior-0p5)")
+
     def test_run_entity_audit_rejects_all_mode_with_n_audit_samples_per_entity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth")

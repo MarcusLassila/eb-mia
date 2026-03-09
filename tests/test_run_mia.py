@@ -34,7 +34,7 @@ class TestRunMia(unittest.TestCase):
                 "res_dir": tmpdir,
                 "target_model_paths": [target_path],
                 "shadow_model_paths": [shadow_path],
-                "attack": {"attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
+                "attack": {"name": "base-prior-0p5", "attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
             }
             config = run_mia_module.utils.Config(dict(config_dict))
             dataset = list(range(4))
@@ -55,7 +55,7 @@ class TestRunMia(unittest.TestCase):
             self.assertIs(attacker.calls[0][0], dataset)
             self.assertEqual(attacker.calls[0][1], Path(target_path))
 
-            scores_path = path_utils.scores_dir(tmpdir, "BASE-off", target_path) / "scores_attack-BASE-off_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pkl"
+            scores_path = path_utils.scores_dir(tmpdir, "base-prior-0p5", target_path) / "scores_attack-base-prior-0p5_target-DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pkl"
             self.assertTrue(scores_path.exists())
             with open(scores_path, "rb") as file:
                 scores = pickle.load(file)
@@ -78,7 +78,14 @@ class TestRunMia(unittest.TestCase):
                 "res_dir": tmpdir,
                 "target_model_paths": [target_path],
                 "shadow_model_paths": [shadow_path],
-                "attack": {"attack": "LiRA", "offline": True, "n_loss_samples": 1},
+                "attack": {
+                    "name": "LiRA-nll-global",
+                    "attack": "LiRA",
+                    "offline": True,
+                    "n_loss_samples": 1,
+                    "use_global_var": True,
+                    "loss_transformation": "nll",
+                },
             })
             dataset = list(range(4))
             lira_scores = torch.tensor([0.1, 0.9, 0.2, 0.8], dtype=torch.float32)
@@ -96,7 +103,7 @@ class TestRunMia(unittest.TestCase):
             self.assertIs(run_attack_args[0], dataset)
             self.assertEqual(run_attack_args[1], Path(target_path))
 
-            scores_path = path_utils.scores_dir(tmpdir, "LiRA-off", target_path) / path_utils.scores_pickle_name(target_path, "LiRA-off")
+            scores_path = path_utils.scores_dir(tmpdir, "LiRA-nll-global", target_path) / path_utils.scores_pickle_name(target_path, "LiRA-nll-global")
             self.assertTrue(scores_path.exists())
 
             audit_config = run_audit_module.utils.Config({
@@ -134,6 +141,52 @@ class TestRunMia(unittest.TestCase):
             self.assertEqual(metrics["n_audit_points"], 4)
             self.assertIn("audit_config", metrics)
             self.assertIsInstance(metrics["audit_config"], dict)
+
+    def test_get_attacker_passes_lira_config_parameters(self):
+        sentinel = object()
+        with patch.object(run_mia_module.attacks, "LiRA", return_value=sentinel) as lira_cls:
+            attack_config = run_mia_module.utils.Config({
+                "name": "LiRA-custom",
+                "attack": "LiRA",
+                "offline": False,
+                "n_loss_samples": 3,
+                "use_global_var": False,
+                "loss_transformation": "none",
+            })
+            attacker = run_mia_module.get_attacker(
+                attack_config=attack_config,
+                batch_size=8,
+                device=torch.device("cpu"),
+                shadow_model_paths=[Path("/tmp/shadow.pth")],
+                len_dataset=17,
+            )
+
+        self.assertIs(attacker, sentinel)
+        lira_cls.assert_called_once_with(
+            batch_size=8,
+            device=torch.device("cpu"),
+            shadow_model_paths=[Path("/tmp/shadow.pth")],
+            len_dataset=17,
+            offline=False,
+            n_loss_samples=3,
+            use_global_var=False,
+            loss_transformation="none",
+        )
+
+    def test_run_mia_requires_attack_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = run_mia_module.utils.Config({
+                "dataset": "cifar10",
+                "data_dir": tmpdir,
+                "batch_size": 2,
+                "round_robin": False,
+                "res_dir": tmpdir,
+                "target_model_paths": [str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth")],
+                "shadow_model_paths": [str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s4-sz32-epoch4.pth")],
+                "attack": {"attack": "BASE", "offline": True, "prior": 0.5, "n_loss_samples": 1},
+            })
+            with self.assertRaisesRegex(ValueError, "define 'name'"):
+                run_mia_module.run_mia(config=config, device=torch.device("cpu"))
 
 
 if __name__ == "__main__":

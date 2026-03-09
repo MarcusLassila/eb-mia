@@ -14,6 +14,14 @@ import pickle
 import yaml
 import numpy as np
 
+def composite_attack_name(sample_attack):
+    '''Return composite attack class name and display name derived from a saved sample attack name. Args: sample_attack (str). Returns: tuple[str, str].'''
+    if sample_attack.startswith("BASE"):
+        return "CompositeBASE", sample_attack.replace("BASE", "CompositeBASE", 1)
+    if sample_attack.startswith("LiRA"):
+        return "CompositeLiRA", sample_attack.replace("LiRA", "CompositeLiRA", 1)
+    raise ValueError(f"Could not infer composite attack from sample attack name: {sample_attack}")
+
 def get_audit_indices(n_audit_samples, membership_mask):
     assert n_audit_samples <= membership_mask.shape[0]
     member_indices = utils.mask_to_index(membership_mask)
@@ -154,7 +162,7 @@ def run_sample_audit(config):
 
 def run_entity_audit(config):
     score_paths = path_utils.resolve_audit_score_paths(config)
-    sample_attack, is_offline_attack = path_utils.parse_attack_name(path_utils.infer_attack_from_score_paths(score_paths))
+    sample_attack = path_utils.infer_attack_from_score_paths(score_paths)
     n_audit_samples_per_entity = getattr(config, "n_audit_samples_per_entity", None)
     if config.mode == "all" and n_audit_samples_per_entity is not None:
         raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
@@ -162,12 +170,11 @@ def run_entity_audit(config):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
-    composite_attack = f"Composite{sample_attack}"
-    attacker_cls = getattr(attacks, composite_attack, None)
+    composite_attack_cls_name, attack = composite_attack_name(sample_attack)
+    attacker_cls = getattr(attacks, composite_attack_cls_name, None)
     if attacker_cls is None:
-        raise ValueError(f"No composite MIA: {composite_attack}")
+        raise ValueError(f"No composite MIA: {composite_attack_cls_name}")
     attacker = attacker_cls()
-    attack = composite_attack + ("-off" if is_offline_attack else "")
     all_metrics = []
     for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running entity-level audit"):
         sample_scores, train_mask = load_scores(scores_path)

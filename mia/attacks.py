@@ -101,7 +101,18 @@ class BASE(MIA):
 
 class LiRA(MIA):
 
-    def __init__(self, batch_size, device, shadow_model_paths, len_dataset, offline=True, n_loss_samples=1, eps=1e-11):
+    def __init__(
+        self,
+        batch_size,
+        device,
+        shadow_model_paths,
+        len_dataset,
+        offline=True,
+        n_loss_samples=1,
+        eps=1e-11,
+        use_global_var=True,
+        loss_transformation="logit_scaling",
+    ):
         self.batch_size = batch_size
         self.device = device
         self.shadow_model_paths = shadow_model_paths
@@ -109,6 +120,8 @@ class LiRA(MIA):
         self.offline = offline
         self.n_loss_samples = n_loss_samples
         self.eps = eps
+        self.use_global_var = use_global_var
+        self.loss_transformation = loss_transformation
 
     @torch.inference_mode()
     def loss_signal(self, audit_loader, model):
@@ -120,18 +133,29 @@ class LiRA(MIA):
         assert sig.shape == (len(audit_loader.dataset),)
         return sig
 
-    @staticmethod
-    def logit_scale_transformation(loss_sigs):
-        return -loss_sigs - torch.log1p(-torch.exp(-loss_sigs))
+    def transform_loss_values(self, loss_sigs):
+        match self.loss_transformation:
+            case "logit_scaling":
+                rescaled_sigs = -loss_sigs - torch.log1p(-torch.exp(-loss_sigs))
+            case "nll":
+                rescaled_sigs = torch.exp(-loss_sigs)
+            case "none":
+                rescaled_sigs = loss_sigs
+            case _:
+                raise ValueError(f"Unavailable transformation {self.loss_transformation}")
+        return rescaled_sigs
 
-    @staticmethod
-    def _mean_and_std(phi, mask):
+    def _mean_and_std(self, phi, mask):
         n = mask.sum(dim=0)
         assert torch.all(n)
-        phi = phi * mask
-        mean = phi.sum(dim=0) / n
-        var = (phi ** 2).sum(dim=0) / n - mean ** 2
-        return mean, var.clamp_min(0.0).sqrt()
+        phi_m = phi * mask
+        mean = phi_m.sum(dim=0) / n
+        if self.use_global_var:
+            std = phi[mask].std()
+        else:
+            var = (phi_m ** 2).sum(dim=0) / n - mean ** 2
+            std = var.clamp_min(0.0).sqrt()
+        return mean, std
 
     def query_shadow_models(self, audit_loader):
         in_mask = []
@@ -142,7 +166,7 @@ class LiRA(MIA):
             in_mask.append(train_mask)
             loss_sigs.append(self.loss_signal(audit_loader, shadow_model))
         loss_sigs = torch.stack(loss_sigs, dim=0)
-        phi = self.logit_scale_transformation(loss_sigs) 
+        phi = self.transform_loss_values(loss_sigs)
         in_mask = torch.stack(in_mask, dim=0)
         out_mask = ~in_mask
 
@@ -159,7 +183,7 @@ class LiRA(MIA):
         mean_in, std_in, mean_out, std_out = self.query_shadow_models(audit_loader)
         target_model, _ = self.load_model(target_model_path)
         loss_sig = self.loss_signal(audit_loader, target_model)
-        phi = self.logit_scale_transformation(loss_sig)
+        phi = self.transform_loss_values(loss_sig)
         if self.offline:
             score = norm.logcdf(
                 phi.cpu().numpy(),

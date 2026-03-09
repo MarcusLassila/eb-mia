@@ -45,6 +45,8 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths, len_data
                 len_dataset=len_dataset,
                 offline=attack_config.offline,
                 n_loss_samples=attack_config.n_loss_samples,
+                use_global_var=getattr(attack_config, "use_global_var", True),
+                loss_transformation=getattr(attack_config, "loss_transformation", "logit_scaling"),
             )
         case _:
             raise ValueError(f"No MIA: {attack_config.attack}")
@@ -52,11 +54,13 @@ def get_attacker(attack_config, batch_size, device, shadow_model_paths, len_data
 
 def run_mia(config, device):
     '''Run sample-level MIA on the full dataset and save score lists. Args: config (Config), device (torch.device)'''
+    attack_config = utils.Config(config.attack)
+    attack = getattr(attack_config, "name", None)
+    if attack is None:
+        raise ValueError("Attack config must define 'name'.")
     image_size = utils.parse_properties_from_checkpoint_path(config.target_model_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     target_model_paths = list(map(Path, config.target_model_paths))
-    attack_config = utils.Config(config.attack)
-    attack = path_utils.attack_name(attack_config.attack, offline=attack_config.offline)
     if not config.round_robin:
         shadow_model_paths = list(map(Path, config.shadow_model_paths))
     for target_idx, target_path in enumerate(target_model_paths):

@@ -10,6 +10,7 @@ shadow_model_paths:
   # DDPM shadow checkpoint paths (unused when round_robin=true)
   - ""
 attack:
+  name: "BASE-off"
   attack: "BASE"
   offline: true
   prior: 0.5
