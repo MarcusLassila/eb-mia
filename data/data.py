@@ -26,6 +26,9 @@ class EntityDataset(Dataset, ABC):
 
     def get_entity_index_table(self):
         table = defaultdict(list)
+        # TODO: enforce this in some other way
+        unique_ids = set(torch.unique(self.entity_ids).tolist())
+        assert sorted(unique_ids) == list(range(len(unique_ids)))
         for idx, id in enumerate(self.entity_ids):
             table[id.item()].append(idx)
         return table

@@ -18,7 +18,11 @@ class DummyAttacker:
 
     def run_attack(self, audit_samples, target_path):
         self.calls.append((audit_samples, Path(target_path)))
-        return torch.tensor([0.1, 0.2, 0.3, 0.4], dtype=torch.float32)
+        return {
+            "score": torch.tensor([0.1, 0.2, 0.3, 0.4], dtype=torch.float32),
+            "loss_sigs": None,
+            "shadow_train_mask": None,
+        }
 
 
 class TestRunMia(unittest.TestCase):
@@ -93,7 +97,18 @@ class TestRunMia(unittest.TestCase):
             with (
                 patch.object(run_mia_module, "load_dataset", return_value=dataset) as mia_load_dataset_fn,
                 patch.object(run_mia_module.utils, "get_train_indices", return_value=torch.tensor([0, 2], dtype=torch.long)),
-                patch.object(run_mia_module.attacks.LiRA, "run_attack", return_value=lira_scores) as run_attack_fn,
+                patch.object(
+                    run_mia_module.attacks.LiRA,
+                    "run_attack",
+                    return_value={
+                        "score": lira_scores,
+                        "loss_sigs": torch.tensor([
+                            [1.0, 2.0, 3.0, 4.0],
+                            [1.5, 2.5, 3.5, 4.5],
+                        ], dtype=torch.float32),
+                        "shadow_train_mask": torch.tensor([[1, 0, 1, 0]], dtype=torch.bool),
+                    },
+                ) as run_attack_fn,
             ):
                 run_mia_module.run_mia(config=mia_config, device=torch.device("cpu"))
 
@@ -105,6 +120,10 @@ class TestRunMia(unittest.TestCase):
 
             scores_path = path_utils.scores_dir(tmpdir, "LiRA-nll-global", target_path) / path_utils.scores_pickle_name(target_path, "LiRA-nll-global")
             self.assertTrue(scores_path.exists())
+            with open(scores_path, "rb") as file:
+                scores_payload = pickle.load(file)
+            self.assertIn("loss_sigs", scores_payload)
+            self.assertIn("shadow_train_mask", scores_payload)
 
             audit_config = run_audit_module.utils.Config({
                 "dataset": "cifar10",

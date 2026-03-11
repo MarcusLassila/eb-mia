@@ -15,11 +15,11 @@ import yaml
 import numpy as np
 
 def composite_attack_name(sample_attack):
-    '''Return composite attack class name and display name derived from a saved sample attack name. Args: sample_attack (str). Returns: tuple[str, str].'''
+    '''Return composite attack function name and display name derived from a saved sample attack name. Args: sample_attack (str). Returns: tuple[str, str].'''
     if sample_attack.startswith("BASE"):
-        return "CompositeBASE", sample_attack.replace("BASE", "CompositeBASE", 1)
+        return "composite_BASE", sample_attack.replace("BASE", "CompositeBASE", 1)
     if sample_attack.startswith("LiRA"):
-        return "CompositeLiRA", sample_attack.replace("LiRA", "CompositeLiRA", 1)
+        return "composite_LiRA", sample_attack.replace("LiRA", "CompositeLiRA", 1)
     raise ValueError(f"Could not infer composite attack from sample attack name: {sample_attack}")
 
 def get_audit_indices(n_audit_samples, membership_mask):
@@ -102,11 +102,7 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
     else:
         raise RuntimeError("Failed to include both target and non-target entities in the audit table.")
 
-    audit_samples = {
-        entity_id: Subset(data_population, selected_index_table[entity_id])
-        for entity_id in entity_ids
-    }
-    return audit_samples
+    return {entity_id: selected_index_table[entity_id] for entity_id in entity_ids}
 
 def load_scores(scores_path):
     '''Load sample-level MIA scores and train mask from a score pickle. Args: scores_path (str|Path). Returns: tuple[torch.Tensor, torch.Tensor].'''
@@ -118,9 +114,14 @@ def load_scores(scores_path):
         raise ValueError("Scores pickle must contain keys 'scores' and 'train_mask'.")
     scores = torch.tensor(scores_payload["scores"], dtype=torch.float32)
     train_mask = torch.tensor(scores_payload["train_mask"], dtype=torch.bool)
+    loss_sigs = None
+    shadow_train_mask = None
+    if "loss_sigs" in scores_payload and "shadow_train_mask" in scores_payload:
+        loss_sigs = torch.tensor(scores_payload["loss_sigs"], dtype=torch.float32)
+        shadow_train_mask = torch.tensor(scores_payload["shadow_train_mask"], dtype=torch.bool)
     if len(scores) != len(train_mask):
         raise ValueError(f"Score length and train mask length mismatch in {scores_path}.")
-    return scores, train_mask
+    return scores, train_mask, loss_sigs, shadow_train_mask
 
 def print_average_metrics_table(attack, metrics_list):
     '''Print mean audit metrics over target models. Args: attack (str), metrics_list (list[dict]). Returns: None.'''
@@ -144,7 +145,7 @@ def run_sample_audit(config):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     all_metrics = []
     for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running sample-level audit"):
-        scores, membership_mask = load_scores(scores_path)
+        scores, membership_mask, *_ = load_scores(scores_path)
         if len(scores) != len(data_population):
             raise ValueError(f"Unexpected score length in {scores_path}: got {len(scores)}, expected {len(data_population)}.")
         audit_indices = get_audit_indices(getattr(config, "n_audit_samples", len(data_population)), membership_mask)
@@ -170,14 +171,11 @@ def run_entity_audit(config):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
-    composite_attack_cls_name, attack = composite_attack_name(sample_attack)
-    attacker_cls = getattr(attacks, composite_attack_cls_name, None)
-    if attacker_cls is None:
-        raise ValueError(f"No composite MIA: {composite_attack_cls_name}")
-    attacker = attacker_cls()
+    composite_attack_fn_name, attack = composite_attack_name(sample_attack)
+    composite_attack_fn = getattr(attacks, composite_attack_fn_name)
     all_metrics = []
     for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running entity-level audit"):
-        sample_scores, train_mask = load_scores(scores_path)
+        sample_scores, train_mask, loss_sigs, shadow_train_mask = load_scores(scores_path)
         if len(sample_scores) != len(data_population):
             raise ValueError(f"Unexpected score length in {scores_path}: got {len(sample_scores)}, expected {len(data_population)}.")
         target_train_index = utils.mask_to_index(train_mask)
@@ -198,12 +196,19 @@ def run_entity_audit(config):
                 ground_truth[entity_id] = 1
         ground_truth = torch.tensor([ground_truth[entity_id] for entity_id in sorted(ground_truth.keys())], dtype=torch.long)
 
-        entity_sample_scores = {
-            entity_id: sample_scores[audit_samples.indices]
-            for entity_id, audit_samples in audit_table.items()
-        }
-
-        score = attacker.run_attack(entity_sample_scores)
+        if composite_attack_fn_name == "composite_BASE":
+            entity_sample_scores = {
+                entity_id: sample_scores[indices]
+                for entity_id, indices in audit_table.items()
+            }
+            score = composite_attack_fn(entity_sample_scores)
+        elif composite_attack_fn_name == "composite_LiRA":
+            entity_index_table = data_population.get_entity_index_table()
+            shadow_entity_mask = torch.zeros(size=(shadow_train_mask.shape[0], len(entity_index_table)), dtype=torch.bool)
+            for idx, sample_mask in enumerate(shadow_train_mask):
+                for entity_id, indices in entity_index_table.items():
+                    shadow_entity_mask[idx, entity_id] = torch.any(sample_mask[indices])
+            score = composite_attack_fn(audit_table, loss_sigs, shadow_entity_mask)
         score = torch.stack([score[entity_id] for entity_id in sorted(audit_table.keys())]).to(dtype=torch.float32)
         assert len(score) == len(ground_truth)
         metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)

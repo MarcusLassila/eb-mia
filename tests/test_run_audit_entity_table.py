@@ -45,10 +45,10 @@ class TestGetEntityAuditTable(unittest.TestCase):
         )
 
         self.assertEqual(list(audit_table.keys()), [0, 1, 3, 5])
-        self.assertEqual(audit_table[0].indices, [0, 1])
-        self.assertEqual(audit_table[1].indices, [2, 3, 4])
-        self.assertEqual(audit_table[3].indices, [6, 7])
-        self.assertEqual(audit_table[5].indices, [12, 13])
+        self.assertEqual(audit_table[0], [0, 1])
+        self.assertEqual(audit_table[1], [2, 3, 4])
+        self.assertEqual(audit_table[3], [6, 7])
+        self.assertEqual(audit_table[5], [12, 13])
 
         target_entities = {0, 1, 2}
         n_target = sum(entity_id in target_entities for entity_id in audit_table.keys())
@@ -71,8 +71,8 @@ class TestGetEntityAuditTable(unittest.TestCase):
         )
 
         self.assertEqual(list(audit_table.keys()), [0, 1])
-        self.assertEqual(audit_table[0].indices, [1])
-        self.assertEqual(audit_table[1].indices, [2])
+        self.assertEqual(audit_table[0], [1])
+        self.assertEqual(audit_table[1], [2])
 
     def test_exact_samples_per_entity_preserves_kept_target_sample_in_max_one_train_mode(self):
         dataset = DummyEntityDataset([
@@ -92,13 +92,13 @@ class TestGetEntityAuditTable(unittest.TestCase):
         )
 
         self.assertEqual(list(audit_table.keys()), [0, 1, 2, 3])
-        self.assertEqual(len(audit_table[0].indices), 2)
-        self.assertEqual(len(audit_table[1].indices), 2)
-        self.assertEqual(len(audit_table[2].indices), 2)
-        self.assertEqual(len(audit_table[3].indices), 2)
+        self.assertEqual(len(audit_table[0]), 2)
+        self.assertEqual(len(audit_table[1]), 2)
+        self.assertEqual(len(audit_table[2]), 2)
+        self.assertEqual(len(audit_table[3]), 2)
         self.assertNotIn(4, audit_table)
-        self.assertIn(2, audit_table[0].indices)
-        self.assertIn(4, audit_table[1].indices)
+        self.assertIn(2, audit_table[0])
+        self.assertIn(4, audit_table[1])
 
 
 if __name__ == "__main__":

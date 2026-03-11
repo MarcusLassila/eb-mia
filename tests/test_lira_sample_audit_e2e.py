@@ -40,7 +40,17 @@ class TestLiRAOfflineSampleAuditEndToEnd(unittest.TestCase):
             def fake_lira_run_attack(self, audit_samples, target_path):
                 target_seed = run_mia_module.utils.parse_properties_from_checkpoint_path(target_path)["seed"]
                 offset = 0.01 * target_seed
-                return torch.linspace(0.1 + offset, 0.9 + offset, steps=len(audit_samples), dtype=torch.float32)
+                return {
+                    "score": torch.linspace(0.1 + offset, 0.9 + offset, steps=len(audit_samples), dtype=torch.float32),
+                    "loss_sigs": torch.stack([
+                        torch.linspace(1.0 + offset, 2.0 + offset, steps=len(audit_samples), dtype=torch.float32),
+                        torch.linspace(1.5 + offset, 2.5 + offset, steps=len(audit_samples), dtype=torch.float32),
+                        torch.linspace(2.0 + offset, 3.0 + offset, steps=len(audit_samples), dtype=torch.float32),
+                        torch.linspace(2.5 + offset, 3.5 + offset, steps=len(audit_samples), dtype=torch.float32),
+                        torch.linspace(3.0 + offset, 4.0 + offset, steps=len(audit_samples), dtype=torch.float32),
+                    ]),
+                    "shadow_train_mask": torch.zeros((4, len(audit_samples)), dtype=torch.bool),
+                }
 
             score_paths = []
             with (

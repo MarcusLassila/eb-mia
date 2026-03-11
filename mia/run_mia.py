@@ -74,15 +74,26 @@ def run_mia(config, device):
             shadow_model_paths=shadow_model_paths,
             len_dataset=len(data_population),
         )
-        score = attacker.run_attack(data_population, target_path)
+        res_dict = attacker.run_attack(data_population, target_path)
+        score = res_dict["score"]
+        loss_sigs = res_dict["loss_sigs"]
+        shadow_train_mask = res_dict["shadow_train_mask"]
         assert len(score) == len(data_population)
         train_indices = utils.get_train_indices(target_path)
         train_mask = utils.index_to_mask(train_indices, len(data_population)).to(dtype=torch.bool)
         result_scores_dir = path_utils.scores_dir(config.res_dir, attack, target_path)
         result_scores_dir.mkdir(parents=True, exist_ok=True)
         filename = path_utils.scores_pickle_name(target_path, attack)
+        payload = {
+            "scores": score.tolist(),
+            "train_mask": train_mask.tolist(),
+        }
+        if loss_sigs is not None:
+            payload["loss_sigs"] = loss_sigs.tolist()
+        if shadow_train_mask is not None:
+            payload["shadow_train_mask"] = shadow_train_mask.tolist()
         with open(result_scores_dir / filename, "wb") as file:
-            pickle.dump({"scores": score.tolist(), "train_mask": train_mask.tolist()}, file)
+            pickle.dump(payload, file)
 
 def parse_args(argv=None):
     '''Parse CLI arguments for sample-level MIA scoring. Args: argv (list[str]|None). Returns: argparse.Namespace.'''

@@ -154,7 +154,15 @@ class TestAuditEndToEnd(unittest.TestCase):
             with (
                 patch.object(run_mia_module, "load_dataset", return_value=dataset),
                 patch.object(run_audit_module, "load_dataset", return_value=dataset),
-                patch.object(run_mia_module.attacks.BASE, "run_attack", return_value=base_scores),
+                patch.object(
+                    run_mia_module.attacks.BASE,
+                    "run_attack",
+                    return_value={
+                        "score": base_scores,
+                        "loss_sigs": None,
+                        "shadow_train_mask": None,
+                    },
+                ),
             ):
                 run_mia_module.run_mia(config=mia_config, device=torch.device("cpu"))
                 run_audit_module.run_entity_audit(config=audit_config)
