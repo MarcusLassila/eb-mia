@@ -181,7 +181,7 @@ class LiRA(MIA):
         mean_in, std_in, mean_out, std_out, loss_sigs, shadow_train_mask = self.query_shadow_models(audit_loader)
         target_model, _ = self.load_model(target_model_path)
         loss_sig = self.loss_signal(audit_loader, target_model)
-        loss_sigs = torch.cat([loss_sig, loss_sigs], dim=0)
+        loss_sigs = torch.cat([loss_sig.unsqueeze(0), loss_sigs], dim=0)
         assert loss_sigs.shape == (len(self.shadow_model_paths) + 1, len(audit_samples))
         phi = self.transform_loss_values(loss_sig)
         if self.offline:
