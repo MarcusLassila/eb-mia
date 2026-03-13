@@ -204,7 +204,7 @@ def run_entity_audit(config):
             score = composite_attack_fn(entity_sample_scores)
         elif composite_attack_fn_name == "composite_LiRA":
             entity_index_table = data_population.get_entity_index_table()
-            shadow_entity_mask = torch.zeros(size=(shadow_train_mask.shape[0], len(entity_index_table)), dtype=torch.bool)
+            shadow_entity_mask = torch.zeros(size=(shadow_train_mask.shape[0], data_population.max_entity_id + 1), dtype=torch.bool)
             for idx, sample_mask in enumerate(shadow_train_mask):
                 for entity_id, indices in entity_index_table.items():
                     shadow_entity_mask[idx, entity_id] = torch.any(sample_mask[indices])

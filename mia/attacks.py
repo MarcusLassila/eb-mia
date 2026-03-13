@@ -192,12 +192,12 @@ class LiRA(MIA):
             )
             score = torch.tensor(score)
         else:
-            p_in = norm.logcdf(
+            p_in = norm.logpdf(
                 phi.cpu().numpy(),
                 loc=mean_in.cpu().numpy(),
                 scale=std_in.cpu().numpy() + self.eps,
             )
-            p_out = norm.logcdf(
+            p_out = norm.logpdf(
                 phi.cpu().numpy(),
                 loc=mean_out.cpu().numpy(),
                 scale=std_out.cpu().numpy() + self.eps,
@@ -219,7 +219,7 @@ def composite_BASE(sample_scores_by_entity: dict):
         score[entity_id] = -torch.expm1(torch.log1p(-base_probs).sum())
     return score
 
-def composite_LiRA(audit_table, loss_sigs, shadow_entity_mask):
+def composite_LiRA(audit_table, loss_sigs, shadow_entity_mask, offline=True):
     phi = -loss_sigs
     phi_target, phi_shadow = phi[0], phi[1:]
     mean_in = {}
@@ -237,15 +237,23 @@ def composite_LiRA(audit_table, loss_sigs, shadow_entity_mask):
     for entity_id, indices in audit_table.items():
         cov_in = np.eye(len(indices), dtype=np.float32) * float(var_in)
         cov_out = np.eye(len(indices), dtype=np.float32) * float(var_out)
-        p_in = multivariate_normal.logpdf(
-            phi_target[indices].cpu().numpy(),
-            mean=mean_in[entity_id].cpu().numpy(),
-            cov=cov_in,
-        )
-        p_out = multivariate_normal.logpdf(
-            phi_target[indices].cpu().numpy(),
-            mean=mean_out[entity_id].cpu().numpy(),
-            cov=cov_out,
-        )
-        score[entity_id] = torch.tensor(p_in - p_out, dtype=torch.float32)
+        if offline:
+            p = multivariate_normal.logcdf(
+                phi_target[indices].cpu().numpy(),
+                mean=mean_out[entity_id].cpu().numpy(),
+                cov=cov_out,
+            )
+            score[entity_id] = torch.tensor(p, dtype=torch.float32)
+        else:
+            p_in = multivariate_normal.logpdf(
+                phi_target[indices].cpu().numpy(),
+                mean=mean_in[entity_id].cpu().numpy(),
+                cov=cov_in,
+            )
+            p_out = multivariate_normal.logpdf(
+                phi_target[indices].cpu().numpy(),
+                mean=mean_out[entity_id].cpu().numpy(),
+                cov=cov_out,
+            )
+            score[entity_id] = torch.tensor(p_in - p_out, dtype=torch.float32)
     return score

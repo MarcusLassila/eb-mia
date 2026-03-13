@@ -22,13 +22,14 @@ class _TinyCelebA2(EntityDataset):
         images = []
         entity_ids = []
         for entity_id in range(8):
+            raw_entity_id = 10 * entity_id + 7
             for sample_id in range(2):
                 image = torch.zeros(1, 4, 4, dtype=torch.float32)
                 image[:, :, entity_id % 4] = -0.5 + 0.15 * entity_id
                 image[:, sample_id::2, :] += 0.1
                 image[:, :, (entity_id + sample_id) % 4] += 0.05
                 images.append(image.clamp(-1.0, 1.0))
-                entity_ids.append(entity_id)
+                entity_ids.append(raw_entity_id)
         self.images = torch.stack(images)
         self._entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
@@ -39,6 +40,10 @@ class _TinyCelebA2(EntityDataset):
     @property
     def n_entities(self):
         return int(torch.unique(self._entity_ids).numel())
+
+    @property
+    def max_entity_id(self):
+        return int(self._entity_ids.max().item())
 
     def __getitem__(self, index):
         return self.images[int(index)]

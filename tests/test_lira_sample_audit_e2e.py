@@ -25,13 +25,14 @@ class _TinyCelebA2(EntityDataset):
         images = []
         entity_ids = []
         for entity_id in range(8):
+            raw_entity_id = 10 * entity_id + 7
             for sample_id in range(2):
                 image = torch.zeros(1, 4, 4, dtype=torch.float32)
                 image[:, :, entity_id % 4] = -0.5 + 0.15 * entity_id
                 image[:, sample_id::2, :] += 0.1
                 image[:, :, (entity_id + sample_id) % 4] += 0.05
                 images.append(image.clamp(-1.0, 1.0))
-                entity_ids.append(entity_id)
+                entity_ids.append(raw_entity_id)
         self.images = torch.stack(images)
         self._entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
@@ -42,6 +43,10 @@ class _TinyCelebA2(EntityDataset):
     @property
     def n_entities(self):
         return int(torch.unique(self._entity_ids).numel())
+
+    @property
+    def max_entity_id(self):
+        return int(self._entity_ids.max().item())
 
     def __getitem__(self, index):
         return self.images[int(index)]
@@ -156,12 +161,13 @@ class TestLiRAOfflineEntityAuditEndToEnd(unittest.TestCase):
                 )
 
             self.assertEqual(len(shadow_paths), 4)
-            shadow_entity_mask = torch.zeros((len(shadow_paths), dataset.n_entities), dtype=torch.bool)
+            shadow_entity_mask = torch.zeros((len(shadow_paths), dataset.max_entity_id + 1), dtype=torch.bool)
             for shadow_idx, split_path in enumerate(shadow_split_paths):
                 shadow_indices = train_split.load_indices(split_path)
                 shadow_entity_ids = torch.unique(dataset.entity_ids[torch.tensor(shadow_indices, dtype=torch.long)])
                 shadow_entity_mask[shadow_idx, shadow_entity_ids] = True
-            self.assertTrue(torch.equal(shadow_entity_mask.sum(dim=0), torch.full((dataset.n_entities,), 2, dtype=torch.int64)))
+            unique_entity_ids = torch.unique(dataset.entity_ids)
+            self.assertTrue(torch.equal(shadow_entity_mask[:, unique_entity_ids].sum(dim=0), torch.full((dataset.n_entities,), 2, dtype=torch.int64)))
 
             mia_config = run_mia_module.utils.Config({
                 "dataset": "CelebA2",
@@ -208,12 +214,13 @@ class TestLiRAOfflineEntityAuditEndToEnd(unittest.TestCase):
             self.assertEqual(torch.tensor(scores_payload["shadow_train_mask"]).shape, (4, len(dataset)))
 
             saved_shadow_train_mask = torch.tensor(scores_payload["shadow_train_mask"], dtype=torch.bool)
-            saved_shadow_entity_mask = torch.zeros((saved_shadow_train_mask.shape[0], dataset.n_entities), dtype=torch.bool)
+            saved_shadow_entity_mask = torch.zeros((saved_shadow_train_mask.shape[0], dataset.max_entity_id + 1), dtype=torch.bool)
             entity_index_table = dataset.get_entity_index_table()
             for shadow_idx, sample_mask in enumerate(saved_shadow_train_mask):
                 for entity_id, indices in entity_index_table.items():
                     saved_shadow_entity_mask[shadow_idx, entity_id] = torch.any(sample_mask[indices])
-            self.assertTrue(torch.equal(saved_shadow_entity_mask.sum(dim=0), torch.full((dataset.n_entities,), 2, dtype=torch.int64)))
+            unique_entity_ids = torch.unique(dataset.entity_ids)
+            self.assertTrue(torch.equal(saved_shadow_entity_mask[:, unique_entity_ids].sum(dim=0), torch.full((dataset.n_entities,), 2, dtype=torch.int64)))
 
             metrics_path = (
                 path_utils.metrics_dir(results_dir, scores_path, "entity", entity_audit_mode="all")

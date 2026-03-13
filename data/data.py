@@ -23,12 +23,14 @@ class EntityDataset(Dataset, ABC):
     @abstractmethod
     def n_entities(self):
         raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def max_entity_id(self):
+        raise NotImplementedError
 
     def get_entity_index_table(self):
         table = defaultdict(list)
-        # TODO: enforce this in some other way
-        unique_ids = set(torch.unique(self.entity_ids).tolist())
-        assert sorted(unique_ids) == list(range(len(unique_ids)))
         for idx, id in enumerate(self.entity_ids):
             table[id.item()].append(idx)
         return table
@@ -115,7 +117,11 @@ class CelebA(EntityDataset):
             )
         self.dataset = dataset
         self._celeb_ids = celeb_ids
-        self._n_entities = len(unique_ids)
+        unique_id_list = sorted(torch.unique(celeb_ids).tolist())
+        self._n_entities = len(unique_id_list)
+        self._max_entity_id = unique_id_list[-1]
+        self._index_to_entity_id_map = unique_id_list
+        self._entity_id_to_index_map = {entity_id: i for i, entity_id in enumerate(unique_id_list)}
 
     @property
     def entity_ids(self):
@@ -124,6 +130,18 @@ class CelebA(EntityDataset):
     @property
     def n_entities(self):
         return self._n_entities
+
+    @property
+    def max_entity_id(self):
+        return self._max_entity_id
+
+    @property
+    def index_to_entity_id_map(self):
+        return self._index_to_entity_id_map
+
+    @property
+    def entity_id_to_index_map(self):
+        return self._entity_id_to_index_map
 
     def __getitem__(self, index):
         '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''

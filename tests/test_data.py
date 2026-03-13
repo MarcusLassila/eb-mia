@@ -61,6 +61,7 @@ class TestData(unittest.TestCase):
                 )
                 self.assertEqual(len(dataset), 4)
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 2, 2])
+                self.assertEqual(dataset.max_entity_id, 2)
 
     def test_celeba_low_res_grayscale_transform(self):
         class FakeSplit:

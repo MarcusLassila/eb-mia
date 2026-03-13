@@ -16,6 +16,10 @@ class DummyEntityDataset:
     def __init__(self, entity_ids):
         self.entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
+    @property
+    def max_entity_id(self):
+        return int(self.entity_ids.max().item())
+
     def get_entity_index_table(self):
         table = defaultdict(list)
         for idx, entity_id in enumerate(self.entity_ids.tolist()):
@@ -128,7 +132,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "score_paths": [str(scores_path)],
             }
             config = run_audit_module.utils.Config(dict(audit_config))
-            dataset = DummyEntityDataset([0, 0, 1, 1, 2, 2, 3, 3])
+            dataset = DummyEntityDataset([10, 10, 20, 20, 30, 30, 40, 40])
             scores_path.parent.mkdir(parents=True, exist_ok=True)
             with open(scores_path, "wb") as file:
                 pickle.dump(
@@ -194,7 +198,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "res_dir": tmpdir,
                 "score_paths": [str(scores_path)],
             })
-            dataset = DummyEntityDataset([0, 0, 1, 1, 2, 2, 3, 3])
+            dataset = DummyEntityDataset([10, 10, 20, 20, 30, 30, 40, 40])
 
             with (
                 patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
