@@ -7,7 +7,6 @@ import utils
 
 import argparse
 import torch
-from torch.utils.data import Subset
 from tqdm.auto import tqdm
 
 import pickle
@@ -21,6 +20,54 @@ def composite_attack_name(sample_attack):
     if sample_attack.startswith("LiRA"):
         return "composite_LiRA", sample_attack.replace("LiRA", "CompositeLiRA", 1)
     raise ValueError(f"Could not infer composite attack from sample attack name: {sample_attack}")
+
+def indices_of_shadow_models(index_target, n_models):
+    '''Return round-robin shadow indices while excluding the target and its complement. Args: index_target (int), n_models (int). Returns: list[int].'''
+    assert 0 <= index_target < n_models
+    if index_target % 2 == 0:
+        excluded_indices = {index_target, index_target + 1}
+    else:
+        excluded_indices = {index_target - 1, index_target}
+    return sorted(set(range(n_models)) - excluded_indices)
+
+def attack_config_from_config(config):
+    '''Return attack config as a Config object. Args: config (Config). Returns: Config.'''
+    attack_config = getattr(config, "attack", None)
+    if attack_config is None:
+        raise ValueError("Audit config must define attack settings.")
+    if isinstance(attack_config, dict):
+        return utils.Config(attack_config)
+    return attack_config
+
+def get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask):
+    '''Instantiate the configured attack from shadow loss signals. Args: attack_config (Config), shadow_loss_sigs (torch.Tensor), shadow_train_mask (torch.Tensor). Returns: MIA.'''
+    match attack_config.attack:
+        case "BASE":
+            attacker = attacks.BASE(
+                shadow_loss_sigs=shadow_loss_sigs,
+                shadow_train_mask=shadow_train_mask,
+                offline=attack_config.offline,
+                prior=attack_config.prior,
+            )
+        case "NormalBASE":
+            attacker = attacks.NormalBASE(
+                shadow_loss_sigs=shadow_loss_sigs,
+                shadow_train_mask=shadow_train_mask,
+                offline=attack_config.offline,
+                prior=attack_config.prior,
+                use_global_var=getattr(attack_config, "use_global_var", True),
+            )
+        case "LiRA":
+            attacker = attacks.LiRA(
+                shadow_loss_sigs=shadow_loss_sigs,
+                shadow_train_mask=shadow_train_mask,
+                offline=attack_config.offline,
+                use_global_var=getattr(attack_config, "use_global_var", True),
+                loss_transformation=getattr(attack_config, "loss_transformation", "logit_scaling"),
+            )
+        case _:
+            raise ValueError(f"No MIA: {attack_config.attack}")
+    return attacker
 
 def get_audit_indices(n_audit_samples, membership_mask):
     assert n_audit_samples <= membership_mask.shape[0]
@@ -104,24 +151,45 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
 
     return {entity_id: selected_index_table[entity_id] for entity_id in entity_ids}
 
-def load_scores(scores_path):
-    '''Load sample-level MIA scores and train mask from a score pickle. Args: scores_path (str|Path). Returns: tuple[torch.Tensor, torch.Tensor].'''
-    with open(scores_path, "rb") as file:
-        scores_payload = pickle.load(file)
-    if not isinstance(scores_payload, dict):
-        raise ValueError("Scores pickle must contain keys 'scores' and 'train_mask'.")
-    if "scores" not in scores_payload or "train_mask" not in scores_payload:
-        raise ValueError("Scores pickle must contain keys 'scores' and 'train_mask'.")
-    scores = torch.tensor(scores_payload["scores"], dtype=torch.float32)
-    train_mask = torch.tensor(scores_payload["train_mask"], dtype=torch.bool)
-    loss_sigs = None
-    shadow_train_mask = None
-    if "loss_sigs" in scores_payload and "shadow_train_mask" in scores_payload:
-        loss_sigs = torch.tensor(scores_payload["loss_sigs"], dtype=torch.float32)
-        shadow_train_mask = torch.tensor(scores_payload["shadow_train_mask"], dtype=torch.bool)
-    if len(scores) != len(train_mask):
-        raise ValueError(f"Score length and train mask length mismatch in {scores_path}.")
-    return scores, train_mask, loss_sigs, shadow_train_mask
+def load_loss_signals(loss_path):
+    '''Load one target checkpoint's loss signals and train mask. Args: loss_path (str|Path). Returns: tuple[torch.Tensor, torch.Tensor].'''
+    with open(loss_path, "rb") as file:
+        payload = pickle.load(file)
+    if not isinstance(payload, dict):
+        raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
+    if "loss_sigs" not in payload or "train_mask" not in payload:
+        raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
+    loss_sigs = torch.tensor(payload["loss_sigs"], dtype=torch.float32)
+    train_mask = torch.tensor(payload["train_mask"], dtype=torch.bool)
+    if loss_sigs.ndim != 1 or train_mask.ndim != 1:
+        raise ValueError(f"Loss-signal pickle must store 1D tensors: {loss_path}")
+    if len(loss_sigs) != len(train_mask):
+        raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")
+    return loss_sigs, train_mask
+
+def resolve_target_shadow_paths(config):
+    '''Resolve per-target shadow loss-signal path groups for auditing. Args: config (Config). Returns: tuple[list[Path], list[list[Path]]].'''
+    target_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "target_loss_paths")
+    if getattr(config, "round_robin", False):
+        shadow_path_groups = []
+        for target_idx in range(len(target_loss_paths)):
+            shadow_indices = indices_of_shadow_models(target_idx, len(target_loss_paths))
+            shadow_path_groups.append([target_loss_paths[idx] for idx in shadow_indices])
+        return target_loss_paths, shadow_path_groups
+    shadow_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "shadow_loss_paths")
+    return target_loss_paths, [shadow_loss_paths for _ in target_loss_paths]
+
+def load_shadow_signals(shadow_loss_paths, target_len):
+    '''Load and stack shadow loss signals and masks. Args: shadow_loss_paths (list[Path]), target_len (int). Returns: tuple[torch.Tensor, torch.Tensor].'''
+    shadow_loss_sigs = []
+    shadow_train_mask = []
+    for shadow_loss_path in shadow_loss_paths:
+        loss_sig, train_mask = load_loss_signals(shadow_loss_path)
+        if len(loss_sig) != target_len:
+            raise ValueError(f"Unexpected loss-signal length in {shadow_loss_path}: got {len(loss_sig)}, expected {target_len}.")
+        shadow_loss_sigs.append(loss_sig)
+        shadow_train_mask.append(train_mask)
+    return torch.stack(shadow_loss_sigs), torch.stack(shadow_train_mask)
 
 def print_average_metrics_table(attack, metrics_list):
     '''Print mean audit metrics over target models. Args: attack (str), metrics_list (list[dict]). Returns: None.'''
@@ -139,45 +207,62 @@ def print_average_metrics_table(attack, metrics_list):
     print(f"{'n_audit_points':<16} {mean_num_audit_points:>10.4f}")
 
 def run_sample_audit(config):
-    score_paths = path_utils.resolve_audit_score_paths(config)
-    attack = path_utils.infer_attack_from_score_paths(score_paths)
-    image_size = path_utils.target_properties_from_scores_pickle_path(score_paths[0])["size"]
+    attack_config = attack_config_from_config(config)
+    attack = getattr(attack_config, "name", attack_config.attack)
+    target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
+    image_size = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     all_metrics = []
-    for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running sample-level audit"):
-        scores, membership_mask, *_ = load_scores(scores_path)
-        if len(scores) != len(data_population):
-            raise ValueError(f"Unexpected score length in {scores_path}: got {len(scores)}, expected {len(data_population)}.")
+    for target_loss_path, shadow_loss_paths in tqdm(
+        zip(target_loss_paths, shadow_path_groups),
+        total=len(target_loss_paths),
+        desc="Running sample-level audit",
+    ):
+        target_loss_sig, membership_mask = load_loss_signals(target_loss_path)
+        if len(target_loss_sig) != len(data_population):
+            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sig)}, expected {len(data_population)}.")
+        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sig))
+        attacker = get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask)
+        scores = attacker.run_attack(target_loss_sig)
         audit_indices = get_audit_indices(getattr(config, "n_audit_samples", len(data_population)), membership_mask)
         ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
         audit_scores = scores[audit_indices]
         metrics = evaluation.evaluate_MIA(score=audit_scores, ground_truth=ground_truth)
         all_metrics.append(metrics)
         metrics["audit_config"] = dict(config.__dict__)
-        result_metrics_dir = path_utils.metrics_dir(config.res_dir, scores_path, config.audit_mode)
+        target_path = path_utils.target_checkpoint_path_from_loss_signals_pickle_path(target_loss_path)
+        result_metrics_dir = path_utils.metrics_dir_from_target(config.res_dir, target_path, attack, config.audit_mode)
         result_metrics_dir.mkdir(parents=True, exist_ok=True)
-        filename = path_utils.metrics_pickle_name(scores_path, config.audit_mode)
+        filename = path_utils.metrics_pickle_name_from_target(target_path, attack, config.audit_mode)
         with open(result_metrics_dir / filename, "wb") as f:
             pickle.dump(metrics, f)
     print_average_metrics_table(attack, all_metrics)
 
 def run_entity_audit(config):
-    score_paths = path_utils.resolve_audit_score_paths(config)
-    sample_attack = path_utils.infer_attack_from_score_paths(score_paths)
+    attack_config = attack_config_from_config(config)
+    sample_attack = getattr(attack_config, "name", attack_config.attack)
+    target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
     n_audit_samples_per_entity = getattr(config, "n_audit_samples_per_entity", None)
     if config.mode == "all" and n_audit_samples_per_entity is not None:
         raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
-    image_size = path_utils.target_properties_from_scores_pickle_path(score_paths[0])["size"]
+    image_size = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
     composite_attack_fn_name, attack = composite_attack_name(sample_attack)
     composite_attack_fn = getattr(attacks, composite_attack_fn_name)
     all_metrics = []
-    for scores_path in tqdm(score_paths, total=len(score_paths), desc="Running entity-level audit"):
-        sample_scores, train_mask, loss_sigs, shadow_train_mask = load_scores(scores_path)
-        if len(sample_scores) != len(data_population):
-            raise ValueError(f"Unexpected score length in {scores_path}: got {len(sample_scores)}, expected {len(data_population)}.")
+    for target_loss_path, shadow_loss_paths in tqdm(
+        zip(target_loss_paths, shadow_path_groups),
+        total=len(target_loss_paths),
+        desc="Running entity-level audit",
+    ):
+        target_loss_sig, train_mask = load_loss_signals(target_loss_path)
+        if len(target_loss_sig) != len(data_population):
+            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sig)}, expected {len(data_population)}.")
+        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sig))
+        attacker = get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask)
+        sample_scores = attacker.run_attack(target_loss_sig)
         target_train_index = utils.mask_to_index(train_mask)
         train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
         audit_table = get_entity_audit_table(
@@ -203,6 +288,7 @@ def run_entity_audit(config):
             }
             score = composite_attack_fn(entity_sample_scores)
         elif composite_attack_fn_name == "composite_LiRA":
+            loss_sigs = torch.cat([target_loss_sig.unsqueeze(0), shadow_loss_sigs], dim=0)
             entity_index_table = data_population.get_entity_index_table()
             shadow_entity_mask = torch.zeros(size=(shadow_train_mask.shape[0], data_population.max_entity_id + 1), dtype=torch.bool)
             for idx, sample_mask in enumerate(shadow_train_mask):
@@ -214,16 +300,19 @@ def run_entity_audit(config):
         metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
         all_metrics.append(metrics)
         metrics["audit_config"] = dict(config.__dict__)
-        result_metrics_dir = path_utils.metrics_dir(
+        target_path = path_utils.target_checkpoint_path_from_loss_signals_pickle_path(target_loss_path)
+        result_metrics_dir = path_utils.metrics_dir_from_target(
             config.res_dir,
-            scores_path,
+            target_path,
+            sample_attack,
             config.audit_mode,
             entity_audit_mode=config.mode,
             n_audit_samples_per_entity=getattr(config, "n_audit_samples_per_entity", None),
         )
         result_metrics_dir.mkdir(parents=True, exist_ok=True)
-        filename = path_utils.metrics_pickle_name(
-            scores_path,
+        filename = path_utils.metrics_pickle_name_from_target(
+            target_path,
+            sample_attack,
             config.audit_mode,
             min_samples_per_entity=getattr(config, "min_samples_per_entity", None),
             max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
@@ -241,12 +330,8 @@ def parse_args(argv=None):
         required=True,
         help="Path to audit config yaml file.",
     )
-    parser.add_argument(
-        "--score-paths",
-        nargs="+",
-        default=None,
-        help="Score pickle file/folder paths. Overrides config.",
-    )
+    parser.add_argument("--target-loss-paths", nargs="+", default=None, help="Target loss-signal file/folder paths. Overrides config.")
+    parser.add_argument("--shadow-loss-paths", nargs="+", default=None, help="Shadow loss-signal file/folder paths. Overrides config.")
     return parser.parse_args(argv)
 
 def main(argv=None):
@@ -255,8 +340,10 @@ def main(argv=None):
     with open(args.config, "r") as file:
         config_dict = yaml.safe_load(file)
     config = utils.Config(config_dict)
-    if args.score_paths is not None:
-        config.score_paths = args.score_paths
+    if args.target_loss_paths is not None:
+        config.target_loss_paths = args.target_loss_paths
+    if args.shadow_loss_paths is not None:
+        config.shadow_loss_paths = args.shadow_loss_paths
     if config.audit_mode == "sample":
         run_sample_audit(config=config)
     elif config.audit_mode == "entity":

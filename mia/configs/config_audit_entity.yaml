@@ -2,9 +2,18 @@ dataset: "CelebA2"
 data_dir: "./datasets"
 res_dir: "./mia/results"
 audit_mode: "entity"
+round_robin: false
 mode: "exclude_train"
 n_audit_samples_per_entity: 10
 min_samples_per_entity: null
 max_samples_per_entity: null
-score_paths:
-  - "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/BASE-scores"
+target_loss_paths:
+  - "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/loss_signals"
+shadow_loss_paths:
+  - "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/loss_signals"
+attack:
+  name: "LiRA-off"
+  attack: "LiRA"
+  offline: true
+  use_global_var: true
+  loss_transformation: "none"

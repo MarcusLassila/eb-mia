@@ -9,37 +9,28 @@ class TestDefaultConfigs(unittest.TestCase):
         with open(Path(relative_path), "r") as file:
             return yaml.safe_load(file)
 
-    def test_run_mia_default_config(self):
-        config = self._load("mia/configs/config_mia.yaml")
+    def test_loss_query_default_config(self):
+        config = self._load("mia/configs/config_loss_query.yaml")
         self.assertIsInstance(config, dict)
         for key in (
             "dataset",
             "data_dir",
             "res_dir",
             "batch_size",
-            "round_robin",
-            "target_model_paths",
-            "shadow_model_paths",
-            "attack",
+            "n_loss_samples",
+            "checkpoint_paths",
+            "lira_score_paths",
         ):
             self.assertIn(key, config)
         self.assertIsInstance(config["dataset"], str)
         self.assertIsInstance(config["data_dir"], str)
         self.assertIsInstance(config["res_dir"], str)
         self.assertIsInstance(config["batch_size"], int)
-        self.assertIsInstance(config["round_robin"], bool)
-        self.assertIsInstance(config["target_model_paths"], list)
-        self.assertIsInstance(config["shadow_model_paths"], list)
-        self.assertTrue(all(isinstance(path, str) for path in config["target_model_paths"]))
-        self.assertTrue(all(isinstance(path, str) for path in config["shadow_model_paths"]))
-        self.assertIsInstance(config["attack"], dict)
-        for key in ("name", "attack", "offline", "prior", "n_loss_samples"):
-            self.assertIn(key, config["attack"])
-        self.assertIsInstance(config["attack"]["name"], str)
-        self.assertIsInstance(config["attack"]["attack"], str)
-        self.assertIsInstance(config["attack"]["offline"], bool)
-        self.assertIsInstance(config["attack"]["prior"], (int, float))
-        self.assertIsInstance(config["attack"]["n_loss_samples"], int)
+        self.assertIsInstance(config["n_loss_samples"], int)
+        self.assertIsInstance(config["checkpoint_paths"], list)
+        self.assertIsInstance(config["lira_score_paths"], list)
+        self.assertTrue(all(isinstance(path, str) for path in config["checkpoint_paths"]))
+        self.assertTrue(all(isinstance(path, str) for path in config["lira_score_paths"]))
 
     def test_run_audit_sample_default_configs(self):
         for relative_path in ("mia/configs/config_audit_sample.yaml",):
@@ -49,8 +40,13 @@ class TestDefaultConfigs(unittest.TestCase):
             self.assertIn("data_dir", config)
             self.assertIn("res_dir", config)
             self.assertIn("audit_mode", config)
-            self.assertIn("score_paths", config)
-            self.assertIsInstance(config["score_paths"], list)
+            self.assertIn("round_robin", config)
+            self.assertIn("target_loss_paths", config)
+            self.assertIn("shadow_loss_paths", config)
+            self.assertIn("attack", config)
+            self.assertIsInstance(config["target_loss_paths"], list)
+            self.assertIsInstance(config["shadow_loss_paths"], list)
+            self.assertIsInstance(config["attack"], dict)
 
     def test_run_audit_entity_default_config(self):
         config = self._load("mia/configs/config_audit_entity.yaml")
@@ -59,12 +55,17 @@ class TestDefaultConfigs(unittest.TestCase):
         self.assertIn("data_dir", config)
         self.assertIn("res_dir", config)
         self.assertIn("audit_mode", config)
+        self.assertIn("round_robin", config)
         self.assertIn("mode", config)
         self.assertIn("n_audit_samples_per_entity", config)
         self.assertIn("min_samples_per_entity", config)
         self.assertIn("max_samples_per_entity", config)
-        self.assertIn("score_paths", config)
-        self.assertIsInstance(config["score_paths"], list)
+        self.assertIn("target_loss_paths", config)
+        self.assertIn("shadow_loss_paths", config)
+        self.assertIn("attack", config)
+        self.assertIsInstance(config["target_loss_paths"], list)
+        self.assertIsInstance(config["shadow_loss_paths"], list)
+        self.assertIsInstance(config["attack"], dict)
 
     def test_evaluation_default_config(self):
         config = self._load("mia/configs/config_evaluation.yaml")

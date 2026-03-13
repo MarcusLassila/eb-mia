@@ -1,135 +1,84 @@
-from data.utils import load_dataset
-from generative_models import VAE
-from generative_models.utils import load_model
-from utils import index_to_mask
-
 from abc import ABC, abstractmethod
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Subset
-from tqdm.auto import tqdm
 from scipy.stats import multivariate_normal, norm
 
 class MIA(ABC):
 
-    def __init__(self):
-        self.device = torch.device("cpu")
-        self.n_loss_samples = 1
-
-    def load_model(self, path):
-        model, train_indices = load_model(
-            path=path,
-            device=self.device,
-        )
-        if isinstance(model, VAE):
-            model.n_rsamples = self.n_loss_samples
-        return model, train_indices
-
     @abstractmethod
-    def run_attack(self, audit_samples, target_model_path):
+    def run_attack(self, target_loss_sigs: torch.Tensor):
         raise NotImplementedError
-
-def compute_averaged_loss(model, samples, n_loss_samples):
-    match model.__class__.__name__:
-        case "DDPM":
-            loss_samples = []
-            for _ in range(n_loss_samples):
-                t = torch.ones(size=(samples.shape[0],), device=samples.device, dtype=torch.long) * int(model.time_steps * 0.1)
-                loss = model.per_sample_loss(samples, t).cpu()
-                loss_samples.append(loss)
-            avg_loss = torch.stack(loss_samples).mean(dim=0)
-        case "VAE":
-            avg_loss = model.per_sample_loss(samples).cpu()
-        case _:
-            raise ValueError("Unavailable class of generative model.")
-    return avg_loss
 
 class BASE(MIA):
 
-    def __init__(self, batch_size, device, shadow_model_paths, len_dataset, offline=True, prior=0.5, n_loss_samples=1):
-        self.batch_size = batch_size
-        self.device = device
-        self.shadow_model_paths = shadow_model_paths
-        self.len_dataset = len_dataset
+    def __init__(self, shadow_loss_sigs: torch.Tensor, shadow_train_mask: torch.Tensor, offline=True, prior=0.5):
+        self.shadow_loss_sigs = shadow_loss_sigs
+        self.shadow_train_mask = shadow_train_mask
         self.offline = offline
         self.prior = prior
-        self.n_loss_samples = n_loss_samples
-
-    @torch.inference_mode()
-    def loss_signal(self, audit_loader, model):
-        sig = []
-        for samples in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing loss signal"):
-            samples = samples.to(self.device)
-            sig.append(compute_averaged_loss(model, samples, self.n_loss_samples))
-        sig = torch.concat(sig, dim=0)
-        assert sig.shape == (len(audit_loader.dataset),)
-        return sig
-
-    def run_attack(self, audit_samples, target_model_path):
-        assert target_model_path not in self.shadow_model_paths, "Should not attack the reference models"
-        audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
-        target_model, _ = self.load_model(target_model_path)
-        sig_target = self.loss_signal(audit_loader, target_model)
-        del target_model
-        sig_shadow_models = []
-        mask = []
-        for model_path in self.shadow_model_paths:
-            shadow_model, shadow_train_index = self.load_model(model_path)
-            mask.append(~index_to_mask(shadow_train_index, self.len_dataset))  # audit_samples is currently assumed to be the entire dataset
-            sig = self.loss_signal(audit_loader, shadow_model)
-            sig_shadow_models.append(sig)
-        sig_shadow_models = torch.stack(sig_shadow_models, dim=1)
-        mask = torch.stack(mask, dim=1)
-        assert sig_shadow_models.shape == (len(audit_samples), len(self.shadow_model_paths))
-        assert mask.shape == sig_shadow_models.shape
-        if self.offline:
-            sig_shadow_models = sig_shadow_models.masked_fill(~mask, torch.inf)
-            n_shadow_models = mask.to(torch.int32).sum(dim=1)
+        if offline:
+            self.shadow_loss_sigs = self.shadow_loss_sigs.masked_fill(shadow_train_mask, torch.inf)
+            n_shadow_models = (~shadow_train_mask).to(torch.int32).sum(dim=0)
         else:
-            n_shadow_models = torch.tensor([len(self.shadow_model_paths)], torch.int32)
-        ref = torch.logsumexp(-sig_shadow_models, dim=1) - torch.log(n_shadow_models)
-        lam = np.log(self.prior / (1 - self.prior))
-        score = -sig_target - ref + lam
-        assert score.shape == (len(audit_samples),)
-        return {
-            "score": score.sigmoid(),
-            "loss_sigs": None,
-            "shadow_train_mask": None,
-        }
+            n_shadow_models = torch.tensor([self.shadow_loss_sigs.shape[0]], torch.int32)
+        self.ref = torch.logsumexp(-self.shadow_loss_sigs, dim=0) - torch.log(n_shadow_models)
+        self.t_l = np.log(self.prior / (1 - self.prior))
+
+    def run_attack(self, target_loss_sigs):
+        score = -target_loss_sigs - self.ref + self.t_l
+        return score.sigmoid()
+
+class NormalBASE(MIA):
+
+    def __init__(
+        self,
+        shadow_loss_sigs: torch.Tensor,
+        shadow_train_mask: torch.Tensor,
+        offline=True,
+        prior=0.5,
+        use_global_var=True,
+    ):
+        self.shadow_loss_sigs = shadow_loss_sigs
+        self.shadow_train_mask = shadow_train_mask
+        self.offline = offline
+        self.prior = prior
+        if offline:
+            self.shadow_loss_sigs = self.shadow_loss_sigs.masked_fill(shadow_train_mask, 0)
+            n_shadow_models = (~shadow_train_mask).to(torch.int32).sum(dim=0)
+        else:
+            n_shadow_models = torch.tensor([self.shadow_loss_sigs.shape[0]], torch.int32)
+        mean = torch.sum(-self.shadow_loss_sigs, dim=0) / n_shadow_models
+        if use_global_var:
+            var = self.shadow_loss_sigs[~shadow_train_mask].var() if offline else self.shadow_loss_sigs.var()
+        else:
+            var = (self.shadow_loss_sigs ** 2).sum(dim=0) / n_shadow_models - mean ** 2
+        self.ref = mean + 0.5 * var
+        self.t_l = np.log(self.prior / (1 - self.prior))
+
+    def run_attack(self, target_loss_sigs):
+        score = -target_loss_sigs - self.ref + self.t_l
+        return score.sigmoid()
 
 class LiRA(MIA):
 
     def __init__(
         self,
-        batch_size,
-        device,
-        shadow_model_paths,
-        len_dataset,
+        shadow_loss_sigs: torch.Tensor,
+        shadow_train_mask: torch.Tensor,
         offline=True,
-        n_loss_samples=1,
-        eps=1e-11,
         use_global_var=True,
         loss_transformation="logit_scaling",
     ):
-        self.batch_size = batch_size
-        self.device = device
-        self.shadow_model_paths = shadow_model_paths
-        self.len_dataset = len_dataset
         self.offline = offline
-        self.n_loss_samples = n_loss_samples
-        self.eps = eps
         self.use_global_var = use_global_var
         self.loss_transformation = loss_transformation
-
-    @torch.inference_mode()
-    def loss_signal(self, audit_loader, model):
-        sig = []
-        for samples in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing loss signal"):
-            samples = samples.to(self.device)
-            sig.append(compute_averaged_loss(model, samples, self.n_loss_samples))
-        sig = torch.concat(sig, dim=0)
-        assert sig.shape == (len(audit_loader.dataset),)
-        return sig
+        shadow_phi = self.transform_loss_values(shadow_loss_sigs)
+        if self.offline:
+            self.mean_in = None
+            self.std_in = None
+        else:
+            self.mean_in, self.std_in = self._mean_and_std(shadow_phi, shadow_train_mask)
+        self.mean_out, self.std_out = self._mean_and_std(shadow_phi, ~shadow_train_mask)
 
     def transform_loss_values(self, loss_sigs):
         match self.loss_transformation:
@@ -153,61 +102,30 @@ class LiRA(MIA):
         else:
             var = (phi_m ** 2).sum(dim=0) / n - mean ** 2
             std = var.clamp_min(0.0).sqrt()
-        return mean, std
+        return mean.cpu().numpy(), std.cpu().numpy() + 1e-11
 
-    def query_shadow_models(self, audit_loader):
-        in_mask = []
-        loss_sigs = []
-        for model_path in self.shadow_model_paths:
-            shadow_model, shadow_train_index = self.load_model(model_path)
-            train_mask = index_to_mask(shadow_train_index, self.len_dataset)
-            in_mask.append(train_mask)
-            loss_sigs.append(self.loss_signal(audit_loader, shadow_model))
-        loss_sigs = torch.stack(loss_sigs, dim=0)
-        phi = self.transform_loss_values(loss_sigs)
-        in_mask = torch.stack(in_mask, dim=0)
-        out_mask = ~in_mask
-
-        if self.offline:
-            mean_in, std_in = None, None
-        else:
-            mean_in, std_in = self._mean_and_std(phi, in_mask)
-        mean_out, std_out = self._mean_and_std(phi, out_mask)
-        return mean_in, std_in, mean_out, std_out, loss_sigs, in_mask
-
-    def run_attack(self, audit_samples, target_model_path):
-        assert target_model_path not in self.shadow_model_paths, "Should not attack the reference models"
-        audit_loader = DataLoader(audit_samples, batch_size=self.batch_size, shuffle=False)
-        mean_in, std_in, mean_out, std_out, loss_sigs, shadow_train_mask = self.query_shadow_models(audit_loader)
-        target_model, _ = self.load_model(target_model_path)
-        loss_sig = self.loss_signal(audit_loader, target_model)
-        loss_sigs = torch.cat([loss_sig.unsqueeze(0), loss_sigs], dim=0)
-        assert loss_sigs.shape == (len(self.shadow_model_paths) + 1, len(audit_samples))
-        phi = self.transform_loss_values(loss_sig)
+    def run_attack(self, target_loss_sigs):
+        phi = self.transform_loss_values(target_loss_sigs).cpu().numpy()
         if self.offline:
             score = norm.logcdf(
-                phi.cpu().numpy(),
-                loc=mean_out.cpu().numpy(),
-                scale=std_out.cpu().numpy() + self.eps,
+                phi,
+                loc=self.mean_out,
+                scale=self.std_out,
             )
             score = torch.tensor(score)
         else:
             p_in = norm.logpdf(
-                phi.cpu().numpy(),
-                loc=mean_in.cpu().numpy(),
-                scale=std_in.cpu().numpy() + self.eps,
+                phi,
+                loc=self.mean_in,
+                scale=self.std_in,
             )
             p_out = norm.logpdf(
-                phi.cpu().numpy(),
-                loc=mean_out.cpu().numpy(),
-                scale=std_out.cpu().numpy() + self.eps,
+                phi,
+                loc=self.mean_out,
+                scale=self.std_out,
             )
             score = torch.tensor(p_in - p_out)
-        return {
-            "score": score,
-            "loss_sigs": loss_sigs, # First row is target loss signals
-            "shadow_train_mask": shadow_train_mask,
-        }
+        return score
 
 def composite_BASE(sample_scores_by_entity: dict):
     assert isinstance(sample_scores_by_entity, dict)
