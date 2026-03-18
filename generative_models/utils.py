@@ -5,6 +5,7 @@ from utils import (
     unwrap_torch_compile_state_dict,
 )
 from .ddpm import DDPM
+from .flow_matching import FlowMatching
 from .vae import VAE
 
 import torch
@@ -25,6 +26,8 @@ def load_model(path: str, device: torch.device):
     match model_type:
         case "DDPM":
             model = DDPM(**checkpoint["model_config"])
+        case "FlowMatching":
+            model = FlowMatching(**checkpoint["model_config"])
         case "VAE":
             model = VAE(**checkpoint["model_config"])
         case _:

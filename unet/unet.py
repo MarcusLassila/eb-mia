@@ -172,6 +172,7 @@ class UNet(nn.Module):
                  out_channels,
                  base_channels,
                  channel_mult,
+                 n_res_blocks_per_level=2,
                  n_attention_heads=1,
                  channels_per_head=None,
                  attention_resolutions=(16,),
@@ -184,7 +185,7 @@ class UNet(nn.Module):
         assert image_size.bit_count() == 1
         assert all(x.bit_count() == 1 for x in attention_resolutions)
         attention_levels = [int(math.log2(image_size) - math.log2(x)) for x in attention_resolutions]
-        n_res_blocks = 2
+        self.n_res_blocks_per_level = n_res_blocks_per_level
 
         self.image_size = image_size
         self.in_channels = in_channels
@@ -222,7 +223,7 @@ class UNet(nn.Module):
         channel_stack = [prev_channels]
         for lvl, multiplier in enumerate(channel_mult):
             curr_channels = base_channels * multiplier
-            for _ in range(n_res_blocks):
+            for _ in range(n_res_blocks_per_level):
                 res_block = ResBlock(
                     in_channels=prev_channels,
                     out_channels=curr_channels,
@@ -271,7 +272,7 @@ class UNet(nn.Module):
         prev_channels = curr_channels
         for lvl, mult in enumerate(reversed(channel_mult)):
             curr_channels = base_channels * mult
-            for _ in range(n_res_blocks + 1):
+            for _ in range(n_res_blocks_per_level + 1):
                 in_channels = prev_channels + channel_stack.pop()
                 res_block = ResBlock(
                     in_channels=in_channels,

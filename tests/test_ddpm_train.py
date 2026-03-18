@@ -22,6 +22,20 @@ class _TensorImageDataset(Dataset):
 
 
 class TestDDPMTrain(unittest.TestCase):
+    def test_default_n_res_blocks_per_level_is_two(self):
+        '''Construct DDPM with default residual block depth. Args: None. Returns: None.'''
+        model = DDPM(
+            image_dim=(1, 4, 4),
+            time_steps=10,
+            beta_schedule="linear",
+            base_channels=32,
+            channel_mult=(1,),
+            attention_resolutions=(4,),
+            use_sdpa=True,
+        )
+        self.assertEqual(model.n_res_blocks_per_level, 2)
+        self.assertEqual(model.network.n_res_blocks_per_level, 2)
+
     def test_train_runs_two_epochs(self):
         torch.manual_seed(0)
         data = torch.randn(8, 1, 4, 4)

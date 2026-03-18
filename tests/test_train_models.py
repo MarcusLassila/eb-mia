@@ -34,6 +34,49 @@ class _DummyModel:
 
 
 class TestTrainModels(unittest.TestCase):
+    def test_train_model_from_scratch_passes_ddpm_res_block_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "train_indices.pkl"
+            with open(path, "wb") as file:
+                pickle.dump([0, 2, 4], file)
+            config = types.SimpleNamespace(
+                dataset="Dummy",
+                val_frac=0.2,
+                model="DDPM",
+                image_resolution=2,
+                suffix="",
+                batch_size=2,
+                simul_batch_size=2,
+                epochs=1,
+                epochs_per_checkpoint=1,
+                lr=1e-3,
+                weight_decay=0.0,
+                ema_decay=0.0,
+                grad_clip=0.0,
+                autocast_dtype="float16",
+                lr_scheduler="none",
+                base_channels=32,
+                channel_mult=(1,),
+                n_res_blocks_per_level=2,
+                n_attention_heads=1,
+                channels_per_head=None,
+                attention_resolutions=(2,),
+                dropout=0.0,
+                use_sdpa=True,
+            )
+            with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
+                with mock.patch.object(train_model, "DDPM", return_value=_DummyModel()) as mock_ddpm:
+                    with mock.patch.object(train_model, "TrainLoop") as mock_loop:
+                        mock_loop.return_value.train.return_value = None
+                        train_model.train_model_from_scratch(
+                            accelerator=_DummyAccelerator(),
+                            config=config,
+                            data_dir=Path(tmpdir),
+                            savedir=Path(tmpdir),
+                            train_indices_path=path,
+                        )
+            self.assertEqual(mock_ddpm.call_args.kwargs["n_res_blocks_per_level"], 2)
+
     def test_train_model_from_scratch_uses_indices_file(self):
         indices = [0, 2, 4]
         with tempfile.TemporaryDirectory() as tmpdir:

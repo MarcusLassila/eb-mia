@@ -1,6 +1,7 @@
 from accelerate.accelerate import AcceleratorLite
 from data.utils import load_dataset
 from generative_models.ddpm import DDPM
+from generative_models.flow_matching import FlowMatching
 from training.train_loop import TrainConfig, TrainLoop
 from generative_models.vae import VAE
 from . import train_split
@@ -71,6 +72,7 @@ def train_model_from_scratch(
                 "beta_schedule": "linear",
                 "base_channels": config.base_channels,
                 "channel_mult": config.channel_mult,
+                "n_res_blocks_per_level": config.n_res_blocks_per_level,
                 "n_attention_heads": config.n_attention_heads,
                 "channels_per_head": config.channels_per_head,
                 "attention_resolutions": config.attention_resolutions,
@@ -79,6 +81,21 @@ def train_model_from_scratch(
                 "use_sdpa": config.use_sdpa,
             }
             model = DDPM(**model_config)
+        case "FlowMatching":
+            model_config = {
+                "image_dim": image_dim,
+                "std_min": config.std_min,
+                "base_channels": config.base_channels,
+                "channel_mult": config.channel_mult,
+                "n_res_blocks_per_level": config.n_res_blocks_per_level,
+                "n_attention_heads": config.n_attention_heads,
+                "channels_per_head": config.channels_per_head,
+                "attention_resolutions": config.attention_resolutions,
+                "dropout": config.dropout,
+                "resample_with_conv": True,
+                "use_sdpa": config.use_sdpa,
+            }
+            model = FlowMatching(**model_config)
         case "VAE":
             model_config = {
                 "in_ch": channels,
@@ -145,6 +162,8 @@ def train_model_from_checkpoint(
     match properties["model"]:
         case "DDPM":
             model = DDPM(**model_config)
+        case "FlowMatching":
+            model = FlowMatching(**model_config)
         case "VAE":
             model = VAE(**model_config)
         case _:
