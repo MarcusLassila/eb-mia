@@ -217,6 +217,29 @@ class TestEvaluationCli(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 evaluation.collect_metrics_folder_summaries([folder])
 
+    def test_collect_metrics_folder_summaries_preserves_low_endpoint_interpolation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            parent = Path(tmpdir) / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            folder = parent / "BASE-off-entity-exclude_train-n10"
+            folder.mkdir(parents=True)
+            fpr = np.array([0.0, 0.0, 0.001, 1.0], dtype=float)
+            tpr = np.array([0.0, 0.1, 0.2, 1.0], dtype=float)
+            metrics = {
+                "AUC": 0.7,
+                "TPR@1%FPR": float(np.interp(1e-2, fpr, tpr)),
+                "TPR@0.1%FPR": float(np.interp(1e-3, fpr, tpr)),
+                "FPR": fpr,
+                "TPR": tpr,
+                "thresholds": np.array([np.inf, 0.3, 0.2, 0.1], dtype=float),
+            }
+            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
+            with open(metrics_path, "wb") as f:
+                pickle.dump(metrics, f)
+            fpr_space, summaries = evaluation.collect_metrics_folder_summaries([folder], low_exponent=-4)
+            self.assertEqual(float(fpr_space[0]), 1e-4)
+            self.assertGreater(float(summaries[0]["mean_tpr"][0]), 0.0)
+            self.assertAlmostEqual(float(summaries[0]["mean_tpr"][0]), float(np.interp(1e-4, fpr, tpr)))
+
     def test_print_metrics_table_formats_percentages(self):
         summaries = [{
             "label": "BASE-f0p5-p0p5-e1000-sample",

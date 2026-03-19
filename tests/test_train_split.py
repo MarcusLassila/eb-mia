@@ -1,206 +1,87 @@
 import tempfile
 import unittest
-from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
+import torch
+
 import training.train_split as train_split
-from data import data as data_module
+from data import datasets
+
+
+class _FakeDataset:
+    def __len__(self):
+        return 10
+
+    def __getitem__(self, index):
+        return None
+
+
+class _FakeEntityDataset(datasets.EntityDataset):
+    def __init__(self):
+        self._entity_ids = torch.tensor(
+            [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
+            dtype=torch.long,
+        )
+
+    @property
+    def entity_ids(self):
+        return self._entity_ids
+
+    @property
+    def unique_entity_ids(self):
+        return torch.unique(self._entity_ids, sorted=True)
+
+    @property
+    def n_entities(self):
+        return int(self.unique_entity_ids.numel())
+
+    @property
+    def max_entity_id(self):
+        return int(self.unique_entity_ids[-1].item())
+
+    def get_entity_index_table(self):
+        return {
+            0: [0, 1, 2, 3],
+            1: [4, 5, 6, 7],
+            2: [8, 9, 10, 11],
+            3: [12, 13, 14, 15],
+        }
+
+    def __getitem__(self, index):
+        return None
+
+    def __len__(self):
+        return len(self._entity_ids)
 
 
 class TestTrainSplit(unittest.TestCase):
-    def test_random_subset_indices_deterministic(self):
-        indices_a = train_split.sample_random_fraction_indices(10, 0.3, seed=123)
-        indices_b = train_split.sample_random_fraction_indices(10, 0.3, seed=123)
-        self.assertEqual(indices_a, indices_b)
-        self.assertEqual(len(indices_a), 3)
-        self.assertTrue(all(0 <= index < 10 for index in indices_a))
-
     def test_save_and_load_indices(self):
         indices = [5, 1, 3]
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "indices.pkl"
-            train_split.save_indices(indices, path)
-            loaded = train_split.load_indices(path)
-            self.assertEqual(loaded, indices)
+            train_split.save_indices(indices, tmpdir, "indices.pkl")
+            loaded = train_split.load_indices(Path(tmpdir) / "indices.pkl")
+        self.assertEqual(loaded, indices)
 
-    def test_complement_indices(self):
-        indices = [0, 2]
-        complement = train_split.complement_indices(indices, n_items=5)
-        self.assertEqual(complement, [1, 3, 4])
+    def test_select_fraction_uses_fraction_string_and_remainder_coin_flips(self):
+        rng = np.random.default_rng(3)
+        with patch.object(train_split.np.random, "rand", side_effect=[0.5, 0.9]):
+            selected = train_split.select_fraction([0, 1, 2, 3, 4], "2/3", rng)
+        self.assertEqual(selected, [4, 2, 1])
 
-    def test_complement_subset_filename_contains_source(self):
-        name = train_split.complement_subset_filename("cifar-rand-f0p5-s1.pkl")
-        self.assertIn("comp", name)
-        self.assertIn("cifar-rand-f0p5-s1", name)
-
-    def test_random_subset_filename_structure(self):
-        name = train_split.random_subset_filename("MNIST", 0.25, seed=7)
-        self.assertIn("MNIST", name)
-        self.assertIn("rand", name)
-        self.assertIn("f0p25", name)
-        self.assertIn("s7", name)
-
-    def test_entity_subset_indices_deterministic(self):
-        entity_ids = [1, 1, 2, 2, 3, 3, 4, 4]
-        indices_a = train_split.sample_entity_fraction_indices(
-            entity_ids=entity_ids,
-            entity_fraction=0.5,
-            per_entity_fraction=0.5,
-            seed=42,
-        )
-        indices_b = train_split.sample_entity_fraction_indices(
-            entity_ids=entity_ids,
-            entity_fraction=0.5,
-            per_entity_fraction=0.5,
-            seed=42,
-        )
-        self.assertEqual(indices_a, indices_b)
-        self.assertEqual(len(indices_a), 2)
-        self.assertTrue(all(0 <= index < len(entity_ids) for index in indices_a))
-        selected_entity_ids = {entity_ids[index] for index in indices_a}
-        self.assertEqual(len(selected_entity_ids), 2)
-
-    def test_entity_subset_indices_min_one_per_entity(self):
-        entity_ids = [10, 11, 12, 13]
-        with self.assertRaises(AssertionError):
-            train_split.sample_entity_fraction_indices(
-                entity_ids=entity_ids,
-                entity_fraction=1.0,
-                per_entity_fraction=0.5,
-                seed=99,
-            )
-
-    def test_entity_subset_filename_structure(self):
-        name = train_split.entity_subset_filename("CelebA", 0.5, 0.25, seed=9)
-        self.assertIn("CelebA", name)
-        self.assertIn("ent", name)
-        self.assertIn("f0p5", name)
-        self.assertIn("p0p25", name)
-        self.assertIn("s9", name)
-
-    def test_entity_subset_save_load_matches_dataset(self):
-        class FakeSplit:
-            def __init__(self, celeb_ids):
-                self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
-
-            def __getitem__(self, index):
-                return self._data[index]
-
-            def __len__(self):
-                return len(self._data)
-
-        class FakeConcatDataset:
-            def __init__(self, datasets):
-                self._data = []
-                for dataset in datasets:
-                    self._data.extend(dataset._data)
-
-            def __getitem__(self, index):
-                if isinstance(index, str):
-                    return [item[index] for item in self._data]
-                return self._data[index]
-
-            def __len__(self):
-                return len(self._data)
-
-        def fake_load_dataset(*args, **kwargs):
-            return {
-                "train": FakeSplit([0, 0, 0, 0, 1, 1, 1, 1]),
-                "valid": FakeSplit([2, 2, 2, 2]),
-                "test": FakeSplit([3, 3, 3, 3]),
-            }
-
-        def fake_concatenate_datasets(datasets):
-            return FakeConcatDataset(datasets)
-
+    def test_cli_sample_and_complement_create_expected_pickles(self):
+        rng_factory = np.random.default_rng
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.data.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.data.concatenate_datasets",
-                side_effect=fake_concatenate_datasets,
+            with (
+                patch.object(train_split, "load_dataset", return_value=_FakeDataset()),
+                patch.object(
+                    train_split.np.random,
+                    "default_rng",
+                    side_effect=lambda: rng_factory(5),
+                ),
             ):
-                dataset = data_module.CelebA(data_dir=tmpdir, transform=None)
-                path = train_split.create_entity_subset(
-                    dataset_name="CelebA",
-                    entity_ids=dataset.entity_ids,
-                    entity_fraction=0.5,
-                    per_entity_fraction=0.5,
-                    seed=123,
-                    output_dir=tmpdir,
-                )
-                indices = train_split.load_indices(path)
-
-        entity_ids = dataset.entity_ids.tolist()
-        unique_entity_ids = sorted(set(entity_ids))
-        selected_entity_ids = {entity_ids[index] for index in indices}
-        expected_entity_count = int(len(unique_entity_ids) * 0.5)
-        self.assertEqual(len(selected_entity_ids), expected_entity_count)
-
-        total_counts = Counter(entity_ids)
-        selected_counts = Counter(entity_ids[index] for index in indices)
-        for entity_id in unique_entity_ids:
-            expected = int(total_counts[entity_id] * 0.5)
-            if entity_id not in selected_entity_ids:
-                expected = 0
-            self.assertEqual(selected_counts.get(entity_id, 0), expected)
-
-    def test_entity_complement_subset_non_overlapping_ids(self):
-        entity_ids = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]
-        base_indices = [0, 6]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir) / train_split.entity_subset_filename(
-                "CelebA",
-                0.5,
-                0.5,
-                seed=11,
-            )
-            train_split.save_indices(base_indices, base_path)
-            complement_path = train_split.create_entity_complement_subset(
-                subset_path=base_path,
-                entity_ids=entity_ids,
-                output_dir=tmpdir,
-            )
-            complement_indices = train_split.load_indices(complement_path)
-
-        base_entity_ids = {entity_ids[index] for index in base_indices}
-        complement_entity_ids = {entity_ids[index] for index in complement_indices}
-        self.assertTrue(base_entity_ids.isdisjoint(complement_entity_ids))
-        self.assertEqual(base_entity_ids | complement_entity_ids, set(entity_ids))
-        total_counts = Counter(entity_ids)
-        selected_counts = Counter(entity_ids[index] for index in complement_indices)
-        for entity_id in set(entity_ids):
-            expected = int(total_counts[entity_id] * 0.5)
-            if entity_id not in complement_entity_ids:
-                expected = 0
-            else:
-                self.assertGreater(expected, 0)
-            self.assertEqual(selected_counts.get(entity_id, 0), expected)
-
-    def test_entity_complement_subset_requires_min_samples(self):
-        entity_ids = [0, 1, 2]
-        base_indices = []
-        with self.assertRaises(AssertionError):
-            train_split.sample_entity_complement_fraction_indices(
-                entity_ids=entity_ids,
-                base_indices=base_indices,
-                per_entity_fraction=0.5,
-                seed=3,
-            )
-
-    def test_cli_random_and_complement(self):
-        class FakeDataset:
-            def __init__(self, data_dir="./datasets", transform=None):
-                self._n = 10
-
-            def __len__(self):
-                return self._n
-
-            def __getitem__(self, index):
-                return None
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(data_module, "FakeDataset", FakeDataset, create=True):
-                random_path = train_split.main([
+                train_split.main([
                     "--dataset",
                     "FakeDataset",
                     "--output-dir",
@@ -208,73 +89,42 @@ class TestTrainSplit(unittest.TestCase):
                     "--seed",
                     "5",
                     "--fraction",
-                    "0.4",
+                    "1/2",
                     "--mode",
-                    "random",
+                    "sample",
                 ])
-                random_indices = train_split.load_indices(random_path)
-                self.assertEqual(len(random_indices), 4)
-                complement_path = train_split.main([
+                sample_path = Path(tmpdir) / "FakeDataset-smpl-f1d2-s5.pkl"
+                sample_indices = train_split.load_indices(sample_path)
+                self.assertEqual(sample_indices, [1, 2, 3, 6, 7])
+
+                train_split.main([
                     "--dataset",
                     "FakeDataset",
                     "--output-dir",
                     tmpdir,
                     "--mode",
                     "complement",
-                    "--subset-path",
-                    str(random_path),
+                    "--train-split-path",
+                    str(sample_path),
                 ])
+                complement_path = Path(tmpdir) / "FakeDataset-smpl-f1d2-s5-comp.pkl"
                 complement_indices = train_split.load_indices(complement_path)
-                self.assertEqual(len(complement_indices), 6)
-                combined = set(random_indices) | set(complement_indices)
-                self.assertEqual(combined, set(range(10)))
+                self.assertEqual(complement_indices, [0, 4, 5, 8, 9])
+                self.assertEqual(set(sample_indices) | set(complement_indices), set(range(10)))
 
-    def test_cli_entity_mode(self):
-        class FakeSplit:
-            def __init__(self, celeb_ids):
-                self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
-
-            def __getitem__(self, index):
-                return self._data[index]
-
-            def __len__(self):
-                return len(self._data)
-
-        class FakeConcatDataset:
-            def __init__(self, datasets):
-                self._data = []
-                for dataset in datasets:
-                    self._data.extend(dataset._data)
-
-            def __getitem__(self, index):
-                if isinstance(index, str):
-                    return [item[index] for item in self._data]
-                return self._data[index]
-
-            def __len__(self):
-                return len(self._data)
-
-        train_ids = [0, 0, 0, 0, 1, 1, 1, 1]
-        valid_ids = [2, 2, 2, 2]
-        test_ids = [3, 3, 3, 3]
-        entity_ids = train_ids + valid_ids + test_ids
-
-        def fake_load_dataset(*args, **kwargs):
-            return {
-                "train": FakeSplit(train_ids),
-                "valid": FakeSplit(valid_ids),
-                "test": FakeSplit(test_ids),
-            }
-
-        def fake_concatenate_datasets(datasets):
-            return FakeConcatDataset(datasets)
-
+    def test_cli_entity_mode_creates_expected_indices(self):
+        rng_factory = np.random.default_rng
+        dataset = _FakeEntityDataset()
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.data.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.data.concatenate_datasets",
-                side_effect=fake_concatenate_datasets,
+            with (
+                patch.object(train_split, "load_dataset", return_value=dataset),
+                patch.object(
+                    train_split.np.random,
+                    "default_rng",
+                    side_effect=lambda: rng_factory(7),
+                ),
             ):
-                path = train_split.main([
+                train_split.main([
                     "--dataset",
                     "CelebA",
                     "--output-dir",
@@ -284,22 +134,41 @@ class TestTrainSplit(unittest.TestCase):
                     "--mode",
                     "entity",
                     "--entity-fraction",
-                    "0.5",
+                    "1/2",
                     "--per-entity-fraction",
-                    "0.5",
+                    "1/2",
                 ])
-                indices = train_split.load_indices(path)
-                unique_entity_ids = sorted(set(entity_ids))
-                selected_entity_ids = {entity_ids[index] for index in indices}
-                expected_entity_count = int(len(unique_entity_ids) * 0.5)
-                self.assertEqual(len(selected_entity_ids), expected_entity_count)
-                total_counts = Counter(entity_ids)
-                selected_counts = Counter(entity_ids[index] for index in indices)
-                for entity_id in unique_entity_ids:
-                    expected = int(total_counts[entity_id] * 0.5)
-                    if entity_id not in selected_entity_ids:
-                        expected = 0
-                    self.assertEqual(selected_counts.get(entity_id, 0), expected)
+            path = Path(tmpdir) / "CelebA-ent-f1d2-p1d2-s7.pkl"
+            indices = train_split.load_indices(path)
+        self.assertEqual(indices, [1, 3, 8, 11])
+
+    def test_cli_entity_complement_mode_creates_expected_indices(self):
+        rng_factory = np.random.default_rng
+        dataset = _FakeEntityDataset()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir) / "CelebA-ent-f1d2-p1d2-s7.pkl"
+            train_split.save_indices([1, 3, 8, 11], tmpdir, base_path.name)
+            with (
+                patch.object(train_split, "load_dataset", return_value=dataset),
+                patch.object(
+                    train_split.np.random,
+                    "default_rng",
+                    side_effect=lambda: rng_factory(11),
+                ),
+            ):
+                train_split.main([
+                    "--dataset",
+                    "CelebA",
+                    "--output-dir",
+                    tmpdir,
+                    "--mode",
+                    "entity-complement",
+                    "--train-split-path",
+                    str(base_path),
+                ])
+            complement_path = Path(tmpdir) / "CelebA-ent-f1d2-p1d2-s7-comp.pkl"
+            indices = train_split.load_indices(complement_path)
+        self.assertEqual(indices, [5, 7, 13, 15])
 
 
 if __name__ == "__main__":

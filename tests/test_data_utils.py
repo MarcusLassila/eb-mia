@@ -57,7 +57,6 @@ class TestLoadDataset(unittest.TestCase):
                 "CelebA",
                 data_dir="root",
                 transform="t",
-                min_celeb_samples=2,
                 size=64,
                 grayscale=True,
                 random_horizontal_flip=False,
@@ -68,7 +67,6 @@ class TestLoadDataset(unittest.TestCase):
                 {
                     "data_dir": "root",
                     "transform": "t",
-                    "min_celeb_samples": 2,
                     "size": 64,
                     "grayscale": True,
                     "random_horizontal_flip": False,

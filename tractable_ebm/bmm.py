@@ -119,7 +119,7 @@ def plot_image(images, rescale_method="none", name="temp_image"):
     plt.close(fig)
 
 if __name__ == "__main__":
-    from data import data
+    from data import datasets as data
     from torch.utils.data import DataLoader, Subset
     device = torch.device("mps")
     dataset = data.BinaryMNIST()

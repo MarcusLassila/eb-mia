@@ -4,11 +4,11 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from data import data as data_module
+from data import datasets as data_module
 
 
 class TestData(unittest.TestCase):
-    def test_celeba_filters_singleton_celeb_ids(self):
+    def test_celeba_keeps_singleton_celeb_ids(self):
         class FakeSplit:
             def __init__(self, celeb_ids):
                 self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
@@ -50,18 +50,17 @@ class TestData(unittest.TestCase):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.data.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.data.concatenate_datasets",
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
+                "data.datasets.concatenate_datasets",
                 side_effect=fake_concatenate_datasets,
             ):
                 dataset = data_module.CelebA(
                     data_dir=tmpdir,
                     transform=lambda x: x,
-                    min_celeb_samples=2,
                 )
-                self.assertEqual(len(dataset), 4)
-                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 2, 2])
-                self.assertEqual(dataset.max_entity_id, 2)
+                self.assertEqual(len(dataset), 6)
+                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 2, 3])
+                self.assertEqual(dataset.max_entity_id, 3)
 
     def test_celeba_low_res_grayscale_transform(self):
         class FakeSplit:
@@ -107,11 +106,11 @@ class TestData(unittest.TestCase):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.data.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.data.concatenate_datasets",
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
+                "data.datasets.concatenate_datasets",
                 side_effect=fake_concatenate_datasets,
             ):
-                low_res = data_module.CelebA2(data_dir=tmpdir, transform=None, size=32, grayscale=True)
+                low_res = data_module.CelebA(data_dir=tmpdir, transform=None, size=32, grayscale=True)
                 low_res_sample = low_res[0]
                 self.assertEqual(tuple(low_res_sample.shape), (1, 32, 32))
                 color = data_module.CelebA(data_dir=tmpdir, transform=None, size=64, grayscale=False)

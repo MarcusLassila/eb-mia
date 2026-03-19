@@ -1,4 +1,5 @@
 from pathlib import Path
+from fractions import Fraction
 import re
 import subprocess
 import yaml
@@ -28,6 +29,15 @@ def resolve_path(path_str, root):
     if not path.is_absolute() and root is not None:
         return Path(root) / path
     return path
+
+def _parse_split_fraction(token):
+    '''Parse split fraction token from a checkpoint stem. Args: token (str). Returns: float.'''
+    if "d" in token:
+        numerator, denominator = token.split("d")
+        return float(Fraction(int(numerator), int(denominator)))
+    if "p" in token:
+        return float(Fraction(token.replace("p", ".")))
+    return float(Fraction(int(token), 1))
 
 def parse_properties_from_checkpoint_path(path):
     '''Parse properties from a checkpoint path. Args: path (str|Path). Returns: dict.'''
@@ -74,7 +84,7 @@ def parse_properties_from_checkpoint_path(path):
         properties.update({
             "dataset": rand_match.group("dataset"),
             "split_mode": "random",
-            "fraction": float(rand_match.group("fraction").replace("p", ".")),
+            "fraction": _parse_split_fraction(rand_match.group("fraction")),
             "seed": int(rand_match.group("seed")),
             "complement": rand_match.group("comp") is not None,
         })
@@ -83,8 +93,8 @@ def parse_properties_from_checkpoint_path(path):
         properties.update({
             "dataset": ent_match.group("dataset"),
             "split_mode": "entity",
-            "entity_fraction": float(ent_match.group("entity_fraction").replace("p", ".")),
-            "per_entity_fraction": float(ent_match.group("per_entity_fraction").replace("p", ".")),
+            "entity_fraction": _parse_split_fraction(ent_match.group("entity_fraction")),
+            "per_entity_fraction": _parse_split_fraction(ent_match.group("per_entity_fraction")),
             "seed": int(ent_match.group("seed")),
             "complement": ent_match.group("comp") is not None,
         })

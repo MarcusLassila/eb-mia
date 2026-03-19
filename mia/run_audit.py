@@ -1,4 +1,4 @@
-from data.data import EntityDataset
+from data.datasets import EntityDataset
 from data.utils import load_dataset
 from . import attacks
 from . import evaluation

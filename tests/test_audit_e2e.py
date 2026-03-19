@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import torch
 
-from data.data import EntityDataset
+from data.datasets import EntityDataset
 from mia import loss_query as loss_query_module
 from mia import path_utils
 from mia import run_audit as run_audit_module
@@ -19,6 +19,10 @@ class _TinyEntityDataset(EntityDataset):
     @property
     def entity_ids(self):
         return self._entity_ids
+
+    @property
+    def unique_entity_ids(self):
+        return torch.unique(self._entity_ids, sorted=True)
 
     @property
     def max_entity_id(self):

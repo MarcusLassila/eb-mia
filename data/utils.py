@@ -1,4 +1,4 @@
-from .data import *
+from .datasets import *
 
 def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
     '''Load a dataset by name. Args: dataset_name (str), data_dir (str), transform (callable|None), kwargs (dict). Returns: Dataset.'''
@@ -11,7 +11,6 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
             dataset = CelebA(
                 data_dir=data_dir,
                 transform=transform,
-                min_celeb_samples=kwargs.get("min_celeb_samples", 0),
                 size=kwargs.get("size", 128),
                 grayscale=kwargs.get("grayscale", False),
                 random_horizontal_flip=kwargs.get("random_horizontal_flip", True),

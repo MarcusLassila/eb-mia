@@ -56,7 +56,6 @@ def _collect_metrics_folder_summary(metrics_dir, fpr_space):
         fpr = np.asarray(metrics["FPR"], dtype=float)
         tpr = np.asarray(metrics["TPR"], dtype=float)
         interp_tpr = np.interp(fpr_space, fpr, tpr)
-        interp_tpr[0] = 0.0
         interpolated_tprs.append(interp_tpr)
         auc_values.append(float(metrics["AUC"]))
         tpr_1pct_values.append(float(metrics["TPR@1%FPR"]))

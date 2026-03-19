@@ -15,7 +15,7 @@ from generative_models.vae import VAE
 
 class TestGenerativeUtils(unittest.TestCase):
     def test_parse_properties_from_checkpoint_path(self):
-        properties = parse_properties_from_checkpoint_path("/tmp/DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth")
+        properties = parse_properties_from_checkpoint_path("/tmp/DDPM-cifar10-rand-f1d2-s3-sz32-epoch4.pth")
         self.assertEqual(properties["dataset"], "cifar10")
         self.assertEqual(properties["model"], "DDPM")
         self.assertEqual(properties["size"], 32)
