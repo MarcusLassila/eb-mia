@@ -13,7 +13,7 @@ from mia import path_utils
 class TestLossQuery(unittest.TestCase):
     def test_run_loss_query_saves_loss_signals_for_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = str(Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth")
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
             config = loss_query_module.utils.Config({
                 "dataset": "cifar10",
                 "data_dir": tmpdir,
@@ -48,7 +48,7 @@ class TestLossQuery(unittest.TestCase):
 
     def test_run_loss_query_migrates_lira_scores_to_loss_signals(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth"
+            target_path = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth"
             score_path = path_utils.scores_dir(tmpdir, "LiRA-off", target_path) / path_utils.scores_pickle_name(target_path, "LiRA-off")
             score_path.parent.mkdir(parents=True, exist_ok=True)
             with open(score_path, "wb") as file:

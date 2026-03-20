@@ -44,9 +44,9 @@ class TestRunAuditMetrics(unittest.TestCase):
 
     def test_run_sample_audit_computes_scores_from_loss_signals(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s3-sz32-epoch4.pth"
-            shadow_path_a = Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s4-sz32-epoch4.pth"
-            shadow_path_b = Path(tmpdir) / "DDPM-cifar10-rand-f0p5-s5-sz32-epoch4.pth"
+            target_path = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth"
+            shadow_path_a = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s4-sz32-epoch4.pth"
+            shadow_path_b = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s5-sz32-epoch4.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, 5, [0.2, 0.4, 0.6, 0.8], [1, 0, 1, 0])
             shadow_loss_path_a = self._write_loss_file(tmpdir, shadow_path_a, 5, [1.0, 0.3, 1.2, 0.4], [1, 1, 0, 0])
             shadow_loss_path_b = self._write_loss_file(tmpdir, shadow_path_b, 5, [1.1, 0.2, 1.3, 0.5], [0, 0, 1, 1])
@@ -105,9 +105,9 @@ class TestRunAuditMetrics(unittest.TestCase):
 
     def test_run_entity_audit_composes_base_scores_and_saves_metrics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth"
-            shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s1-sz64-epoch10.pth"
-            shadow_path_b = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s2-sz64-epoch10.pth"
+            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s0-sz64-epoch10.pth"
+            shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s1-sz64-epoch10.pth"
+            shadow_path_b = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s2-sz64-epoch10.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, 3, [0.2, 0.5, 0.1, 0.1], [1, 0, 0, 0])
             shadow_loss_path_a = self._write_loss_file(tmpdir, shadow_path_a, 3, [0.9, 0.2, 1.1, 1.2], [1, 1, 0, 0])
             shadow_loss_path_b = self._write_loss_file(tmpdir, shadow_path_b, 3, [1.0, 0.3, 0.8, 0.9], [0, 0, 1, 1])
@@ -159,9 +159,9 @@ class TestRunAuditMetrics(unittest.TestCase):
 
     def test_run_entity_audit_rejects_all_mode_with_n_audit_samples_per_entity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth"
+            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s0-sz64-epoch10.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, 3, [0.2, 0.5, 0.1, 0.1], [1, 0, 0, 0])
-            shadow_loss_path = self._write_loss_file(tmpdir, Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s1-sz64-epoch10.pth", 3, [0.9, 0.2, 1.1, 1.2], [1, 1, 0, 0])
+            shadow_loss_path = self._write_loss_file(tmpdir, Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s1-sz64-epoch10.pth", 3, [0.9, 0.2, 1.1, 1.2], [1, 1, 0, 0])
             config = run_audit_module.utils.Config({
                 "dataset": "celeba",
                 "data_dir": tmpdir,

@@ -18,9 +18,9 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
         dataset = list(range(4))
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
-            target_path = tmpdir_path / "DDPM-cifar10-rand-f0p5-s0-sz32-epoch4.pth"
-            shadow_path_a = tmpdir_path / "DDPM-cifar10-rand-f0p5-s1-sz32-epoch4.pth"
-            shadow_path_b = tmpdir_path / "DDPM-cifar10-rand-f0p5-s2-sz32-epoch4.pth"
+            target_path = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
+            shadow_path_a = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+            shadow_path_b = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s2-sz32-epoch4.pth"
             loss_sig_by_path = {
                 target_path: (torch.tensor([0.90, 0.95, 1.40, 1.45], dtype=torch.float32), torch.tensor([1, 0, 1, 0], dtype=torch.bool)),
                 shadow_path_a: (torch.tensor([1.00, 1.10, 1.20, 1.30], dtype=torch.float32), torch.tensor([1, 1, 0, 0], dtype=torch.bool)),

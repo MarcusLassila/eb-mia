@@ -43,11 +43,11 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
 
     def test_run_entity_audit_composes_lira_scores_and_saves_metrics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s0-sz64-epoch10.pth"
-            shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s1-sz64-epoch10.pth"
-            shadow_path_b = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s2-sz64-epoch10.pth"
-            shadow_path_c = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s3-sz64-epoch10.pth"
-            shadow_path_d = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1-s4-sz64-epoch10.pth"
+            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s0-sz64-epoch10.pth"
+            shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s1-sz64-epoch10.pth"
+            shadow_path_b = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s2-sz64-epoch10.pth"
+            shadow_path_c = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s3-sz64-epoch10.pth"
+            shadow_path_d = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s4-sz64-epoch10.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, [0.90, 0.95, 1.40, 1.45], [1, 0, 0, 0])
             shadow_loss_paths = [
                 self._write_loss_file(tmpdir, shadow_path_a, [1.00, 1.10, 1.20, 1.30], [1, 1, 0, 0]),

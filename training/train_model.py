@@ -54,7 +54,7 @@ def train_model_from_scratch(
     channels, height, width = image_dim
     assert height == width
     assert height == config.image_resolution
-    train_indices = train_split.load_indices(train_indices_path)
+    train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
     train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
     train_indices = utils.mask_to_index(train_mask)
     nontrain_indices = utils.mask_to_index(~train_mask)
@@ -144,7 +144,7 @@ def train_model_from_checkpoint(
         train_indices = checkpoint["train_indices"]
         val_indices = checkpoint["val_indices"]
     else:
-        train_indices = train_split.load_indices(train_indices_path)
+        train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
         train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
         nontrain_indices = utils.mask_to_index(~train_mask)
         val_size = len(checkpoint["val_indices"])

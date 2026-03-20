@@ -1,5 +1,4 @@
 from pathlib import Path
-from fractions import Fraction
 import re
 import subprocess
 import yaml
@@ -29,15 +28,6 @@ def resolve_path(path_str, root):
     if not path.is_absolute() and root is not None:
         return Path(root) / path
     return path
-
-def _parse_split_fraction(token):
-    '''Parse split fraction token from a checkpoint stem. Args: token (str). Returns: float.'''
-    if "d" in token:
-        numerator, denominator = token.split("d")
-        return float(Fraction(int(numerator), int(denominator)))
-    if "p" in token:
-        return float(Fraction(token.replace("p", ".")))
-    return float(Fraction(int(token), 1))
 
 def parse_properties_from_checkpoint_path(path):
     '''Parse properties from a checkpoint path. Args: path (str|Path). Returns: dict.'''
@@ -72,29 +62,29 @@ def parse_properties_from_checkpoint_path(path):
         "epoch": epoch,
     }
 
-    rand_match = re.match(
-        r"^(?P<dataset>.+)-rand-f(?P<fraction>[^-]+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
+    smpl_match = re.match(
+        r"^(?P<dataset>.+)-smpl-f(?P<fraction>\d+p\d+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
         split_stem,
     )
     ent_match = re.match(
-        r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>[^-]+)-p(?P<per_entity_fraction>[^-]+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
+        r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>\d+p\d+)-p(?P<per_entity_fraction>\d+p\d+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
         split_stem,
     )
-    if rand_match is not None:
+    if smpl_match is not None:
         properties.update({
-            "dataset": rand_match.group("dataset"),
-            "split_mode": "random",
-            "fraction": _parse_split_fraction(rand_match.group("fraction")),
-            "seed": int(rand_match.group("seed")),
-            "complement": rand_match.group("comp") is not None,
+            "dataset": smpl_match.group("dataset"),
+            "split_mode": "sample",
+            "fraction": float(smpl_match.group("fraction").replace("p", ".")),
+            "seed": int(smpl_match.group("seed")),
+            "complement": smpl_match.group("comp") is not None,
         })
     else:
         assert ent_match is not None
         properties.update({
             "dataset": ent_match.group("dataset"),
             "split_mode": "entity",
-            "entity_fraction": _parse_split_fraction(ent_match.group("entity_fraction")),
-            "per_entity_fraction": _parse_split_fraction(ent_match.group("per_entity_fraction")),
+            "entity_fraction": float(ent_match.group("entity_fraction").replace("p", ".")),
+            "per_entity_fraction": float(ent_match.group("per_entity_fraction").replace("p", ".")),
             "seed": int(ent_match.group("seed")),
             "complement": ent_match.group("comp") is not None,
         })

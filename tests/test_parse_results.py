@@ -111,17 +111,17 @@ class TestEvaluationCli(unittest.TestCase):
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
             self.assertEqual(summaries[0]["label"], "BASE-f0p5-p0p5-e1000-ent-all")
 
-    def test_collect_metrics_folder_summaries_compacts_rand_and_max_one_mode(self):
+    def test_collect_metrics_folder_summaries_compacts_sample_and_max_one_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-cifar10-rand-f0p5-sz32-epoch4"
+            parent = tmpdir / "DDPM-cifar10-smpl-f0p5-sz32-epoch4"
             folder = parent / "BASE-entity-max_one_train"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-cifar10-rand-f0p5-s0-sz32-epoch4_mode-entity.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4_mode-entity.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
-            self.assertEqual(summaries[0]["label"], "BASE-f0p5-e4-ent-max_one")
+            self.assertEqual(summaries[0]["label"], "BASE-smpl-f0p5-e4-ent-max_one")
 
     def test_collect_metrics_folder_summaries_compacts_exclude_train_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:

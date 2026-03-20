@@ -15,11 +15,12 @@ from generative_models.vae import VAE
 
 class TestGenerativeUtils(unittest.TestCase):
     def test_parse_properties_from_checkpoint_path(self):
-        properties = parse_properties_from_checkpoint_path("/tmp/DDPM-cifar10-rand-f1d2-s3-sz32-epoch4.pth")
+        properties = parse_properties_from_checkpoint_path("/tmp/DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
         self.assertEqual(properties["dataset"], "cifar10")
         self.assertEqual(properties["model"], "DDPM")
         self.assertEqual(properties["size"], 32)
-        self.assertEqual(properties["split_mode"], "random")
+        self.assertEqual(properties["split_mode"], "sample")
+        self.assertEqual(properties["fraction"], 0.5)
         self.assertEqual(properties["seed"], 3)
         self.assertEqual(properties["epoch"], 4)
 
@@ -34,7 +35,7 @@ class TestGenerativeUtils(unittest.TestCase):
 
     def test_load_model_ddpm(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "DDPM-Dummy-rand-f1-s0-sz4.pth"
+            path = Path(tmpdir) / "DDPM-Dummy-smpl-f1p0-s0-sz4.pth"
             image_dim = (1, 4, 4)
             model_config = {
                 "image_dim": image_dim,
@@ -65,7 +66,7 @@ class TestGenerativeUtils(unittest.TestCase):
 
     def test_load_model_vae(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "VAE-Dummy-ent-f1-p1-s0-sz8.pth"
+            path = Path(tmpdir) / "VAE-Dummy-ent-f1p0-p1p0-s0-sz8.pth"
             model_config = {
                 "in_ch": 1,
                 "in_dim": 8,
@@ -90,7 +91,7 @@ class TestGenerativeUtils(unittest.TestCase):
     def test_load_model_flow_matching(self):
         '''Load a FlowMatching checkpoint and return the model and train indices. Args: None. Returns: None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "FlowMatching-Dummy-rand-f1-s0-sz4.pth"
+            path = Path(tmpdir) / "FlowMatching-Dummy-smpl-f1p0-s0-sz4.pth"
             model_config = {
                 "image_dim": (1, 4, 4),
                 "std_min": 0.01,
@@ -119,7 +120,7 @@ class TestGenerativeUtils(unittest.TestCase):
 
     def test_load_model_size_mismatch_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "DDPM-Dummy-rand-f1-s0-sz8.pth"
+            path = Path(tmpdir) / "DDPM-Dummy-smpl-f1p0-s0-sz8.pth"
             image_dim = (1, 4, 4)
             model_config = {
                 "image_dim": image_dim,
@@ -145,7 +146,7 @@ class TestGenerativeUtils(unittest.TestCase):
 
     def test_load_model_wrapped_state_dict_unwraps_and_warns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "VAE-Dummy-ent-f1-p1-s0-sz8.pth"
+            path = Path(tmpdir) / "VAE-Dummy-ent-f1p0-p1p0-s0-sz8.pth"
             model_config = {
                 "in_ch": 1,
                 "in_dim": 8,

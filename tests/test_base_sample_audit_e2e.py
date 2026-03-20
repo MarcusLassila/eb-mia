@@ -23,9 +23,9 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
     def test_base_sample_audit_and_evaluation_with_explicit_shadows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
-            target_path = tmpdir_path / "DDPM-cifar10-rand-f0p5-s0-sz32-epoch4.pth"
-            shadow_path_a = tmpdir_path / "DDPM-cifar10-rand-f0p5-s1-sz32-epoch4.pth"
-            shadow_path_b = tmpdir_path / "DDPM-cifar10-rand-f0p5-s2-sz32-epoch4.pth"
+            target_path = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
+            shadow_path_a = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+            shadow_path_b = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s2-sz32-epoch4.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, [0.2, 0.4, 0.6, 0.8], [1, 0, 1, 0])
             shadow_loss_path_a = self._write_loss_file(tmpdir, shadow_path_a, [1.0, 0.3, 1.2, 0.4], [1, 1, 0, 0])
             shadow_loss_path_b = self._write_loss_file(tmpdir, shadow_path_b, [1.1, 0.2, 1.3, 0.5], [0, 0, 1, 1])
@@ -62,10 +62,10 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             target_paths = [
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s0-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s0-comp-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s1-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-rand-f0p5-s1-comp-sz32-epoch4.pth",
+                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
+                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-comp-sz32-epoch4.pth",
+                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth",
+                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-comp-sz32-epoch4.pth",
             ]
             target_loss_paths = [
                 self._write_loss_file(tmpdir, target_paths[0], [0.2, 0.4, 0.6, 0.8], [1, 0, 1, 0]),

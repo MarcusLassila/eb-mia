@@ -38,7 +38,7 @@ class TestTrainModels(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "train_indices.pkl"
             with open(path, "wb") as file:
-                pickle.dump([0, 2, 4], file)
+                pickle.dump({"indices": [0, 2, 4], "len_dataset": 6}, file)
             config = types.SimpleNamespace(
                 dataset="Dummy",
                 val_frac=0.2,
@@ -82,7 +82,7 @@ class TestTrainModels(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "train_indices.pkl"
             with open(path, "wb") as file:
-                pickle.dump(indices, file)
+                pickle.dump({"indices": indices, "len_dataset": 6}, file)
             config = types.SimpleNamespace(
                 dataset="Dummy",
                 val_frac=0.2,
@@ -143,10 +143,10 @@ class TestTrainModels(unittest.TestCase):
             },
         }
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint_path = Path(tmpdir) / "VAE-dummy-rand-f0p5-s0-sz2-gray-epoch10.pth"
+            checkpoint_path = Path(tmpdir) / "VAE-dummy-smpl-f0p5-s0-sz2-gray-epoch10.pth"
             train_indices_path = Path(tmpdir) / "override.pkl"
             with open(train_indices_path, "wb") as file:
-                pickle.dump([0, 2, 4], file)
+                pickle.dump({"indices": [0, 2, 4], "len_dataset": 6}, file)
             with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
                 with mock.patch.object(train_model, "VAE", return_value=_DummyModel()):
                     with mock.patch.object(train_model, "TrainLoop") as mock_loop:
@@ -161,7 +161,7 @@ class TestTrainModels(unittest.TestCase):
                             train_indices_path=train_indices_path,
                         )
                     train_kwargs = mock_loop.call_args.kwargs
-                    self.assertEqual(train_kwargs["savepath"], Path(tmpdir) / "VAE-dummy-rand-f0p5-s0-sz2-gray.pth")
+                    self.assertEqual(train_kwargs["savepath"], Path(tmpdir) / "VAE-dummy-smpl-f0p5-s0-sz2-gray.pth")
                     self.assertEqual(list(train_kwargs["train_dataset"].indices), [0, 2, 4])
                     self.assertTrue(torch.equal(train_kwargs["val_dataset"].indices, torch.tensor([1, 3], dtype=torch.long)))
 
