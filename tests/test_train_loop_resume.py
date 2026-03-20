@@ -55,11 +55,55 @@ class _SimpleModel(AbstractGenerativeModel):
 
     @property
     def image_size(self):
-        '''Return model image size. Args: None. Returns: int.'''
+        '''
+        Return the model image size.
+        Returns:
+            int: Spatial size of generated images.
+        '''
         return 1
 
 
 class TestTrainLoopResume(unittest.TestCase):
+    def test_checkpoint_saves_loss_history(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        model = _SimpleModel()
+
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=2,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="bfloat16",
+            lr_scheduler="none",
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "loss_history_test.pth"
+            TrainLoop(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            checkpoint = torch.load(Path(tmpdir) / "loss_history_test-epoch2.pth", map_location="cpu")
+        self.assertIn("train_losses", checkpoint)
+        self.assertIn("val_losses", checkpoint)
+        self.assertEqual(len(checkpoint["train_losses"]), 2)
+        self.assertEqual(len(checkpoint["val_losses"]), 2)
+        self.assertTrue(all(isinstance(loss, float) for loss in checkpoint["train_losses"]))
+        self.assertTrue(all(isinstance(loss, float) for loss in checkpoint["val_losses"]))
+
     def test_resume_checkpoint_loads_into_compiled_wrapper(self):
         torch.manual_seed(0)
         data = torch.randn(4, 1)
@@ -101,6 +145,57 @@ class TestTrainLoopResume(unittest.TestCase):
             )
         self.assertEqual(train_loop.start_epoch, 5)
         self.assertTrue(torch.equal(train_loop.raw_network._orig_mod.weight.detach().cpu(), expected_weight))
+
+    def test_resume_checkpoint_preserves_existing_loss_history(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        model = _SimpleModel()
+
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            weight_decay=0.0,
+            ema_decay=0.0,
+            grad_clip=0.0,
+            autocast_dtype="bfloat16",
+            lr_scheduler="none",
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "resume_loss_history.pth"
+            first_loop = TrainLoop(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+            )
+            first_loop.train()
+            checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch1.pth", map_location="cpu")
+            resumed_loop = TrainLoop(
+                model=_SimpleModel(),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+                resume_checkpoint=checkpoint,
+            )
+            resumed_loop.train()
+            resumed_checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch2.pth", map_location="cpu")
+        self.assertEqual(len(resumed_checkpoint["train_losses"]), 2)
+        self.assertEqual(len(resumed_checkpoint["val_losses"]), 2)
+        self.assertAlmostEqual(resumed_checkpoint["train_losses"][0], checkpoint["train_losses"][0])
+        self.assertAlmostEqual(resumed_checkpoint["val_losses"][0], checkpoint["val_losses"][0])
 
 
 if __name__ == "__main__":

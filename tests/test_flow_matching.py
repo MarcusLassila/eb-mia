@@ -23,7 +23,11 @@ class _TensorImageDataset(Dataset):
 
 class TestFlowMatching(unittest.TestCase):
     def test_sample_returns_unit_interval_images(self):
-        '''Sample images and verify shape and range. Args: None. Returns: None.'''
+        '''
+        Sample images and verify shape and range.
+        Returns:
+            None
+        '''
         torch.manual_seed(0)
         model_config = {
             "image_dim": (1, 4, 4),
@@ -45,7 +49,11 @@ class TestFlowMatching(unittest.TestCase):
         self.assertLessEqual(float(samples.max()), 1.0)
 
     def test_train_runs_one_epoch(self):
-        '''Train FlowMatching for one epoch as a smoke test. Args: None. Returns: None.'''
+        '''
+        Train FlowMatching for one epoch as a smoke test.
+        Returns:
+            None
+        '''
         torch.manual_seed(0)
         data = torch.randn(8, 1, 4, 4)
         dataset = _TensorImageDataset(data)

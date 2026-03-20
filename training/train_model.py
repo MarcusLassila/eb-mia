@@ -29,7 +29,16 @@ def get_train_config(config):
     )
 
 def build_checkpoint_savepath(config, savedir, split_stem, is_gray):
-    '''Build checkpoint save path. Args: config, savedir (Path), split_stem (str), is_gray (bool). Returns: Path.'''
+    '''
+    Build the checkpoint save path.
+    Args:
+        config (Config): Training configuration.
+        savedir (Path): Directory used for checkpoint output.
+        split_stem (str): Train-split stem used in the filename.
+        is_gray (bool): Whether the checkpoint stores grayscale images.
+    Returns:
+        Path: Checkpoint save path.
+    '''
     gray_token = "-gray" if is_gray else ""
     suffix = f"-{config.suffix}" if config.suffix else ""
     filename = f"{config.model}-{split_stem}-sz{config.image_resolution}{gray_token}{suffix}.pth"
@@ -42,7 +51,17 @@ def train_model_from_scratch(
         savedir,
         train_indices_path,
     ):
-    '''Train a model from config and explicit train indices. Args: accelerator, config, data_dir (Path), savedir (Path), train_indices_path (Path). Returns: None.'''
+    '''
+    Train a model from config and explicit train indices.
+    Args:
+        accelerator (AcceleratorLite): Training accelerator.
+        config (Config): Training configuration.
+        data_dir (Path): Dataset directory.
+        savedir (Path): Checkpoint output directory.
+        train_indices_path (Path): Path to the training indices file.
+    Returns:
+        None
+    '''
     dataset = load_dataset(
         config.dataset,
         data_dir=str(data_dir),
@@ -130,7 +149,19 @@ def train_model_from_checkpoint(
         checkpoint_path,
         train_indices_path=None,
     ):
-    '''Resume model training from checkpoint state. Args: accelerator, config (Config|None), savedir (Path), data_dir (Path), checkpoint (dict), checkpoint_path (Path), train_indices_path (Path|None). Returns: None.'''
+    '''
+    Resume model training from checkpoint state.
+    Args:
+        accelerator (AcceleratorLite): Training accelerator.
+        config (Config | None): Optional training configuration override.
+        savedir (Path): Checkpoint output directory.
+        data_dir (Path): Dataset directory.
+        checkpoint (dict): Loaded checkpoint payload.
+        checkpoint_path (Path): Source checkpoint path.
+        train_indices_path (Path | None): Optional replacement training indices path.
+    Returns:
+        None
+    '''
     properties = utils.parse_properties_from_checkpoint_path(checkpoint_path)
     dataset = load_dataset(
         properties["dataset"],
@@ -190,7 +221,19 @@ def train_model_from_checkpoint(
     ).train()
 
 def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=None, data_dir=None, save_dir=None, torch_compile=False):
-    '''Load config and train from indices or resume from checkpoint. Args: config_file (str|None), suffix (str), train_indices_path (str|None), checkpoint_path (str|None), data_dir (str|Path), save_dir (str|Path). Returns: None.'''
+    '''
+    Load config and train from indices or resume from a checkpoint.
+    Args:
+        config_file (str | None): Training config name without the `.yaml` suffix.
+        suffix (str): Optional suffix appended to saved checkpoint names.
+        train_indices_path (str | None): Optional training indices path.
+        checkpoint_path (str | None): Optional checkpoint path to resume from.
+        data_dir (str | Path): Dataset directory.
+        save_dir (str | Path): Checkpoint output directory.
+        torch_compile (bool): Whether to enable `torch.compile`.
+    Returns:
+        None
+    '''
     root = utils.get_root()
     if data_dir is None or save_dir is None:
         raise ValueError("must provide data_dir and save_dir.")

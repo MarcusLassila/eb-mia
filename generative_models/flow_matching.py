@@ -62,7 +62,11 @@ class FlowMatching(AbstractGenerativeModel):
 
     @property
     def image_size(self):
-        '''Return model image size. Args: None. Returns: int.'''
+        '''
+        Return the model image size.
+        Returns:
+            int: Spatial size of generated images.
+        '''
         return self.image_dim[1]
 
     def move_to(self, device):
@@ -88,7 +92,15 @@ class FlowMatching(AbstractGenerativeModel):
 
     @torch.inference_mode()
     def sample(self, batch_size, n_steps=20, **kwargs):
-        ''' Sample a batch of images and rescale them to floating point values in [0,1]. '''
+        '''
+        Sample a batch of images and rescale them to `[0, 1]`.
+        Args:
+            batch_size (int): Number of images to sample.
+            n_steps (int): Number of ODE integration steps.
+            kwargs (dict): Ignored extra keyword arguments.
+        Returns:
+            torch.Tensor: Sampled image batch.
+        '''
         self.network.eval()
         device = next(iter(self.network.parameters())).device
         t_0 = torch.zeros(size=(batch_size,), device=device, dtype=torch.float32)

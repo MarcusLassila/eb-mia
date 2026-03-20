@@ -46,7 +46,11 @@ class _InfGradModel(AbstractGenerativeModel):
 
     @property
     def image_size(self):
-        '''Return model image size. Args: None. Returns: int.'''
+        '''
+        Return the model image size.
+        Returns:
+            int: Spatial size of generated images.
+        '''
         return 1
 
 

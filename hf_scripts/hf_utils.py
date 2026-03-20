@@ -3,7 +3,13 @@ from huggingface_hub.utils import LocalTokenNotFoundError
 
 
 def authenticate_hf(token=None):
-    '''Authenticate with Hugging Face. Args: token (str|None). Returns: None.'''
+    '''
+    Authenticate with Hugging Face.
+    Args:
+        token (str | None): Optional access token used when no local token exists.
+    Returns:
+        None
+    '''
     try:
         print("Huggingface authentication. Who am I?:", whoami())
     except LocalTokenNotFoundError:

@@ -89,7 +89,11 @@ class TestGenerativeUtils(unittest.TestCase):
             self.assertFalse(loaded_model.network.training)
 
     def test_load_model_flow_matching(self):
-        '''Load a FlowMatching checkpoint and return the model and train indices. Args: None. Returns: None.'''
+        '''
+        Load a FlowMatching checkpoint and return the model and train indices.
+        Returns:
+            None
+        '''
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "FlowMatching-Dummy-smpl-f1p0-s0-sz4.pth"
             model_config = {

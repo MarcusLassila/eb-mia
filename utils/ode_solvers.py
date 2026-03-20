@@ -1,7 +1,17 @@
 import torch
 
 def ode_midpoint(f, x_0, t_0, step_size, n_steps):
-    ''' 2nd-order Runge-Kutta method (midpoint scheme) '''
+    '''
+    Integrate an ODE with the second-order midpoint method.
+    Args:
+        f (callable): Vector field evaluated as `f(x, t)`.
+        x_0 (torch.Tensor): Initial state.
+        t_0 (torch.Tensor): Initial time values.
+        step_size (float): Integration step size.
+        n_steps (int): Number of integration steps.
+    Returns:
+        torch.Tensor: Final state after integration.
+    '''
     h = step_size
     x = x_0
     t = t_0

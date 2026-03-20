@@ -103,7 +103,11 @@ class TestVAETrain(unittest.TestCase):
             ).train()
 
     def test_train_runs_with_ema_enabled(self):
-        '''Ensure EMA checkpoints are saved and match raw weights when decay is zero.'''
+        '''
+        Ensure EMA checkpoints are saved and match raw weights when decay is zero.
+        Returns:
+            None
+        '''
         torch.manual_seed(0)
         data = torch.randn(8, 1, 8, 8)
         dataset = _TensorImageDataset(data)

@@ -10,7 +10,14 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score, roc_curve
 
 def evaluate_MIA(score, ground_truth):
-    '''Evaluate MIA scores and return ROC-derived metrics. Args: score (array-like), ground_truth (array-like). Returns: dict.'''
+    '''
+    Evaluate MIA scores and return ROC-derived metrics.
+    Args:
+        score (array-like): Audit scores.
+        ground_truth (array-like): Membership labels.
+    Returns:
+        dict: ROC-derived audit metrics.
+    '''
     if not isinstance(score, np.ndarray):
         score = np.array(score)
     if not isinstance(ground_truth, np.ndarray):
@@ -30,14 +37,27 @@ def evaluate_MIA(score, ground_truth):
     }
 
 def _assert_fixed_fpr_metrics_consistent(metrics):
-    '''Assert stored TPR@FPR metrics match interpolation from the stored ROC curve. Args: metrics (dict). Returns: None.'''
+    '''
+    Assert stored TPR@FPR metrics match the saved ROC curve.
+    Args:
+        metrics (dict): Metrics dictionary to validate.
+    Returns:
+        None
+    '''
     fpr = np.asarray(metrics["FPR"], dtype=float)
     tpr = np.asarray(metrics["TPR"], dtype=float)
     assert np.isclose(float(metrics["TPR@1%FPR"]), float(np.interp(1e-2, fpr, tpr)), atol=1e-7)
     assert np.isclose(float(metrics["TPR@0.1%FPR"]), float(np.interp(1e-3, fpr, tpr)), atol=1e-7)
 
 def _collect_metrics_folder_summary(metrics_dir, fpr_space):
-    '''Collect summary stats and averaged ROC curve for one metrics folder. Args: metrics_dir (str|Path), fpr_space (np.ndarray). Returns: dict.'''
+    '''
+    Collect summary stats and an averaged ROC curve for one metrics folder.
+    Args:
+        metrics_dir (str | Path): Folder containing metrics pickles.
+        fpr_space (np.ndarray): FPR grid used for interpolation.
+    Returns:
+        dict: Summary metrics for the folder.
+    '''
     metrics_dir = Path(metrics_dir)
     metrics_files = sorted(metrics_dir.glob("*.pkl"))
     if not metrics_files:
@@ -75,7 +95,14 @@ def _collect_metrics_folder_summary(metrics_dir, fpr_space):
     }
 
 def collect_metrics_folder_summaries(metrics_dirs, low_exponent=-4):
-    '''Collect summaries for metrics folders and validate shared target models. Args: metrics_dirs (list[str|Path]), low_exponent (int). Returns: tuple[np.ndarray, list[dict]].'''
+    '''
+    Collect summaries for metrics folders and validate shared target models.
+    Args:
+        metrics_dirs (list[str | Path]): Metrics folders to evaluate.
+        low_exponent (int): Lowest exponent used for the log-spaced FPR grid.
+    Returns:
+        tuple[np.ndarray, list[dict]]: FPR grid and folder summaries.
+    '''
     fpr_space = np.logspace(low_exponent, 0, 1000)
     summaries = [_collect_metrics_folder_summary(metrics_dir, fpr_space) for metrics_dir in metrics_dirs]
     if not summaries:
@@ -91,7 +118,15 @@ def collect_metrics_folder_summaries(metrics_dirs, low_exponent=-4):
     return fpr_space, summaries
 
 def plot_average_roc_curves(output_dir, fpr_space, summaries):
-    '''Plot averaged ROC curves for summaries. Args: output_dir (str|Path), fpr_space (np.ndarray), summaries (list[dict]). Returns: None.'''
+    '''
+    Plot averaged ROC curves for summaries.
+    Args:
+        output_dir (str | Path): Directory for the saved figure.
+        fpr_space (np.ndarray): FPR grid used for plotting.
+        summaries (list[dict]): Metrics summaries to plot.
+    Returns:
+        None
+    '''
     output_dir = Path(output_dir)
     reference_targets = summaries[0]["target_stems"]
     for summary in summaries[1:]:
@@ -129,11 +164,23 @@ def plot_average_roc_curves(output_dir, fpr_space, summaries):
     print(f"Saved average roc plot in {output_dir}")
 
 def _format_pct_mean_std(stats):
-    '''Format a metric as percentage mean ± std. Args: stats (dict). Returns: str.'''
+    '''
+    Format a metric as percentage mean plus-minus standard deviation.
+    Args:
+        stats (dict): Metric statistics with mean and std values.
+    Returns:
+        str: Formatted percentage string.
+    '''
     return f"{100*stats['mean']:.2f}% ± {100*stats['std']:.2f}%"
 
 def print_metrics_table(summaries):
-    '''Print one combined table for all metrics folders. Args: summaries (list[dict]). Returns: None.'''
+    '''
+    Print one combined table for all metrics folders.
+    Args:
+        summaries (list[dict]): Metrics summaries to print.
+    Returns:
+        None
+    '''
     headers = [
         "Metrics folder",
         "AUC (%)",
@@ -171,7 +218,13 @@ def print_metrics_table(summaries):
         )
 
 def parse_args(argv=None):
-    '''Parse CLI arguments for evaluation. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
+    '''
+    Parse CLI arguments for evaluation.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    '''
     parser = argparse.ArgumentParser(description="Evaluate MIA audit metrics and plot average ROC curves.")
     default_config_path = str(utils.resolve_path(Path("mia") / "configs" / "config_evaluation.yaml", utils.get_root()))
     parser.add_argument("--config", default=default_config_path, help="Path to evaluation config yaml file.")
@@ -190,7 +243,15 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 def run_evaluation(config, metrics_folders_override=None, low_exponent_override=None):
-    '''Run evaluation for selected metrics folders. Args: config (Config), metrics_folders_override (list[str]|None), low_exponent_override (int|None). Returns: list[dict].'''
+    '''
+    Run evaluation for selected metrics folders.
+    Args:
+        config (Config): Evaluation configuration.
+        metrics_folders_override (list[str] | None): Optional metrics folder overrides.
+        low_exponent_override (int | None): Optional low exponent override.
+    Returns:
+        list[dict]: Computed metrics summaries.
+    '''
     output_dir, metrics_dirs = path_utils.resolve_evaluation_paths(config, metrics_folders_override=metrics_folders_override)
     low_exponent = low_exponent_override if low_exponent_override is not None else getattr(config, "low_exponent", -4)
     fpr_space, summaries = collect_metrics_folder_summaries(metrics_dirs, low_exponent=low_exponent)
@@ -199,7 +260,13 @@ def run_evaluation(config, metrics_folders_override=None, low_exponent_override=
     return summaries
 
 def main(argv=None):
-    '''Entry point for evaluation CLI. Args: argv (list[str]|None). Returns: None.'''
+    '''
+    Entry point for the evaluation CLI.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        None
+    '''
     args = parse_args(argv)
     config_path = utils.resolve_path(args.config, utils.get_root())
     with open(config_path, "r") as file:

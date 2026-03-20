@@ -11,14 +11,13 @@ from .vae import VAE
 import torch
 
 def load_model(path: str, device: torch.device):
-    ''' Load a generative model and its training indices from a checkpoint.
-
+    '''
+    Load a generative model and its training indices from a checkpoint.
     Args:
-        path: Checkpoint file path.
-        device: Target torch device.
-
+        path (str): Checkpoint file path.
+        device (torch.device): Target torch device.
     Returns:
-        Tuple[AbstractGenerativeModel, torch.Tensor]: Loaded model and train indices.
+        tuple[object, torch.Tensor]: Loaded model and train indices.
     '''
     checkpoint = load_checkpoint(path, device)
     properties = parse_properties_from_checkpoint_path(path)

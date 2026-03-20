@@ -82,10 +82,30 @@ class CIFAR10(Dataset):
         return len(self.dataset)
 
 class CelebA(EntityDataset):
-    '''CelebA dataset with optional celeb_id filtering. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+    '''
+    CelebA dataset with optional preprocessing.
+    Args:
+        data_dir (str): Dataset cache directory.
+        transform (callable | None): Optional transform applied to each image.
+        size (int): Output image size.
+        grayscale (bool): Whether to convert images to grayscale.
+        random_horizontal_flip (bool): Whether to apply random flips.
+    Returns:
+        None
+    '''
 
     def __init__(self, data_dir="./datasets", transform=None, size=128, grayscale=False, random_horizontal_flip=True):
-        '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+        '''
+        Initialize the CelebA dataset.
+        Args:
+            data_dir (str): Dataset cache directory.
+            transform (callable | None): Optional transform applied to each image.
+            size (int): Output image size.
+            grayscale (bool): Whether to convert images to grayscale.
+            random_horizontal_flip (bool): Whether to apply random flips.
+        Returns:
+            None
+        '''
         if transform is None:
             transforms = [
                 T.CenterCrop((178, 178)),
@@ -128,13 +148,23 @@ class CelebA(EntityDataset):
         return self._max_entity_id
 
     def __getitem__(self, index):
-        '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''
+        '''
+        Return a transformed image.
+        Args:
+            index (int): Sample index.
+        Returns:
+            torch.Tensor: Transformed image tensor.
+        '''
         image = self.dataset[int(index)]["image"]
         image = self.transform(image)
         return image
 
     def __len__(self):
-        '''Return dataset size. Args: None. Returns: int.'''
+        '''
+        Return the dataset size.
+        Returns:
+            int: Number of samples in the dataset.
+        '''
         return len(self.dataset)
 
 class CelebAHQ(Dataset):
@@ -199,10 +229,30 @@ if __name__ == "__main__":
 ########################
 
 class CelebA2(CelebA):
-    '''CelebA dataset filtered to celeb_ids with at least 2 samples. Args: data_dir (str), transform (callable|None), size (int), grayscale (bool). Returns: None.'''
+    '''
+    CelebA dataset filtered to identities with at least two samples.
+    Args:
+        data_dir (str): Dataset cache directory.
+        transform (callable | None): Optional transform applied to each image.
+        size (int): Output image size.
+        grayscale (bool): Whether to convert images to grayscale.
+        random_horizontal_flip (bool): Whether to apply random flips.
+    Returns:
+        None
+    '''
 
     def __init__(self, data_dir="./datasets", transform=None, size=128, grayscale=False, random_horizontal_flip=True):
-        '''Initialize CelebA dataset and optionally filter celeb_ids. Args: data_dir (str), transform (callable|None), min_celeb_samples (int), size (int), grayscale (bool). Returns: None.'''
+        '''
+        Initialize the filtered CelebA dataset.
+        Args:
+            data_dir (str): Dataset cache directory.
+            transform (callable | None): Optional transform applied to each image.
+            size (int): Output image size.
+            grayscale (bool): Whether to convert images to grayscale.
+            random_horizontal_flip (bool): Whether to apply random flips.
+        Returns:
+            None
+        '''
         if transform is None:
             transforms = [
                 T.CenterCrop((178, 178)),
@@ -267,11 +317,21 @@ class CelebA2(CelebA):
         return self._entity_id_to_index_map
 
     def __getitem__(self, index):
-        '''Return transformed image. Args: index (int). Returns: torch.Tensor.'''
+        '''
+        Return a transformed image.
+        Args:
+            index (int): Sample index.
+        Returns:
+            torch.Tensor: Transformed image tensor.
+        '''
         image = self.dataset[int(index)]["image"]
         image = self.transform(image)
         return image
 
     def __len__(self):
-        '''Return dataset size. Args: None. Returns: int.'''
+        '''
+        Return the dataset size.
+        Returns:
+            int: Number of samples in the dataset.
+        '''
         return len(self.dataset)

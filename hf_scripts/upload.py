@@ -20,7 +20,17 @@ def upload_directory(
     repo_id=REPO_ID,
     repo_type=REPO_TYPE,
 ):
-    '''Upload a local directory or matching files to a directory in a Hugging Face repo. Args: local_dir (str|Path), remote_dir (str), file_pattern (str|None), repo_id (str), repo_type (str). Returns: str.'''
+    '''
+    Upload a local directory or matching files to a Hugging Face repo.
+    Args:
+        local_dir (str | Path): Local directory to upload.
+        remote_dir (str): Target directory in the remote repo.
+        file_pattern (str | None): Optional upload pattern relative to `local_dir`.
+        repo_id (str): Hugging Face repository id.
+        repo_type (str): Hugging Face repository type.
+    Returns:
+        str: Commit URL returned by Hugging Face Hub.
+    '''
     local_dir = Path(local_dir)
     if not local_dir.exists():
         raise FileNotFoundError(f"local directory not found: {local_dir}")
@@ -34,7 +44,11 @@ def upload_directory(
 
 
 def parse_args():
-    '''Parse CLI arguments. Args: None. Returns: argparse.Namespace.'''
+    '''
+    Parse CLI arguments.
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    '''
     parser = argparse.ArgumentParser(description="Upload a local directory to Hugging Face.")
     parser.add_argument(
         "--local-dir",
@@ -65,7 +79,11 @@ def parse_args():
 
 
 def main():
-    '''Run upload CLI. Args: None. Returns: None.'''
+    '''
+    Run the upload CLI.
+    Returns:
+        None
+    '''
     args = parse_args()
     authenticate_hf(token=HF_TOKEN)
     commit_url = upload_directory(

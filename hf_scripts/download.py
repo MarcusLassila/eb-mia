@@ -20,7 +20,17 @@ def download_directory(
     repo_id=REPO_ID,
     repo_type=REPO_TYPE,
 ):
-    '''Download a directory or matching files from a Hugging Face repo to a local directory. Args: local_dir (str|Path), remote_dir (str), file_pattern (str|None), repo_id (str), repo_type (str). Returns: str.'''
+    '''
+    Download a directory or matching files from a Hugging Face repo.
+    Args:
+        local_dir (str | Path): Local directory to download into.
+        remote_dir (str): Directory in the remote repo.
+        file_pattern (str | None): Optional file pattern relative to `remote_dir`.
+        repo_id (str): Hugging Face repository id.
+        repo_type (str): Hugging Face repository type.
+    Returns:
+        str: Local snapshot path returned by Hugging Face Hub.
+    '''
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     remote_dir = str(remote_dir).strip("/")
@@ -34,7 +44,11 @@ def download_directory(
 
 
 def parse_args():
-    '''Parse CLI arguments. Args: None. Returns: argparse.Namespace.'''
+    '''
+    Parse CLI arguments.
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    '''
     parser = argparse.ArgumentParser(description="Download a repo directory from Hugging Face.")
     parser.add_argument(
         "--local-dir",
@@ -65,7 +79,11 @@ def parse_args():
 
 
 def main():
-    '''Run download CLI. Args: None. Returns: None.'''
+    '''
+    Run the download CLI.
+    Returns:
+        None
+    '''
     args = parse_args()
     authenticate_hf(token=HF_TOKEN)
     local_path = download_directory(

@@ -12,7 +12,16 @@ from torch.utils.data.distributed import DistributedSampler
 
 @dataclass
 class DataLoaderConfig:
-    '''Configuration for torch DataLoader options. Args: num_workers (int), pin_memory (bool), persistent_workers (bool), prefetch_factor (int | None). Returns: None.'''
+    '''
+    Configuration for torch dataloader options.
+    Args:
+        num_workers (int): Number of worker processes.
+        pin_memory (bool): Whether to pin host memory.
+        persistent_workers (bool): Whether to keep workers alive between epochs.
+        prefetch_factor (int | None): Number of prefetched batches per worker.
+    Returns:
+        None
+    '''
 
     num_workers: int = 0
     pin_memory: bool = False
@@ -82,7 +91,13 @@ class AcceleratorLite:
         torch.cuda.manual_seed_all(seed)
 
     def _parse_dataloader_config(self, dataloader_config):
-        '''Parse dataloader configuration to a DataLoaderConfig instance. Args: dataloader_config (dict or DataLoaderConfig). Returns: DataLoaderConfig.'''
+        '''
+        Parse dataloader configuration to a `DataLoaderConfig`.
+        Args:
+            dataloader_config (dict | DataLoaderConfig | None): Dataloader configuration value.
+        Returns:
+            DataLoaderConfig: Parsed dataloader configuration.
+        '''
         if dataloader_config is None:
             return DataLoaderConfig()
         if isinstance(dataloader_config, DataLoaderConfig):
@@ -92,7 +107,9 @@ class AcceleratorLite:
         raise TypeError("dataloader_config must be a dict or DataLoaderConfig")
 
 class DataLoaderOnDevice:
-    '''Wrapper to place batches on device.'''
+    '''
+    Wrapper that moves dataloader batches to a device.
+    '''
 
     def __init__(self, dataloader, device):
         self.dataloader = dataloader

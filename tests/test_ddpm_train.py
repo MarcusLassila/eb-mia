@@ -23,7 +23,11 @@ class _TensorImageDataset(Dataset):
 
 class TestDDPMTrain(unittest.TestCase):
     def test_default_n_res_blocks_per_level_is_two(self):
-        '''Construct DDPM with default residual block depth. Args: None. Returns: None.'''
+        '''
+        Construct DDPM with the default residual block depth.
+        Returns:
+            None
+        '''
         model = DDPM(
             image_dim=(1, 4, 4),
             time_steps=10,
@@ -131,7 +135,11 @@ class TestDDPMTrain(unittest.TestCase):
             ).train()
 
     def test_train_runs_with_ema_enabled(self):
-        '''Ensure EMA checkpoints are saved and match raw weights when decay is zero.'''
+        '''
+        Ensure EMA checkpoints are saved and match raw weights when decay is zero.
+        Returns:
+            None
+        '''
         torch.manual_seed(0)
         data = torch.randn(8, 1, 4, 4)
         dataset = _TensorImageDataset(data)

@@ -1,7 +1,16 @@
 from .datasets import *
 
 def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
-    '''Load a dataset by name. Args: dataset_name (str), data_dir (str), transform (callable|None), kwargs (dict). Returns: Dataset.'''
+    '''
+    Load a dataset by name.
+    Args:
+        dataset_name (str): Name of the dataset to load.
+        data_dir (str): Directory used for dataset storage and caching.
+        transform (callable | None): Optional transform applied to each sample.
+        kwargs (dict): Dataset-specific keyword arguments.
+    Returns:
+        Dataset: Loaded dataset instance.
+    '''
     match dataset_name:
         case "MNIST":
             dataset = MNIST(data_dir=data_dir, transform=transform)

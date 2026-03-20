@@ -63,7 +63,17 @@ class LossQuery:
         return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
 
 def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples):
-    '''Save one checkpoint's loss-signal payload. Args: res_dir (str|Path), target_path (str|Path), loss_sig (torch.Tensor), train_mask (torch.Tensor), n_loss_samples (int). Returns: Path.'''
+    '''
+    Save one checkpoint's loss-signal payload.
+    Args:
+        res_dir (str | Path): Audit results directory.
+        target_path (str | Path): Target checkpoint path.
+        loss_sig (torch.Tensor): Loss signal values to save.
+        train_mask (torch.Tensor): Training-membership mask.
+        n_loss_samples (int): Number of loss samples used per point.
+    Returns:
+        Path: Saved pickle path.
+    '''
     target_path = Path(target_path)
     output_dir = path_utils.loss_signals_dir(res_dir, target_path)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -76,7 +86,15 @@ def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples
     return output_path
 
 def migrate_lira_scores_to_loss_signals(res_dir, score_paths, n_loss_samples):
-    '''Create loss-signal pickles from existing LiRA score files. Args: res_dir (str|Path), score_paths (list[str]), n_loss_samples (int). Returns: list[Path].'''
+    '''
+    Create loss-signal pickles from existing LiRA score files.
+    Args:
+        res_dir (str | Path): Audit results directory.
+        score_paths (list[str]): LiRA score files or folders.
+        n_loss_samples (int): Number of loss samples recorded in the output name.
+    Returns:
+        list[Path]: Saved loss-signal pickle paths.
+    '''
     saved_paths = []
     resolved_config = utils.Config({
         "res_dir": res_dir,
@@ -100,7 +118,16 @@ def migrate_lira_scores_to_loss_signals(res_dir, score_paths, n_loss_samples):
     return saved_paths
 
 def run_loss_query(config, device, checkpoint_paths_override=None, lira_score_paths_override=None):
-    '''Compute or migrate loss-signal pickles. Args: config (Config), device (torch.device), checkpoint_paths_override (list[str]|None), lira_score_paths_override (list[str]|None). Returns: list[Path].'''
+    '''
+    Compute or migrate loss-signal pickles.
+    Args:
+        config (Config): Loss-query configuration.
+        device (torch.device): Device used for model evaluation.
+        checkpoint_paths_override (list[str] | None): Optional checkpoint overrides.
+        lira_score_paths_override (list[str] | None): Optional LiRA score overrides.
+    Returns:
+        list[Path]: Saved loss-signal pickle paths.
+    '''
     if not hasattr(config, "n_loss_samples"):
         raise ValueError("Config must define n_loss_samples.")
     n_loss_samples = int(config.n_loss_samples)
@@ -127,7 +154,13 @@ def run_loss_query(config, device, checkpoint_paths_override=None, lira_score_pa
     return saved_paths
 
 def parse_args(argv=None):
-    '''Parse CLI arguments for loss querying. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
+    '''
+    Parse CLI arguments for loss querying.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    '''
     parser = argparse.ArgumentParser(description="Compute and save loss signals for model checkpoints.")
     default_config_path = str(utils.resolve_path(Path("mia") / "configs" / "config_loss_query.yaml", utils.get_root()))
     parser.add_argument(
@@ -150,7 +183,13 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 def main(argv=None):
-    '''Entry point for loss-query CLI. Args: argv (list[str]|None). Returns: None.'''
+    '''
+    Entry point for the loss-query CLI.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        None
+    '''
     args = parse_args(argv)
     config_path = utils.resolve_path(args.config, utils.get_root())
     with open(config_path, "r") as file:

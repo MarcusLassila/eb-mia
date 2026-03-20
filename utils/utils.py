@@ -15,7 +15,11 @@ class Config:
 
 
 def get_root():
-    ''' Return path to the root of the repository. '''
+    '''
+    Return the path to the root of the repository.
+    Returns:
+        str | None: Repository root path, or `None` if it cannot be resolved.
+    '''
     try:
         root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL)
         return root.decode("utf-8").strip()
@@ -23,14 +27,27 @@ def get_root():
         return None
 
 def resolve_path(path_str, root):
-    '''Resolve a path string to absolute path using repository root for relative inputs. Args: path_str (str|Path), root (str|Path|None). Returns: Path.'''
+    '''
+    Resolve a path string to an absolute path when possible.
+    Args:
+        path_str (str | Path): Path to resolve.
+        root (str | Path | None): Repository root used for relative paths.
+    Returns:
+        Path: Resolved path.
+    '''
     path = Path(path_str)
     if not path.is_absolute() and root is not None:
         return Path(root) / path
     return path
 
 def parse_properties_from_checkpoint_path(path):
-    '''Parse properties from a checkpoint path. Args: path (str|Path). Returns: dict.'''
+    '''
+    Parse model properties from a checkpoint path.
+    Args:
+        path (str | Path): Checkpoint path to parse.
+    Returns:
+        dict: Parsed checkpoint metadata.
+    '''
     stem = Path(path).stem
     epoch_match = re.search(r"-epoch(?P<epoch>\d+)$", stem)
     epoch = None
@@ -91,25 +108,36 @@ def parse_properties_from_checkpoint_path(path):
     return properties
 
 def load_checkpoint(path: str, device: torch.device):
-    ''' Load a model checkpoint to a target device.
-
+    '''
+    Load a model checkpoint to a target device.
     Args:
-        path: Checkpoint file path.
-        device: Target torch device.
-
+        path (str): Checkpoint file path.
+        device (torch.device): Target torch device.
     Returns:
-        dict: Loaded checkpoint.
+        dict: Loaded checkpoint payload.
     '''
     return torch.load(path, map_location=device)
 
 
 def has_torch_compile_wrapped_state_dict(state_dict):
-    '''Return True if state_dict contains torch.compile wrapped keys. Args: state_dict (Mapping). Returns: bool.'''
+    '''
+    Return whether a state dict contains `torch.compile` wrapped keys.
+    Args:
+        state_dict (Mapping): State dictionary to inspect.
+    Returns:
+        bool: `True` when wrapped keys are present.
+    '''
     return any(key.startswith("_orig_mod.") for key in state_dict)
 
 
 def unwrap_torch_compile_state_dict(state_dict):
-    '''Return state_dict with torch.compile wrapper prefix removed from keys. Args: state_dict (Mapping). Returns: Mapping.'''
+    '''
+    Return a state dict with the `torch.compile` prefix removed from keys.
+    Args:
+        state_dict (Mapping): State dictionary to unwrap.
+    Returns:
+        Mapping: Unwrapped state dictionary.
+    '''
     unwrapped_state_dict = state_dict.__class__()
     for key, value in state_dict.items():
         unwrapped_key = key.removeprefix("_orig_mod.")
@@ -120,7 +148,13 @@ def unwrap_torch_compile_state_dict(state_dict):
 
 
 def unwrap_checkpoint_state_dicts(checkpoint):
-    '''Return checkpoint with known model state dicts unwrapped from torch.compile prefix. Args: checkpoint (dict). Returns: dict.'''
+    '''
+    Return a checkpoint with known model state dicts unwrapped.
+    Args:
+        checkpoint (dict): Checkpoint payload to normalize.
+    Returns:
+        dict: Checkpoint with unwrapped state dictionaries.
+    '''
     unwrapped_checkpoint = dict(checkpoint)
     state_dict_keys = ("network_state_dict", "raw_network_state_dict", "ema_network_state_dict")
     for state_dict_key in state_dict_keys:
@@ -130,11 +164,10 @@ def unwrap_checkpoint_state_dicts(checkpoint):
 
 
 def get_train_indices(path: str):
-    ''' Load training indices from a checkpoint.
-
+    '''
+    Load training indices from a checkpoint.
     Args:
-        path: Checkpoint file path.
-
+        path (str): Checkpoint file path.
     Returns:
         torch.Tensor: Training indices.
     '''

@@ -16,7 +16,15 @@ class GaussianFourierEmbedding(nn.Module):
         return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
 
 def get_sinusoidal_positional_embeddings(t, emb_dim, max_positions=10000):
-    '''Fairseq implementation of sinusoidal positional embedding'''
+    '''
+    Return Fairseq-style sinusoidal positional embeddings.
+    Args:
+        t (torch.Tensor): Input timesteps.
+        emb_dim (int): Embedding dimension.
+        max_positions (int): Maximum position scale.
+    Returns:
+        torch.Tensor: Positional embeddings for `t`.
+    '''
     n_emb = t.shape[0]
     half_dim = emb_dim // 2
     emb = math.log(max_positions) / (half_dim - 1) # arange(half_dim) / (half_dim - 1) = [0,...,1]
@@ -34,6 +42,10 @@ def group_norm(channels, n_groups=32):
 def zero_params(module):
     '''
     Set the parameters to zero and return the module.
+    Args:
+        module (nn.Module): Module whose parameters are zeroed.
+    Returns:
+        nn.Module: The same module with zeroed parameters.
     '''
     for p in module.parameters():
         p.detach().zero_()

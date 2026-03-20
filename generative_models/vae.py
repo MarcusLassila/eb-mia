@@ -130,7 +130,14 @@ class VAE_Network(nn.Module):
         return samples
     
     def rsample(self, mean, logvar):
-        '''Sample latent variable from encoder mean and log variance using the reparameterization trick.'''
+        '''
+        Sample a latent variable with the reparameterization trick.
+        Args:
+            mean (torch.Tensor): Encoder mean tensor.
+            logvar (torch.Tensor): Encoder log-variance tensor.
+        Returns:
+            torch.Tensor: Sampled latent tensor.
+        '''
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mean + std * eps
@@ -153,7 +160,11 @@ class VAE(AbstractGenerativeModel):
 
     @property
     def image_size(self):
-        '''Return model image size. Args: None. Returns: int.'''
+        '''
+        Return the model image size.
+        Returns:
+            int: Spatial size of generated images.
+        '''
         return self.network.in_dim
 
     def per_sample_loss(self, x, network_override=None):

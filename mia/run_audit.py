@@ -14,7 +14,13 @@ import yaml
 import numpy as np
 
 def composite_attack_name(sample_attack):
-    '''Return composite attack function name and display name derived from a saved sample attack name. Args: sample_attack (str). Returns: tuple[str, str].'''
+    '''
+    Return the composite attack function name and display name.
+    Args:
+        sample_attack (str): Saved sample-attack name.
+    Returns:
+        tuple[str, str]: Composite function name and display name.
+    '''
     if sample_attack.startswith("BASE"):
         return "composite_BASE", sample_attack.replace("BASE", "CompositeBASE", 1)
     if sample_attack.startswith("LiRA"):
@@ -22,7 +28,14 @@ def composite_attack_name(sample_attack):
     raise ValueError(f"Could not infer composite attack from sample attack name: {sample_attack}")
 
 def indices_of_shadow_models(index_target, n_models):
-    '''Return round-robin shadow indices while excluding the target and its complement. Args: index_target (int), n_models (int). Returns: list[int].'''
+    '''
+    Return round-robin shadow indices excluding the target and its complement.
+    Args:
+        index_target (int): Index of the target model.
+        n_models (int): Total number of models.
+    Returns:
+        list[int]: Selected shadow model indices.
+    '''
     assert 0 <= index_target < n_models
     if index_target % 2 == 0:
         excluded_indices = {index_target, index_target + 1}
@@ -31,7 +44,13 @@ def indices_of_shadow_models(index_target, n_models):
     return sorted(set(range(n_models)) - excluded_indices)
 
 def attack_config_from_config(config):
-    '''Return attack config as a Config object. Args: config (Config). Returns: Config.'''
+    '''
+    Return the attack config as a `Config` object.
+    Args:
+        config (Config): Audit configuration.
+    Returns:
+        Config: Attack configuration.
+    '''
     attack_config = getattr(config, "attack", None)
     if attack_config is None:
         raise ValueError("Audit config must define attack settings.")
@@ -40,7 +59,15 @@ def attack_config_from_config(config):
     return attack_config
 
 def get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask):
-    '''Instantiate the configured attack from shadow loss signals. Args: attack_config (Config), shadow_loss_sigs (torch.Tensor), shadow_train_mask (torch.Tensor). Returns: MIA.'''
+    '''
+    Instantiate the configured attack from shadow loss signals.
+    Args:
+        attack_config (Config): Attack configuration.
+        shadow_loss_sigs (torch.Tensor): Shadow-model loss signals.
+        shadow_train_mask (torch.Tensor): Shadow-model membership masks.
+    Returns:
+        MIA: Instantiated attacker.
+    '''
     match attack_config.attack:
         case "BASE":
             attacker = attacks.BASE(
@@ -90,7 +117,18 @@ def get_audit_indices(n_audit_samples, membership_mask):
     return audit_indices
 
 def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
-    '''Build an entity -> Subset table with optional size filtering. Args: data_population (EntityDataset), target_train_index (torch.Tensor), mode (str), min_samples_per_entity (int|None), max_samples_per_entity (int|None), n_audit_samples_per_entity (int|None). Returns: dict[int, Subset].'''
+    '''
+    Build an entity-to-indices table with optional size filtering.
+    Args:
+        data_population (EntityDataset): Full population dataset.
+        target_train_index (torch.Tensor): Target training indices.
+        mode (str): Entity audit mode.
+        min_samples_per_entity (int | None): Optional minimum entity size.
+        max_samples_per_entity (int | None): Optional maximum entity size.
+        n_audit_samples_per_entity (int | None): Optional fixed per-entity sample count.
+    Returns:
+        dict[int, list[int]]: Selected indices for each audited entity.
+    '''
     table = data_population.get_entity_index_table()
     selected_index_table = {}
     target_entities = set()
@@ -152,7 +190,13 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
     return {entity_id: selected_index_table[entity_id] for entity_id in entity_ids}
 
 def load_loss_signals(loss_path):
-    '''Load one target checkpoint's loss signals and train mask. Args: loss_path (str|Path). Returns: tuple[torch.Tensor, torch.Tensor].'''
+    '''
+    Load one target checkpoint's loss signals and train mask.
+    Args:
+        loss_path (str | Path): Loss-signal pickle path.
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: Loss signals and membership mask.
+    '''
     with open(loss_path, "rb") as file:
         payload = pickle.load(file)
     if not isinstance(payload, dict):
@@ -168,7 +212,13 @@ def load_loss_signals(loss_path):
     return loss_sigs, train_mask
 
 def resolve_target_shadow_paths(config):
-    '''Resolve per-target shadow loss-signal path groups for auditing. Args: config (Config). Returns: tuple[list[Path], list[list[Path]]].'''
+    '''
+    Resolve per-target shadow loss-signal path groups for auditing.
+    Args:
+        config (Config): Audit configuration.
+    Returns:
+        tuple[list[Path], list[list[Path]]]: Target paths and grouped shadow paths.
+    '''
     target_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "target_loss_paths")
     if getattr(config, "round_robin", False):
         shadow_path_groups = []
@@ -180,7 +230,14 @@ def resolve_target_shadow_paths(config):
     return target_loss_paths, [shadow_loss_paths for _ in target_loss_paths]
 
 def load_shadow_signals(shadow_loss_paths, target_len):
-    '''Load and stack shadow loss signals and masks. Args: shadow_loss_paths (list[Path]), target_len (int). Returns: tuple[torch.Tensor, torch.Tensor].'''
+    '''
+    Load and stack shadow loss signals and masks.
+    Args:
+        shadow_loss_paths (list[Path]): Shadow loss-signal paths.
+        target_len (int): Expected loss-signal length.
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: Stacked loss signals and masks.
+    '''
     shadow_loss_sigs = []
     shadow_train_mask = []
     for shadow_loss_path in shadow_loss_paths:
@@ -192,7 +249,14 @@ def load_shadow_signals(shadow_loss_paths, target_len):
     return torch.stack(shadow_loss_sigs), torch.stack(shadow_train_mask)
 
 def print_average_metrics_table(attack, metrics_list):
-    '''Print mean audit metrics over target models. Args: attack (str), metrics_list (list[dict]). Returns: None.'''
+    '''
+    Print mean audit metrics over target models.
+    Args:
+        attack (str): Attack name shown in the summary.
+        metrics_list (list[dict]): Metrics for each target model.
+    Returns:
+        None
+    '''
     mean_auc = float(np.mean([metrics["AUC"] for metrics in metrics_list]))
     mean_tpr_1pct = float(np.mean([metrics["TPR@1%FPR"] for metrics in metrics_list]))
     mean_tpr_0p1pct = float(np.mean([metrics["TPR@0.1%FPR"] for metrics in metrics_list]))
@@ -323,7 +387,13 @@ def run_entity_audit(config):
     print_average_metrics_table(attack, all_metrics)
 
 def parse_args(argv=None):
-    '''Parse CLI arguments for audit. Args: argv (list[str]|None). Returns: argparse.Namespace.'''
+    '''
+    Parse CLI arguments for audit.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    '''
     parser = argparse.ArgumentParser(description="Run membership inference audit.")
     parser.add_argument(
         "--config",
@@ -335,7 +405,13 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 def main(argv=None):
-    '''Entry point for audit CLI. Args: argv (list[str]|None). Returns: None.'''
+    '''
+    Entry point for the audit CLI.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        None
+    '''
     args = parse_args(argv)
     with open(args.config, "r") as file:
         config_dict = yaml.safe_load(file)

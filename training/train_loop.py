@@ -87,6 +87,8 @@ class TrainLoop:
         self.optimizer = torch.optim.AdamW(params=self.raw_network.parameters(), lr=self.lr, weight_decay=self.weight_decay, fused=use_fused)
         self.scheduler = self._get_lr_scheduler(self.optimizer)
         self.start_epoch = 0
+        self.train_losses = []
+        self.val_losses = []
         if resume_checkpoint is not None:
             self._load_resume_checkpoint(resume_checkpoint)
     
@@ -153,14 +155,18 @@ class TrainLoop:
             if accelerator.running_ddp:
                 for x in train_accum_loss, val_accum_loss, accum_grad_norm, n_simul_train_batches, n_val_batches:
                     dist.all_reduce(x, op=dist.ReduceOp.SUM)
+            mean_train_loss = (train_accum_loss / n_simul_train_batches).item()
+            mean_val_loss = (val_accum_loss / n_val_batches).item()
+            self.train_losses.append(mean_train_loss)
+            self.val_losses.append(mean_val_loss)
             if accelerator.device.type == "cuda":
                 torch.cuda.synchronize()
             t1 = time.time()
             log_msg = (
                 f"epoch: {epoch} "
                 f"| step: {step} "
-                f"| train loss: {(train_accum_loss / n_simul_train_batches).item():.6f} "
-                f"| val loss: {(val_accum_loss / n_val_batches).item():.6f} "
+                f"| train loss: {mean_train_loss:.6f} "
+                f"| val loss: {mean_val_loss:.6f} "
                 + (f"| lr: {current_lr:.7f} " if self.lr_scheduler != "none" else "")
                 + (f"| grad norm: {(accum_grad_norm / n_simul_train_batches).item():.3f} " if self.grad_clip != 0 else "")
                 + f"| dt: {t1 - t0:.1f}"
@@ -185,6 +191,8 @@ class TrainLoop:
                     "scaler_state_dict": self.scaler.state_dict(),
                     "model_config": self.model_config,
                     "train_config": self.train_config,
+                    "train_losses": self.train_losses,
+                    "val_losses": self.val_losses,
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
@@ -192,6 +200,8 @@ class TrainLoop:
 
     def _load_resume_checkpoint(self, checkpoint):
         self.start_epoch = int(checkpoint.get("epoch", 0))
+        self.train_losses = [float(loss) for loss in checkpoint.get("train_losses", [])]
+        self.val_losses = [float(loss) for loss in checkpoint.get("val_losses", [])]
         raw_state_dict = unwrap_torch_compile_state_dict(checkpoint["raw_network_state_dict"])
         getattr(self.raw_network, "_orig_mod", self.raw_network).load_state_dict(raw_state_dict)
         if self.use_ema:
