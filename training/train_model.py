@@ -26,6 +26,7 @@ def get_train_config(config):
         grad_clip=config.grad_clip,
         autocast_dtype=config.autocast_dtype,
         lr_scheduler=config.lr_scheduler,
+        lr_scheduler_params=getattr(config, "lr_scheduler_params", {}),
     )
 
 def build_checkpoint_savepath(config, savedir, split_stem, is_gray):

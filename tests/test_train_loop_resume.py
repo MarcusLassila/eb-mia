@@ -64,6 +64,26 @@ class _SimpleModel(AbstractGenerativeModel):
 
 
 class TestTrainLoopResume(unittest.TestCase):
+    def test_train_config_uses_independent_scheduler_param_dicts(self):
+        config_a = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+        )
+        config_b = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+        )
+
+        config_a.lr_scheduler_params["lr_warmup_steps"] = 10
+        self.assertEqual(config_a.lr_scheduler_params, {"lr_warmup_steps": 10})
+        self.assertEqual(config_b.lr_scheduler_params, {})
+
     def test_checkpoint_saves_loss_history(self):
         torch.manual_seed(0)
         data = torch.randn(4, 1)
@@ -103,6 +123,160 @@ class TestTrainLoopResume(unittest.TestCase):
         self.assertEqual(len(checkpoint["val_losses"]), 2)
         self.assertTrue(all(isinstance(loss, float) for loss in checkpoint["train_losses"]))
         self.assertTrue(all(isinstance(loss, float) for loss in checkpoint["val_losses"]))
+
+    def test_linear_scheduler_uses_configured_dict_params(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        model = _SimpleModel()
+
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=2,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            lr_scheduler="linear",
+            lr_scheduler_params={"lr_warmup_steps": 2, "min_lr": 1e-4},
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "poly_scheduler_test.pth"
+            train_loop = TrainLoop(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+            )
+
+        lr_multiplier = train_loop.scheduler.lr_lambdas[0]
+        self.assertAlmostEqual(lr_multiplier(0), 0.1)
+        self.assertAlmostEqual(lr_multiplier(1), 0.55)
+
+    def test_linear_scheduler_steps_per_optimizer_step(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        model = _SimpleModel()
+
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            lr_scheduler="linear",
+            lr_scheduler_params={"lr_warmup_steps": 0, "min_lr": 1e-4},
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "poly_scheduler_steps_test.pth"
+            TrainLoop(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+            ).train()
+            checkpoint = torch.load(Path(tmpdir) / "poly_scheduler_steps_test-epoch1.pth", map_location="cpu")
+
+        self.assertEqual(checkpoint["scheduler_state_dict"]["last_epoch"], 2)
+
+    def test_linear_scheduler_asserts_when_warmup_matches_total_steps(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        model = _SimpleModel()
+
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            lr_scheduler="linear",
+            lr_scheduler_params={"lr_warmup_steps": 2},
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "poly_scheduler_assert_test.pth"
+            with self.assertRaises(AssertionError):
+                TrainLoop(
+                    model=model,
+                    train_dataset=train_dataset,
+                    val_dataset=val_dataset,
+                    train_config=train_config,
+                    model_config={"name": "simple"},
+                    accelerator=accelerator,
+                    savepath=savepath,
+                )
+
+    def test_resume_checkpoint_restores_optimizer_lr_from_scheduler_state(self):
+        torch.manual_seed(0)
+        data = torch.randn(4, 1)
+        dataset = _TensorDataset(data)
+        train_dataset = Subset(dataset, indices=torch.arange(0, 2))
+        val_dataset = Subset(dataset, indices=torch.arange(2, 4))
+        train_config = TrainConfig(
+            batch_size=1,
+            simul_batch_size=1,
+            epochs=1,
+            epochs_per_checkpoint=1,
+            lr=1e-3,
+            lr_scheduler="linear",
+            lr_scheduler_params={"lr_warmup_steps": 0, "min_lr": 1e-4},
+        )
+        accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            savepath = Path(tmpdir) / "resume_scheduler_lr_test.pth"
+            initial_loop = TrainLoop(
+                model=_SimpleModel(),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+            )
+            for _ in range(2):
+                initial_loop.optimizer.step()
+                initial_loop.scheduler.step()
+            checkpoint = {
+                "epoch": 1,
+                "raw_network_state_dict": initial_loop.raw_network.state_dict(),
+                "network_state_dict": initial_loop.raw_network.state_dict(),
+                "optimizer_state_dict": initial_loop.optimizer.state_dict(),
+                "scheduler_state_dict": initial_loop.scheduler.state_dict(),
+                "train_config": train_config,
+            }
+
+            resumed_loop = TrainLoop(
+                model=_SimpleModel(),
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                train_config=train_config,
+                model_config={"name": "simple"},
+                accelerator=accelerator,
+                savepath=savepath,
+                resume_checkpoint=checkpoint,
+            )
+
+        self.assertAlmostEqual(
+            resumed_loop.optimizer.param_groups[0]["lr"],
+            resumed_loop.scheduler.get_last_lr()[0],
+        )
 
     def test_resume_checkpoint_loads_into_compiled_wrapper(self):
         torch.manual_seed(0)

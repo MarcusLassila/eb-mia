@@ -118,6 +118,45 @@ class TestTrainModels(unittest.TestCase):
                     self.assertTrue(torch.equal(train_dataset.indices, torch.tensor(indices, dtype=torch.long)))
                     self.assertTrue(torch.equal(val_dataset.indices, torch.tensor([1], dtype=torch.long)))
 
+    def test_train_model_from_scratch_passes_lr_scheduler_params_dict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "train_indices.pkl"
+            with open(path, "wb") as file:
+                pickle.dump({"indices": [0, 2, 4], "len_dataset": 6}, file)
+            config = types.SimpleNamespace(
+                dataset="Dummy",
+                val_frac=0.2,
+                model="VAE",
+                image_resolution=2,
+                latent_dim=2,
+                suffix="",
+                batch_size=2,
+                simul_batch_size=2,
+                epochs=1,
+                epochs_per_checkpoint=1,
+                lr=1e-3,
+                weight_decay=0.0,
+                ema_decay=0.0,
+                grad_clip=0.0,
+                autocast_dtype="float16",
+                lr_scheduler="linear",
+                lr_scheduler_params={"lr_warmup_steps": 5, "min_lr": 1e-4},
+            )
+            with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
+                with mock.patch.object(train_model, "VAE", return_value=_DummyModel()):
+                    with mock.patch.object(train_model, "TrainLoop") as mock_loop:
+                        mock_loop.return_value.train.return_value = None
+                        train_model.train_model_from_scratch(
+                            accelerator=_DummyAccelerator(),
+                            config=config,
+                            data_dir=Path(tmpdir),
+                            savedir=Path(tmpdir),
+                            train_indices_path=path,
+                        )
+            train_config = mock_loop.call_args.kwargs["train_config"]
+            self.assertEqual(train_config.lr_scheduler, "linear")
+            self.assertEqual(train_config.lr_scheduler_params, {"lr_warmup_steps": 5, "min_lr": 1e-4})
+
     def test_train_model_from_checkpoint_overrides_train_indices_from_cli(self):
         checkpoint = {
             "train_indices": [0, 1],
