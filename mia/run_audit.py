@@ -337,13 +337,8 @@ def run_entity_audit(config):
             max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
             n_audit_samples_per_entity=n_audit_samples_per_entity,
         )
-
-        ground_truth = {entity_id: 0 for entity_id in audit_table.keys()}
-        for entity_id in train_entity_ids:
-            entity_id = entity_id.item()
-            if entity_id in ground_truth:
-                ground_truth[entity_id] = 1
-        ground_truth = torch.tensor([ground_truth[entity_id] for entity_id in sorted(ground_truth.keys())], dtype=torch.long)
+        audit_entity_ids = torch.tensor(sorted(audit_table.keys()), dtype=torch.long)
+        ground_truth = torch.isin(audit_entity_ids, train_entity_ids).to(dtype=torch.long)
 
         if composite_attack_fn_name == "composite_BASE":
             entity_sample_scores = {
@@ -353,11 +348,13 @@ def run_entity_audit(config):
             score = composite_attack_fn(entity_sample_scores)
         elif composite_attack_fn_name == "composite_LiRA":
             loss_sigs = torch.cat([target_loss_sig.unsqueeze(0), shadow_loss_sigs], dim=0)
-            entity_index_table = data_population.get_entity_index_table()
-            shadow_entity_mask = torch.zeros(size=(shadow_train_mask.shape[0], data_population.max_entity_id + 1), dtype=torch.bool)
-            for idx, sample_mask in enumerate(shadow_train_mask):
-                for entity_id, indices in entity_index_table.items():
-                    shadow_entity_mask[idx, entity_id] = torch.any(sample_mask[indices])
+            shadow_entity_mask = torch.stack([
+                torch.bincount(
+                    data_population.entity_ids[sample_mask],
+                    minlength=data_population.n_entities,
+                ) > 0
+                for sample_mask in shadow_train_mask
+            ])
             score = composite_attack_fn(audit_table, loss_sigs, shadow_entity_mask)
         score = torch.stack([score[entity_id] for entity_id in sorted(audit_table.keys())]).to(dtype=torch.float32)
         assert len(score) == len(ground_truth)

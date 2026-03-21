@@ -18,8 +18,8 @@ class DummyEntityDataset:
         self.entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
     @property
-    def max_entity_id(self):
-        return int(self.entity_ids.max().item())
+    def n_entities(self):
+        return int(torch.unique(self.entity_ids).numel())
 
     def get_entity_index_table(self):
         table = defaultdict(list)
@@ -121,7 +121,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
                 "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5},
             })
-            dataset = DummyEntityDataset([10, 10, 20, 20])
+            dataset = DummyEntityDataset([0, 0, 1, 1])
             captured = {}
 
             def fake_evaluate(score, ground_truth):
@@ -136,8 +136,8 @@ class TestRunAuditMetrics(unittest.TestCase):
                 prior=0.5,
             ).run_attack(torch.tensor([0.2, 0.5, 0.1, 0.1], dtype=torch.float32))
             expected_entity_scores = attacks.composite_BASE({
-                10: sample_scores[torch.tensor([0, 1])],
-                20: sample_scores[torch.tensor([2, 3])],
+                0: sample_scores[torch.tensor([0, 1])],
+                1: sample_scores[torch.tensor([2, 3])],
             })
 
             with (
@@ -149,7 +149,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 run_audit_module.run_entity_audit(config=config)
 
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
-            expected_score_tensor = torch.stack([expected_entity_scores[10], expected_entity_scores[20]]).to(dtype=torch.float32)
+            expected_score_tensor = torch.stack([expected_entity_scores[0], expected_entity_scores[1]]).to(dtype=torch.float32)
             self.assertTrue(torch.allclose(captured["score"], expected_score_tensor, atol=1e-6))
             metrics_path = (
                 path_utils.metrics_dir_from_target(tmpdir, target_path, "BASE-off", "entity", entity_audit_mode="all")

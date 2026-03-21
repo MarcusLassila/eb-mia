@@ -30,16 +30,8 @@ class _FakeEntityDataset(datasets.EntityDataset):
         return self._entity_ids
 
     @property
-    def unique_entity_ids(self):
-        return torch.unique(self._entity_ids, sorted=True)
-
-    @property
     def n_entities(self):
-        return int(self.unique_entity_ids.numel())
-
-    @property
-    def max_entity_id(self):
-        return int(self.unique_entity_ids[-1].item())
+        return 4
 
     def get_entity_index_table(self):
         return {

@@ -12,6 +12,17 @@ TRANSFORM = T.Compose([
     T.Lambda(lambda x: x * 2.0 - 1.0),
 ])
 
+def _normalize_entity_ids(entity_ids: torch.Tensor):
+    '''
+    Map entity ids to 0,1,...,n_entities-1.
+    Args:
+        entity_ids (torch.Tensor): Entity id of data point `i` is `entity_ids[i]`.
+    Returns:
+        torch.Tensor: Normalized entity-id tensor.
+    '''
+    _, normalized_entity_ids = torch.unique(entity_ids, sorted=True, return_inverse=True)
+    return normalized_entity_ids.to(dtype=torch.long)
+
 class EntityDataset(Dataset, ABC):
 
     @property
@@ -21,17 +32,7 @@ class EntityDataset(Dataset, ABC):
 
     @property
     @abstractmethod
-    def unique_entity_ids(self):
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
     def n_entities(self):
-        raise NotImplementedError
-    
-    @property
-    @abstractmethod
-    def max_entity_id(self):
         raise NotImplementedError
 
     def get_entity_index_table(self):
@@ -125,27 +126,16 @@ class CelebA(EntityDataset):
             self.transform = transform
         ds = load_dataset("flwrlabs/celeba", cache_dir=data_dir)
         self.dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
-        celeb_ids = torch.tensor(self.dataset["celeb_id"], dtype=torch.long)
-        self._celeb_ids = celeb_ids
-        self._unique_entity_ids = torch.unique(celeb_ids, sorted=True)
-        self._n_entities = self._unique_entity_ids.shape[0]
-        self._max_entity_id = self._unique_entity_ids[-1]
+        self._entity_ids = _normalize_entity_ids(torch.tensor(self.dataset["celeb_id"], dtype=torch.long))
+        self._n_entities = int(self._entity_ids.max().item()) + 1
 
     @property
     def entity_ids(self):
-        return self._celeb_ids
-
-    @property
-    def unique_entity_ids(self):
-        return self._unique_entity_ids
+        return self._entity_ids
 
     @property
     def n_entities(self):
         return self._n_entities
-
-    @property
-    def max_entity_id(self):
-        return self._max_entity_id
 
     def __getitem__(self, index):
         '''
@@ -289,32 +279,16 @@ class CelebA2(CelebA):
                 dtype=torch.long,
             )
         self.dataset = dataset
-        self._celeb_ids = celeb_ids
-        unique_id_list = sorted(torch.unique(celeb_ids).tolist())
-        self._n_entities = len(unique_id_list)
-        self._max_entity_id = unique_id_list[-1]
-        self._index_to_entity_id_map = unique_id_list
-        self._entity_id_to_index_map = {entity_id: i for i, entity_id in enumerate(unique_id_list)}
+        self._entity_ids = _normalize_entity_ids(celeb_ids)
+        self._n_entities = int(self._entity_ids.max().item()) + 1
 
     @property
     def entity_ids(self):
-        return self._celeb_ids
+        return self._entity_ids
 
     @property
     def n_entities(self):
         return self._n_entities
-
-    @property
-    def max_entity_id(self):
-        return self._max_entity_id
-
-    @property
-    def index_to_entity_id_map(self):
-        return self._index_to_entity_id_map
-
-    @property
-    def entity_id_to_index_map(self):
-        return self._entity_id_to_index_map
 
     def __getitem__(self, index):
         '''

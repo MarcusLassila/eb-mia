@@ -41,9 +41,9 @@ class TestData(unittest.TestCase):
 
         def fake_load_dataset(*args, **kwargs):
             return {
-                "train": FakeSplit([0, 0, 1]),
-                "valid": FakeSplit([2, 2]),
-                "test": FakeSplit([3]),
+                "train": FakeSplit([10, 10, 30]),
+                "valid": FakeSplit([40, 40]),
+                "test": FakeSplit([50]),
             }
 
         def fake_concatenate_datasets(datasets):
@@ -60,7 +60,60 @@ class TestData(unittest.TestCase):
                 )
                 self.assertEqual(len(dataset), 6)
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 2, 3])
-                self.assertEqual(dataset.max_entity_id, 3)
+                self.assertEqual(dataset.n_entities, 4)
+
+    def test_celeba2_normalizes_filtered_entity_ids(self):
+        class FakeSplit:
+            def __init__(self, celeb_ids):
+                self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
+
+            def __getitem__(self, index):
+                return self._data[index]
+
+            def __len__(self):
+                return len(self._data)
+
+        class FakeConcatDataset:
+            def __init__(self, datasets=None, data=None):
+                if data is not None:
+                    self._data = list(data)
+                else:
+                    self._data = []
+                    for dataset in datasets:
+                        self._data.extend(dataset._data)
+
+            def __getitem__(self, index):
+                if isinstance(index, str):
+                    return [item[index] for item in self._data]
+                return self._data[index]
+
+            def __len__(self):
+                return len(self._data)
+
+            def select(self, indices):
+                return FakeConcatDataset(data=[self._data[index] for index in indices])
+
+        def fake_load_dataset(*args, **kwargs):
+            return {
+                "train": FakeSplit([10, 10, 30]),
+                "valid": FakeSplit([50, 50]),
+                "test": FakeSplit([70]),
+            }
+
+        def fake_concatenate_datasets(datasets):
+            return FakeConcatDataset(datasets=datasets)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
+                "data.datasets.concatenate_datasets",
+                side_effect=fake_concatenate_datasets,
+            ):
+                dataset = data_module.CelebA2(
+                    data_dir=tmpdir,
+                    transform=lambda x: x,
+                )
+                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 1])
+                self.assertEqual(dataset.n_entities, 2)
 
     def test_celeba_low_res_grayscale_transform(self):
         class FakeSplit:

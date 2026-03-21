@@ -17,8 +17,8 @@ class DummyEntityDataset:
         self.entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
     @property
-    def max_entity_id(self):
-        return int(self.entity_ids.max().item())
+    def n_entities(self):
+        return int(torch.unique(self.entity_ids).numel())
 
     def get_entity_index_table(self):
         table = defaultdict(list)
@@ -71,7 +71,7 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
                     "loss_transformation": "none",
                 },
             })
-            dataset = DummyEntityDataset([10, 10, 20, 20])
+            dataset = DummyEntityDataset([0, 0, 1, 1])
             captured = {}
 
             def fake_evaluate(score, ground_truth):

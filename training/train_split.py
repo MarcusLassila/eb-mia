@@ -38,7 +38,7 @@ def sample_split(dataset, rng, args):
     save_indices(selected_indices, len(dataset), args.output_dir, file_name)
 
 def entity_split(dataset: datasets.EntityDataset, rng, args):
-    entity_ids = dataset.unique_entity_ids.tolist()
+    entity_ids = list(range(dataset.n_entities))
     selected_entities = select_fraction(entity_ids, args.entity_fraction, rng)
     entity_index_table = dataset.get_entity_index_table()
     selected_indices = []

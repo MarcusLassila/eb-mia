@@ -14,26 +14,18 @@ from mia import run_audit as run_audit_module
 
 class _TinyEntityDataset(EntityDataset):
     def __init__(self):
-        self._entity_ids = torch.tensor([10, 10, 20, 20], dtype=torch.long)
+        self._entity_ids = torch.tensor([0, 0, 1, 1], dtype=torch.long)
 
     @property
     def entity_ids(self):
         return self._entity_ids
 
     @property
-    def unique_entity_ids(self):
-        return torch.unique(self._entity_ids, sorted=True)
-
-    @property
-    def max_entity_id(self):
-        return int(self._entity_ids.max().item())
-
-    @property
     def n_entities(self):
         return int(torch.unique(self._entity_ids).numel())
 
     def get_entity_index_table(self):
-        return {10: [0, 1], 20: [2, 3]}
+        return {0: [0, 1], 1: [2, 3]}
 
     def __getitem__(self, index):
         return torch.tensor([float(index)], dtype=torch.float32)

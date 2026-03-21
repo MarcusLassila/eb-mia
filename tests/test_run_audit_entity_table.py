@@ -11,10 +11,6 @@ class DummyEntityDataset:
     def __init__(self, entity_ids):
         self.entity_ids = torch.tensor(entity_ids, dtype=torch.long)
 
-    @property
-    def max_entity_id(self):
-        return int(self.entity_ids.max().item())
-
     def get_entity_index_table(self):
         table = defaultdict(list)
         for idx, entity_id in enumerate(self.entity_ids.tolist()):
