@@ -140,7 +140,7 @@ class TestTrainModels(unittest.TestCase):
                 grad_clip=0.0,
                 autocast_dtype="float16",
                 lr_scheduler="linear",
-                lr_scheduler_params={"lr_warmup_steps": 5, "min_lr": 1e-4},
+                lr_scheduler_params={"warmup_steps": 5, "min_lr": 1e-4},
             )
             with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
                 with mock.patch.object(train_model, "VAE", return_value=_DummyModel()):
@@ -155,7 +155,7 @@ class TestTrainModels(unittest.TestCase):
                         )
             train_config = mock_loop.call_args.kwargs["train_config"]
             self.assertEqual(train_config.lr_scheduler, "linear")
-            self.assertEqual(train_config.lr_scheduler_params, {"lr_warmup_steps": 5, "min_lr": 1e-4})
+            self.assertEqual(train_config.lr_scheduler_params, {"warmup_steps": 5, "min_lr": 1e-4})
 
     def test_train_model_from_checkpoint_overrides_train_indices_from_cli(self):
         checkpoint = {

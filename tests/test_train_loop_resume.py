@@ -80,8 +80,8 @@ class TestTrainLoopResume(unittest.TestCase):
             lr=1e-3,
         )
 
-        config_a.lr_scheduler_params["lr_warmup_steps"] = 10
-        self.assertEqual(config_a.lr_scheduler_params, {"lr_warmup_steps": 10})
+        config_a.lr_scheduler_params["warmup_steps"] = 10
+        self.assertEqual(config_a.lr_scheduler_params, {"warmup_steps": 10})
         self.assertEqual(config_b.lr_scheduler_params, {})
 
     def test_checkpoint_saves_loss_history(self):
@@ -139,7 +139,7 @@ class TestTrainLoopResume(unittest.TestCase):
             epochs_per_checkpoint=1,
             lr=1e-3,
             lr_scheduler="linear",
-            lr_scheduler_params={"lr_warmup_steps": 2, "min_lr": 1e-4},
+            lr_scheduler_params={"warmup_steps": 2, "min_lr": 1e-4},
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -173,7 +173,7 @@ class TestTrainLoopResume(unittest.TestCase):
             epochs_per_checkpoint=1,
             lr=1e-3,
             lr_scheduler="linear",
-            lr_scheduler_params={"lr_warmup_steps": 0, "min_lr": 1e-4},
+            lr_scheduler_params={"warmup_steps": 0, "min_lr": 1e-4},
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -206,7 +206,7 @@ class TestTrainLoopResume(unittest.TestCase):
             epochs_per_checkpoint=1,
             lr=1e-3,
             lr_scheduler="linear",
-            lr_scheduler_params={"lr_warmup_steps": 2},
+            lr_scheduler_params={"warmup_steps": 2},
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -235,7 +235,7 @@ class TestTrainLoopResume(unittest.TestCase):
             epochs_per_checkpoint=1,
             lr=1e-3,
             lr_scheduler="linear",
-            lr_scheduler_params={"lr_warmup_steps": 0, "min_lr": 1e-4},
+            lr_scheduler_params={"warmup_steps": 0, "min_lr": 1e-4},
         )
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
 

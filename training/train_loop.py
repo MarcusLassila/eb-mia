@@ -255,7 +255,7 @@ class TrainLoop:
             case "cosine":
                 return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.train_config.epochs, eta_min=1e-6)
             case "linear":
-                warmup_steps = self.train_config.lr_scheduler_params.get("lr_warmup_steps", 0)
+                warmup_steps = self.train_config.lr_scheduler_params.get("warmup_steps", 0)
                 min_lr = self.train_config.lr_scheduler_params.get("min_lr", 1e-8)
                 max_lr = self.train_config.lr
                 total_steps = self.train_config.epochs * math.ceil(len(self.train_dataset) / self.train_config.simul_batch_size)
