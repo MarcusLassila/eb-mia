@@ -76,6 +76,18 @@ class TestQualityMetrics(unittest.TestCase):
             "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500\nFID: 6.78",
         )
 
+    def test_format_metric_result_accepts_plain_numeric_metric_values(self):
+        result = qm.format_metric_result(
+            "fid",
+            "/tmp/DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500.pth",
+            20.6359,
+        )
+
+        self.assertEqual(
+            result,
+            "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500\nFID: 20.6359",
+        )
+
     def test_save_metric_result_writes_expected_file_and_content(self):
         checkpoint = "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500.pth"
         with TemporaryDirectory() as tmp_dir:

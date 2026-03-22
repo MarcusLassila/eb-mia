@@ -10,7 +10,9 @@ weight_decay: 0.0
 ema_decay: 0.9999
 grad_clip: 0.0
 autocast_dtype: "bfloat16"
-lr_scheduler: "none"
+lr_scheduler: "linear"
+lr_scheduler_params:
+  warmup_steps: 25000
 image_resolution: 128
 dataloader_config:
   num_workers: 0

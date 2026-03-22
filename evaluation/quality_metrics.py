@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     if args.metric == "is":
         score_mean, score_std = inception_score(model, args.n_samples, args.batch_size, device)
-        metric_value = f"{score_mean} +- {score_std}"
+        metric_value = f"{score_mean.item():g} +- {score_std.item():g}"
     else: # FID
         properties = parse_properties_from_checkpoint_path(args.checkpoint)
         dataset_name = properties["dataset"]
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         dataset = Subset(dataset, samples)
         data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
         score = fid_score(model, data_loader, device)
-        metric_value = str(score)
+        metric_value = f"{score.item():g}"
     result_text = format_metric_result(args.metric, args.checkpoint, metric_value)
     save_metric_result(args.metric, args.checkpoint, metric_value)
     print(result_text)
