@@ -2,6 +2,8 @@ from data.utils import load_dataset
 from generative_models.utils import load_model
 from utils import parse_properties_from_checkpoint_path
 
+from pathlib import Path
+
 import torch
 from torch.utils.data import DataLoader, Subset
 from torchmetrics.image.fid import FrechetInceptionDistance
@@ -39,6 +41,17 @@ def fid_score(model, dataloader, device, disable_tqdm=True):
     return score
 
 def inception_score(model, n_samples, batch_size, device, disable_tqdm=True):
+    '''
+    Compute the inception score for generated samples.
+    Args:
+        model: Generative model exposing `sample`.
+        n_samples (int): Number of generated samples to evaluate.
+        batch_size (int): Batch size used for generation.
+        device (torch.device): Device hosting the metric state.
+        disable_tqdm (bool): Whether to disable the model sampling progress bar.
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: Mean and standard deviation of the score.
+    '''
     is_metric = InceptionScore(normalize=True).to(device)
     n_batches, remainder = divmod(n_samples, batch_size)
     checked = False
@@ -55,6 +68,41 @@ def inception_score(model, n_samples, batch_size, device, disable_tqdm=True):
         is_metric.update(samples)
     mean, std = is_metric.compute()
     return mean, std
+
+def format_metric_result(metric_name, checkpoint_path, metric_value):
+    '''
+    Format one evaluation result for printing and persistence.
+    Args:
+        metric_name (str): Metric identifier such as `fid` or `is`.
+        checkpoint_path (str | Path): Evaluated checkpoint path.
+        metric_value (str): String representation of the metric value.
+    Returns:
+        str: Two-line result text with checkpoint stem and metric line.
+    '''
+    checkpoint_stem = Path(checkpoint_path).stem
+    metric_label = metric_name.upper()
+    return f"{checkpoint_stem}\n{metric_label}: {metric_value}"
+
+def save_metric_result(metric_name, checkpoint_path, metric_value, output_dir=None):
+    '''
+    Save one evaluation result to a text file.
+    Args:
+        metric_name (str): Metric identifier such as `fid` or `is`.
+        checkpoint_path (str | Path): Evaluated checkpoint path.
+        metric_value (str): String representation of the metric value.
+        output_dir (str | Path | None): Optional result directory override.
+    Returns:
+        Path: Saved text file path.
+    '''
+    checkpoint_stem = Path(checkpoint_path).stem
+    metric_label = metric_name.upper()
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent / "results"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{metric_label}-{checkpoint_stem}.txt"
+    output_path.write_text(format_metric_result(metric_name, checkpoint_path, metric_value) + "\n")
+    return output_path
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -93,7 +141,7 @@ if __name__ == "__main__":
 
     if args.metric == "is":
         score_mean, score_std = inception_score(model, args.n_samples, args.batch_size, device)
-        print(f"{score_mean} +- {score_std}")
+        metric_value = f"{score_mean} +- {score_std}"
     else: # FID
         properties = parse_properties_from_checkpoint_path(args.checkpoint)
         dataset_name = properties["dataset"]
@@ -110,4 +158,7 @@ if __name__ == "__main__":
         dataset = Subset(dataset, samples)
         data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
         score = fid_score(model, data_loader, device)
-        print(f"FID: {score}")
+        metric_value = str(score)
+    result_text = format_metric_result(args.metric, args.checkpoint, metric_value)
+    save_metric_result(args.metric, args.checkpoint, metric_value)
+    print(result_text)

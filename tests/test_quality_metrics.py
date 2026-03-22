@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import torch
@@ -62,6 +64,30 @@ class FakeModel:
 
 
 class TestQualityMetrics(unittest.TestCase):
+    def test_format_metric_result_includes_checkpoint_stem_and_metric_label(self):
+        result = qm.format_metric_result(
+            "fid",
+            "/tmp/DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500.pth",
+            "6.78",
+        )
+
+        self.assertEqual(
+            result,
+            "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500\nFID: 6.78",
+        )
+
+    def test_save_metric_result_writes_expected_file_and_content(self):
+        checkpoint = "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500.pth"
+        with TemporaryDirectory() as tmp_dir:
+            output_path = qm.save_metric_result("is", checkpoint, "1.5 +- 0.1", output_dir=tmp_dir)
+
+            self.assertEqual(output_path, Path(tmp_dir) / "IS-DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500.txt")
+            self.assertTrue(output_path.exists())
+            self.assertEqual(
+                output_path.read_text(),
+                "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500\nIS: 1.5 +- 0.1\n",
+            )
+
     def test_fid_score_normalizes_real_samples_and_checks_first_batch_only(self):
         dataset = [
             torch.full((1, 1, 1), -1.0),
