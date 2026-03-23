@@ -294,7 +294,7 @@ class UNet(nn.Module):
                 )
                 self.decoder_modules.append(res_block)
                 prev_channels = curr_channels
-                if rescale_counter == attention_levels:
+                if rescale_counter in attention_levels:
                     self.decoder_modules.append(
                         AttentionBlock(
                             channels=curr_channels,
