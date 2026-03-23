@@ -1,10 +1,10 @@
 from generative_models.agm import AbstractGenerativeModel
 from unet.unet import UNet
-from utils.ode_solvers import ode_midpoint
 
 import torch
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torchdiffeq import odeint
 
 from contextlib import nullcontext
 
@@ -90,8 +90,13 @@ class FlowMatching(AbstractGenerativeModel):
         t = torch.rand(size=(x.shape[0],), device=x.device)
         return self.per_sample_loss(x, t, autocast_context, network_override=network_override).mean()
 
+    def _arg_swapped_network(self, t, x):
+        if t.ndim == 0:
+            t = t.expand(x.shape[0])
+        return self.network(x, t)
+
     @torch.inference_mode()
-    def sample(self, batch_size, n_steps=20, **kwargs):
+    def sample(self, batch_size, method="dopri5", n_time_steps=50, **kwargs):
         '''
         Sample a batch of images and rescale them to `[0, 1]`.
         Args:
@@ -103,11 +108,17 @@ class FlowMatching(AbstractGenerativeModel):
         '''
         self.network.eval()
         device = next(iter(self.network.parameters())).device
-        t_0 = torch.zeros(size=(batch_size,), device=device, dtype=torch.float32)
         x_0 = torch.randn(size=(batch_size, *self.image_dim), device=device, dtype=torch.float32)
-        step_size = 1.0 / n_steps
-        assert 1.0 - 1e-9 <= step_size * n_steps <= 1.0
-        x_1 = ode_midpoint(self.network, x_0, t_0, step_size=step_size, n_steps=n_steps)
+        t = torch.linspace(0, 1, steps=n_time_steps, device=device, dtype=torch.float32)
+        x = odeint(
+            func=self._arg_swapped_network,
+            y0=x_0,
+            t=t,
+            method=method,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        x_1 = x[-1]
         x_1 = (x_1 + 1.0) / 2.0
         x_1 = torch.clamp(x_1, 0.0, 1.0)
         return x_1

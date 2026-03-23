@@ -25,3 +25,4 @@ dependencies:
   - torchmetrics
   - torch-fidelity
   - xgboost
+  - torchdiffeq
