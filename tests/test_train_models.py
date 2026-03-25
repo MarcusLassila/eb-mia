@@ -159,8 +159,8 @@ class TestTrainModels(unittest.TestCase):
 
     def test_train_model_from_checkpoint_overrides_train_indices_from_cli(self):
         checkpoint = {
-            "train_indices": [0, 1],
-            "val_indices": [2, 3],
+            "train_indices": torch.tensor([0, 1]),
+            "val_indices": torch.tensor([2, 3]),
             "train_config": {
                 "batch_size": 2,
                 "simul_batch_size": 2,

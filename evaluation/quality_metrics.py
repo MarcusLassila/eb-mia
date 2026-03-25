@@ -128,9 +128,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-samples",
         type=int,
-        default=50000,
+        default=10000,
         required=False,
-        help="Number of samples to evaluate (limited by len(dataset) in case of FID)."
+        help="Number of samples to evaluate (must be <= len(dataset) in case of FID)."
     )
     parser.add_argument("--batch-size", type=int, required=True)
     args = parser.parse_args()
@@ -138,6 +138,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, train_index = load_model(args.checkpoint, device)
+    train_index = train_index.to("cpu")
 
     if args.metric == "is":
         score_mean, score_std = inception_score(model, args.n_samples, args.batch_size, device)
@@ -152,9 +153,10 @@ if __name__ == "__main__":
             random_horizontal_flip=False,
             size=model.image_size,
         )
+        assert args.n_samples <= len(dataset)
         non_train_index = torch.tensor(sorted(set(range(len(dataset))) - set(train_index.tolist())), dtype=torch.long)
-        n_samples = min(args.n_samples, non_train_index.shape[0])
-        samples = non_train_index[:n_samples]
+        all_index = torch.concat((non_train_index, train_index), dim=0)
+        samples = all_index[:args.n_samples]
         dataset = Subset(dataset, samples)
         data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
         score = fid_score(model, data_loader, device)
