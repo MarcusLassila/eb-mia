@@ -15,7 +15,11 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
         case "MNIST":
             dataset = MNIST(data_dir=data_dir, transform=transform)
         case "CIFAR10":
-            dataset = CIFAR10(data_dir=data_dir, transform=transform)
+            dataset = CIFAR10(
+                data_dir=data_dir,
+                transform=transform,
+                random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
+            )
         case "CelebA":
             dataset = CelebA(
                 data_dir=data_dir,
@@ -23,13 +27,6 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
                 size=kwargs.get("size", 128),
                 grayscale=kwargs.get("grayscale", False),
                 random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
-            )
-        case "CelebA2":
-            dataset = CelebA2(
-                data_dir=data_dir,
-                transform=transform,
-                size=kwargs.get("size", 128),
-                grayscale=kwargs.get("grayscale", False),
             )
         case "CelebAHQ":
             dataset = CelebAHQ(

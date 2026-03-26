@@ -110,7 +110,7 @@ class FlowMatching(AbstractGenerativeModel):
         device = next(iter(self.network.parameters())).device
         x_0 = torch.randn(size=(batch_size, *self.image_dim), device=device, dtype=torch.float32)
         t = torch.linspace(0, 1, steps=n_time_steps, device=device, dtype=torch.float32)
-        x = odeint(
+        phi_t = odeint(
             func=self._arg_swapped_network,
             y0=x_0,
             t=t,
@@ -118,7 +118,7 @@ class FlowMatching(AbstractGenerativeModel):
             rtol=1e-5,
             atol=1e-5,
         )
-        x_1 = x[-1]
+        x_1 = phi_t[-1]
         x_1 = (x_1 + 1.0) / 2.0
         x_1 = torch.clamp(x_1, 0.0, 1.0)
         return x_1

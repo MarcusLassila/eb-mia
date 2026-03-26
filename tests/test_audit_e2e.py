@@ -39,9 +39,9 @@ class TestAuditEndToEnd(unittest.TestCase):
         dataset = _TinyEntityDataset()
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
-            target_path = tmpdir_path / "DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch10.pth"
-            shadow_path_a = tmpdir_path / "DDPM-CelebA2-ent-f0p5-p0p5-s1-sz64-epoch10.pth"
-            shadow_path_b = tmpdir_path / "DDPM-CelebA2-ent-f0p5-p0p5-s2-sz64-epoch10.pth"
+            target_path = tmpdir_path / "DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch10.pth"
+            shadow_path_a = tmpdir_path / "DDPM-CelebA-ent-f0p5-p0p5-s1-sz64-epoch10.pth"
+            shadow_path_b = tmpdir_path / "DDPM-CelebA-ent-f0p5-p0p5-s2-sz64-epoch10.pth"
             loss_sig_by_path = {
                 target_path: (torch.tensor([0.2, 0.5, 0.1, 0.1], dtype=torch.float32), torch.tensor([1, 0, 0, 0], dtype=torch.bool)),
                 shadow_path_a: (torch.tensor([0.9, 0.2, 1.1, 1.2], dtype=torch.float32), torch.tensor([1, 1, 0, 0], dtype=torch.bool)),
@@ -53,7 +53,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 return loss_sig_by_path[Path(model_path)]
 
             query_config = loss_query_module.utils.Config({
-                "dataset": "CelebA2",
+                "dataset": "CelebA",
                 "data_dir": tmpdir,
                 "batch_size": 2,
                 "res_dir": tmpdir,
@@ -73,7 +73,7 @@ class TestAuditEndToEnd(unittest.TestCase):
             self.assertTrue(target_loss_path.exists())
 
             audit_config = run_audit_module.utils.Config({
-                "dataset": "CelebA2",
+                "dataset": "CelebA",
                 "data_dir": tmpdir,
                 "res_dir": tmpdir,
                 "audit_mode": "entity",

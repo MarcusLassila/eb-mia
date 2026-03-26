@@ -22,10 +22,6 @@ class FakeCelebA(FakeDataset):
     pass
 
 
-class FakeCelebA2(FakeDataset):
-    pass
-
-
 class FakeCelebAHQ(FakeDataset):
     pass
 
@@ -41,7 +37,6 @@ class TestLoadDataset(unittest.TestCase):
             MNIST=FakeMNIST,
             CIFAR10=FakeCIFAR10,
             CelebA=FakeCelebA,
-            CelebA2=FakeCelebA2,
             CelebAHQ=FakeCelebAHQ,
             Flowers=FakeFlowers,
         ):
@@ -51,7 +46,14 @@ class TestLoadDataset(unittest.TestCase):
 
             dataset = utils_module.load_dataset("CIFAR10", data_dir="root", transform=None)
             self.assertIsInstance(dataset, FakeCIFAR10)
-            self.assertEqual(dataset.kwargs, {"data_dir": "root", "transform": None})
+            self.assertEqual(
+                dataset.kwargs,
+                {
+                    "data_dir": "root",
+                    "transform": None,
+                    "random_horizontal_flip": True,
+                },
+            )
 
             dataset = utils_module.load_dataset(
                 "CelebA",
@@ -73,8 +75,8 @@ class TestLoadDataset(unittest.TestCase):
                 },
             )
 
-            dataset = utils_module.load_dataset("CelebA2", data_dir="root", transform="t")
-            self.assertIsInstance(dataset, FakeCelebA2)
+            dataset = utils_module.load_dataset("CelebA", data_dir="root", transform="t")
+            self.assertIsInstance(dataset, FakeCelebA)
             self.assertEqual(
                 dataset.kwargs,
                 {
@@ -82,6 +84,7 @@ class TestLoadDataset(unittest.TestCase):
                     "transform": "t",
                     "size": 128,
                     "grayscale": False,
+                    "random_horizontal_flip": True,
                 },
             )
 

@@ -62,7 +62,7 @@ class TestData(unittest.TestCase):
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 2, 3])
                 self.assertEqual(dataset.n_entities, 4)
 
-    def test_celeba2_normalizes_filtered_entity_ids(self):
+    def test_celeba_normalizes_entity_ids(self):
         class FakeSplit:
             def __init__(self, celeb_ids):
                 self._data = [{"celeb_id": celeb_id, "image": None} for celeb_id in celeb_ids]
@@ -108,12 +108,12 @@ class TestData(unittest.TestCase):
                 "data.datasets.concatenate_datasets",
                 side_effect=fake_concatenate_datasets,
             ):
-                dataset = data_module.CelebA2(
+                dataset = data_module.CelebA(
                     data_dir=tmpdir,
                     transform=lambda x: x,
                 )
-                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 1])
-                self.assertEqual(dataset.n_entities, 2)
+                self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 2, 3])
+                self.assertEqual(dataset.n_entities, 4)
 
     def test_celeba_low_res_grayscale_transform(self):
         class FakeSplit:

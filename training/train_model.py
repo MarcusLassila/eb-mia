@@ -14,6 +14,13 @@ from pathlib import Path
 import yaml
 
 def get_train_config(config):
+    '''
+    Build the training-loop configuration from a parsed model config.
+    Args:
+        config (Config): Parsed training configuration.
+    Returns:
+        TrainConfig: Training-loop configuration.
+    '''
     return TrainConfig(
         batch_size=config.batch_size,
         simul_batch_size=config.simul_batch_size,
@@ -28,6 +35,59 @@ def get_train_config(config):
         lr_scheduler=config.lr_scheduler,
         lr_scheduler_params=getattr(config, "lr_scheduler_params", {}),
     )
+
+def get_train_and_val_datasets(dataset_name, image_resolution, data_dir, val_frac=None, grayscale=False, train_indices_path=None, checkpoint=None):
+    '''
+    Build train and validation subsets with deterministic validation transforms.
+    Args:
+        dataset_name (str): Dataset name passed to the dataset loader.
+        image_resolution (int): Target image resolution.
+        data_dir (Path | str): Dataset directory.
+        val_frac (float | None): Validation fraction for fresh training runs.
+        grayscale (bool): Whether to load grayscale images.
+        train_indices_path (Path | None): Optional path to explicit train indices.
+        checkpoint (dict | None): Optional checkpoint payload used for resume.
+    Returns:
+        tuple[Subset, Subset]: Training and validation dataset subsets.
+    '''
+    assert (train_indices_path is not None) or (checkpoint is not None)
+    if checkpoint is None and val_frac is None:
+        raise ValueError("Must specify validation fraction unless resuming training from a checkpoint")
+    dataset = load_dataset(
+        dataset_name=dataset_name,
+        data_dir=str(data_dir),
+        transform=None,
+        size=image_resolution,
+        grayscale=grayscale,
+    ) # Use default transforms
+    deterministic_dataset = load_dataset(
+        dataset_name=dataset_name,
+        data_dir=str(data_dir),
+        transform=None,
+        size=image_resolution,
+        grayscale=grayscale,
+        random_horizontal_flip=False, # Disable random augmentation for validation
+    )
+    if checkpoint is not None:
+        if train_indices_path is None:
+            train_indices = checkpoint["train_indices"]
+            val_indices = checkpoint["val_indices"]
+        else:
+            train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
+            train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
+            nontrain_indices = utils.mask_to_index(~train_mask)
+            val_size = len(checkpoint["val_indices"])
+            val_indices = nontrain_indices[:val_size]
+    else:
+        train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
+        train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
+        train_indices = utils.mask_to_index(train_mask)
+        nontrain_indices = utils.mask_to_index(~train_mask)
+        val_size = int(val_frac * len(dataset))
+        val_indices = nontrain_indices[:val_size]
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(deterministic_dataset, val_indices)
+    return train_dataset, val_dataset
 
 def build_checkpoint_savepath(config, savedir, split_stem, is_gray):
     '''
@@ -63,25 +123,18 @@ def train_model_from_scratch(
     Returns:
         None
     '''
-    dataset = load_dataset(
-        config.dataset,
-        data_dir=str(data_dir),
-        transform=None,
-        size=config.image_resolution,
+    train_dataset, val_dataset = get_train_and_val_datasets(
+        dataset_name=config.dataset,
+        image_resolution=config.image_resolution,
+        data_dir=data_dir,
+        val_frac=config.val_frac,
         grayscale=getattr(config, "grayscale", False),
-    )  # Use default transforms
-    image_dim = dataset[0].shape
+        train_indices_path=train_indices_path,
+    )
+    image_dim = train_dataset[0].shape
     channels, height, width = image_dim
     assert height == width
     assert height == config.image_resolution
-    train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
-    train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
-    train_indices = utils.mask_to_index(train_mask)
-    nontrain_indices = utils.mask_to_index(~train_mask)
-    val_size = int(config.val_frac * len(dataset))
-    val_indices = nontrain_indices[:val_size]
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
     train_config = get_train_config(config)
     savepath = build_checkpoint_savepath(config, savedir, train_indices_path.stem, channels == 1)
     match config.model:
@@ -164,28 +217,15 @@ def train_model_from_checkpoint(
         None
     '''
     properties = utils.parse_properties_from_checkpoint_path(checkpoint_path)
-    dataset = load_dataset(
-        properties["dataset"],
-        data_dir=str(data_dir),
-        transform=None,
-        size=properties["size"],
+    train_dataset, val_dataset = get_train_and_val_datasets(
+        dataset_name=properties["dataset"],
+        image_resolution=properties["size"],
+        data_dir=data_dir,
+        val_frac=None,
         grayscale=properties["gray"],
-    )  # Use default transforms
-
-    if train_indices_path is None:
-        train_indices = checkpoint["train_indices"]
-        val_indices = checkpoint["val_indices"]
-    else:
-        train_indices = train_split.load_indices(train_indices_path, len_dataset=len(dataset))
-        train_mask = utils.index_to_mask(torch.tensor(train_indices, dtype=torch.long), len(dataset))
-        nontrain_indices = utils.mask_to_index(~train_mask)
-        val_size = len(checkpoint["val_indices"])
-        if config is not None:
-            val_size = int(config.val_frac * len(dataset))
-        val_indices = nontrain_indices[:val_size]
-
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
+        train_indices_path=train_indices_path,
+        checkpoint=checkpoint,
+    )
     if config is None:
         train_config = TrainConfig(**checkpoint["train_config"])
     else:

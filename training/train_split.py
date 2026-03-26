@@ -72,6 +72,12 @@ def entity_complement(dataset: datasets.EntityDataset, train_split_path, output_
     file_name = f"{train_split_path.stem}-comp.pkl"
     save_indices(selected_indices, len(dataset), output_dir, file_name)
 
+def first_n_train_split(dataset, args):
+    assert args.first_n_samples <= len(dataset)
+    selected_indices = list(range(args.first_n_samples))
+    file_name = f"{args.dataset}-smpl-first{args.first_n_samples}.pkl"
+    save_indices(selected_indices, len(dataset), args.output_dir, file_name)
+
 def _build_parser():
     parser = argparse.ArgumentParser(description="Create training split index files.")
     parser.add_argument("--dataset", required=True)
@@ -82,6 +88,7 @@ def _build_parser():
     parser.add_argument("--fraction", type=float, default=0.5)
     parser.add_argument("--entity-fraction", type=float, default=0.5)
     parser.add_argument("--per-entity-fraction", type=float, default=0.5)
+    parser.add_argument("--first-n-samples", type=int)
     parser.add_argument("--train-split-path", type=str)
     return parser
 
@@ -95,7 +102,10 @@ def main(argv=None):
     rng = np.random.default_rng(seed=args.seed)
     match args.mode:
         case "sample":
-            sample_split(dataset, rng, args)
+            if args.first_n_samples is not None:
+                first_n_train_split(dataset, args)
+            else:
+                sample_split(dataset, rng, args)
         case "entity":
             assert isinstance(dataset, datasets.EntityDataset)
             entity_split(dataset, rng, args)

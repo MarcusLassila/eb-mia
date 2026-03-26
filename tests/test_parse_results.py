@@ -33,7 +33,7 @@ class TestEvaluationCli(unittest.TestCase):
                     {
                         "res_dir": tmpdir,
                         "attack": "BASE",
-                        "target_model_path": str(Path(tmpdir) / "DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000.pth"),
+                        "target_model_path": str(Path(tmpdir) / "DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000.pth"),
                         "metrics_folders": ["sample"],
                         "low_exponent": -4,
                     },
@@ -61,8 +61,8 @@ class TestEvaluationCli(unittest.TestCase):
             folder_b = tmpdir / "B"
             folder_a.mkdir()
             folder_b.mkdir()
-            file_a = folder_a / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
-            file_b = folder_b / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s1-sz64-epoch1000_mode-sample.pkl"
+            file_a = folder_a / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
+            file_b = folder_b / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s1-sz64-epoch1000_mode-sample.pkl"
             with open(file_a, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             with open(file_b, "wb") as f:
@@ -73,10 +73,10 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_uses_short_labels(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-sample"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
@@ -84,16 +84,16 @@ class TestEvaluationCli(unittest.TestCase):
             self.assertEqual(label, "BASE-f0p5-p0p5-e1000-sample")
             self.assertNotIn("/", label)
             self.assertNotIn("DDPM", label)
-            self.assertNotIn("CelebA2", label)
+            self.assertNotIn("CelebA", label)
             self.assertNotIn("sz64", label)
 
     def test_collect_metrics_folder_summaries_preserves_offline_attack_suffix_in_label(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-off-sample"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
+            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
@@ -102,10 +102,10 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_label_ignores_metrics_subfolder_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-entity-all"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity-all.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity-all.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
@@ -126,10 +126,10 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_compacts_exclude_train_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-entity-exclude_train"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
@@ -138,10 +138,10 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_adds_n_suffix_from_metrics_dir_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-entity-max_one_train-n10"
             folder.mkdir(parents=True)
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(_metrics_dict(), f)
             _, summaries = evaluation.collect_metrics_folder_summaries([folder])
@@ -150,14 +150,14 @@ class TestEvaluationCli(unittest.TestCase):
     def test_collect_metrics_folder_summaries_allows_different_entity_sampling_multiplicities(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            parent = tmpdir / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = tmpdir / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder_a = parent / "BASE-entity-max_one_train"
             folder_b = parent / "BASE-entity-exclude_train"
             folder_a.mkdir(parents=True)
             folder_b.mkdir(parents=True)
             targets = [
-                "DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",
-                "DDPM-CelebA2-ent-f0p5-p0p5-s1-sz64-epoch1000",
+                "DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000",
+                "DDPM-CelebA-ent-f0p5-p0p5-s1-sz64-epoch1000",
             ]
             for target in targets:
                 metrics_a_1 = folder_a / f"metrics_attack-BASE_target-{target}_mode-entity_n-2_min-none_max-none.pkl"
@@ -177,7 +177,7 @@ class TestEvaluationCli(unittest.TestCase):
     def test_plot_average_roc_curves_uses_compact_title(self):
         fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
         summaries = [{
-            "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
+            "target_stems": ("DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000",),
             "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
             "AUC": {"mean": 0.75, "std": 0.05},
             "label": "BASE-f0p5-p0p5-e1000-sample",
@@ -187,13 +187,13 @@ class TestEvaluationCli(unittest.TestCase):
             with patch("mia.evaluation.plt.title") as title_fn:
                 evaluation.plot_average_roc_curves(tmpdir, fpr_space, summaries)
         title = title_fn.call_args.args[0]
-        self.assertEqual(title, "DDPM-CelebA2-sz64 | 1 target models")
+        self.assertEqual(title, "DDPM-CelebA-sz64 | 1 target models")
         self.assertNotIn("Average ROC", title)
 
     def test_plot_average_roc_curves_adds_mode_stem_to_label(self):
         fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
         summaries = [{
-            "target_stems": ("DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000",),
+            "target_stems": ("DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000",),
             "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
             "AUC": {"mean": 0.75, "std": 0.05},
             "label": "BASE-f0p5-p0p5-e1000-ent-all",
@@ -211,7 +211,7 @@ class TestEvaluationCli(unittest.TestCase):
             folder.mkdir()
             bad_metrics = _metrics_dict()
             bad_metrics["TPR@1%FPR"] = bad_metrics["TPR@1%FPR"] + 0.1
-            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
+            metrics_path = folder / "metrics_attack-BASE_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-sample.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(bad_metrics, f)
             with self.assertRaises(AssertionError):
@@ -219,7 +219,7 @@ class TestEvaluationCli(unittest.TestCase):
 
     def test_collect_metrics_folder_summaries_preserves_low_endpoint_interpolation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            parent = Path(tmpdir) / "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
+            parent = Path(tmpdir) / "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000"
             folder = parent / "BASE-off-entity-exclude_train-n10"
             folder.mkdir(parents=True)
             fpr = np.array([0.0, 0.0, 0.001, 1.0], dtype=float)
@@ -232,7 +232,7 @@ class TestEvaluationCli(unittest.TestCase):
                 "TPR": tpr,
                 "thresholds": np.array([np.inf, 0.3, 0.2, 0.1], dtype=float),
             }
-            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA2-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
+            metrics_path = folder / "metrics_attack-BASE-off_target-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000_mode-entity_n-10_min-none_max-none.pkl"
             with open(metrics_path, "wb") as f:
                 pickle.dump(metrics, f)
             fpr_space, summaries = evaluation.collect_metrics_folder_summaries([folder], low_exponent=-4)

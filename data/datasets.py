@@ -65,9 +65,13 @@ class MNIST(Dataset):
 
 class CIFAR10(Dataset):
 
-    def __init__(self, data_dir="./datasets", transform=None):
+    def __init__(self, data_dir="./datasets", transform=None, random_horizontal_flip=True):
         if transform is None:
-            self.transform = TRANSFORM
+            transform = []
+            if random_horizontal_flip:
+                transform.append(T.RandomHorizontalFlip(p=0.5))
+            transform.append(TRANSFORM)
+            self.transform = T.Compose(transform)
         else:
             self.transform = transform
         self.dataset = ConcatDataset([
@@ -212,100 +216,3 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     plt.imshow(sample.permute(1, 2, 0))
     plt.show()
-
-
-########################
-####### LEGACY #########
-########################
-
-class CelebA2(CelebA):
-    '''
-    CelebA dataset filtered to identities with at least two samples.
-    Args:
-        data_dir (str): Dataset cache directory.
-        transform (callable | None): Optional transform applied to each image.
-        size (int): Output image size.
-        grayscale (bool): Whether to convert images to grayscale.
-        random_horizontal_flip (bool): Whether to apply random flips.
-    Returns:
-        None
-    '''
-
-    def __init__(self, data_dir="./datasets", transform=None, size=128, grayscale=False, random_horizontal_flip=True):
-        '''
-        Initialize the filtered CelebA dataset.
-        Args:
-            data_dir (str): Dataset cache directory.
-            transform (callable | None): Optional transform applied to each image.
-            size (int): Output image size.
-            grayscale (bool): Whether to convert images to grayscale.
-            random_horizontal_flip (bool): Whether to apply random flips.
-        Returns:
-            None
-        '''
-        if transform is None:
-            transforms = [
-                T.CenterCrop((178, 178)),
-                T.Resize(
-                    (size, size),
-                    interpolation=T.InterpolationMode.BICUBIC,
-                    antialias=True,
-                ),
-            ]
-            if grayscale:
-                transforms.append(T.Grayscale(num_output_channels=1))
-            if random_horizontal_flip:
-                transforms.append(T.RandomHorizontalFlip(p=0.5))
-            transforms.append(TRANSFORM)
-            self.transform = T.Compose(transforms)
-        else:
-            self.transform = transform
-        min_celeb_samples = 2
-        ds = load_dataset("flwrlabs/celeba", cache_dir=data_dir)
-        dataset = concatenate_datasets([ds["train"], ds["valid"], ds["test"]])
-        celeb_ids = torch.tensor(dataset["celeb_id"], dtype=torch.long)
-        unique_ids, counts = torch.unique(celeb_ids, return_counts=True)
-        if min_celeb_samples > 1:
-            keep_ids = set(unique_ids[counts >= min_celeb_samples].tolist())
-            celeb_ids_list = celeb_ids.tolist()
-            keep_indices = [
-                index
-                for index, celeb_id in enumerate(celeb_ids_list)
-                if celeb_id in keep_ids
-            ]
-            dataset = dataset.select(keep_indices)
-            celeb_ids = torch.tensor(
-                [celeb_id for celeb_id in celeb_ids_list if celeb_id in keep_ids],
-                dtype=torch.long,
-            )
-        self.dataset = dataset
-        self._entity_ids = _normalize_entity_ids(celeb_ids)
-        self._n_entities = int(self._entity_ids.max().item()) + 1
-
-    @property
-    def entity_ids(self):
-        return self._entity_ids
-
-    @property
-    def n_entities(self):
-        return self._n_entities
-
-    def __getitem__(self, index):
-        '''
-        Return a transformed image.
-        Args:
-            index (int): Sample index.
-        Returns:
-            torch.Tensor: Transformed image tensor.
-        '''
-        image = self.dataset[int(index)]["image"]
-        image = self.transform(image)
-        return image
-
-    def __len__(self):
-        '''
-        Return the dataset size.
-        Returns:
-            int: Number of samples in the dataset.
-        '''
-        return len(self.dataset)
