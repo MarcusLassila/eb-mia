@@ -83,6 +83,10 @@ def parse_properties_from_checkpoint_path(path):
         r"^(?P<dataset>.+)-smpl-f(?P<fraction>\d+p\d+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
         split_stem,
     )
+    first_n_smpl_match = re.match(
+        r"^(?P<dataset>.+)-smpl-first(?P<first_n_samples>\d+)$",
+        split_stem,
+    )
     ent_match = re.match(
         r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>\d+p\d+)-p(?P<per_entity_fraction>\d+p\d+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
         split_stem,
@@ -94,6 +98,13 @@ def parse_properties_from_checkpoint_path(path):
             "fraction": float(smpl_match.group("fraction").replace("p", ".")),
             "seed": int(smpl_match.group("seed")),
             "complement": smpl_match.group("comp") is not None,
+        })
+    elif first_n_smpl_match is not None:
+        properties.update({
+            "dataset": first_n_smpl_match.group("dataset"),
+            "split_mode": "sample",
+            "first_n_samples": int(first_n_smpl_match.group("first_n_samples")),
+            "complement": False,
         })
     else:
         assert ent_match is not None

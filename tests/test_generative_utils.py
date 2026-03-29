@@ -24,6 +24,17 @@ class TestGenerativeUtils(unittest.TestCase):
         self.assertEqual(properties["seed"], 3)
         self.assertEqual(properties["epoch"], 4)
 
+    def test_parse_properties_from_checkpoint_path_first_n_samples(self):
+        properties = parse_properties_from_checkpoint_path("/tmp/DDPM-cifar10-smpl-first100-sz32-epoch4.pth")
+        self.assertEqual(properties["dataset"], "cifar10")
+        self.assertEqual(properties["model"], "DDPM")
+        self.assertEqual(properties["size"], 32)
+        self.assertEqual(properties["split_mode"], "sample")
+        self.assertEqual(properties["first_n_samples"], 100)
+        self.assertEqual(properties["seed"], None)
+        self.assertEqual(properties["complement"], False)
+        self.assertEqual(properties["epoch"], 4)
+
     def test_get_train_indices(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "cifar10-DDPM-test.pth"
