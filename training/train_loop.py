@@ -134,12 +134,21 @@ class TrainLoop:
                 if not final_grad_accum_step:
                     continue # Keep accumulating gradients
 
-                if self.train_config.grad_clip != 0.0:
+                if self.scaler.is_enabled():
                     self.scaler.unscale_(self.optimizer)
-                    norm = torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.train_config.grad_clip)
-                    if not torch.isfinite(norm).item():
-                        raise RuntimeError("Non-finite gradient norm detected during clipping.")
-                    accum_grad_norm += norm
+                if self.train_config.grad_clip != 0.0:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.train_config.grad_clip)
+                else:
+                    grad_norm_sq = torch.zeros((), dtype=torch.float32, device=self.device)
+                    for parameter in self.network.parameters():
+                        if parameter.grad is None:
+                            continue
+                        grad = parameter.grad.detach()
+                        grad_norm_sq += grad.float().pow(2).sum()
+                    grad_norm = grad_norm_sq.sqrt()
+                if not torch.isfinite(grad_norm).item():
+                    raise RuntimeError("Non-finite gradient norm detected.")
+                accum_grad_norm += grad_norm
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 if self.train_config.use_ema:
@@ -184,7 +193,7 @@ class TrainLoop:
                 f"| train loss: {mean_train_loss:.6f} "
                 f"| val loss: {mean_val_loss:.6f} "
                 + (f"| lr: {current_lr:.7f} " if self.train_config.lr_scheduler != "none" else "")
-                + (f"| grad norm: {(accum_grad_norm / n_simul_train_batches).item():.3f} " if self.train_config.grad_clip != 0 else "")
+                + f"| grad norm: {(accum_grad_norm / n_simul_train_batches).item():.3f} "
                 + f"| dt: {t1 - t0:.1f}"
             )
             accelerator.print(log_msg, flush=True)
