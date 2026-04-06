@@ -85,6 +85,10 @@ def get_train_and_val_datasets(dataset_name, image_resolution, data_dir, val_fra
         nontrain_indices = utils.mask_to_index(~train_mask)
         val_size = int(val_frac * len(dataset))
         val_indices = nontrain_indices[:val_size]
+    if not torch.is_tensor(train_indices):
+        train_indices = torch.tensor(train_indices, dtype=torch.long)
+    if not torch.is_tensor(val_indices):
+        val_indices = torch.tensor(val_indices, dtype=torch.long)
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(deterministic_dataset, val_indices)
     return train_dataset, val_dataset

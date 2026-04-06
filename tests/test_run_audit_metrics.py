@@ -119,7 +119,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "res_dir": tmpdir,
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
-                "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5},
+                "attack": {"name": "CompositeBASE-off", "attack": "CompositeBASE", "offline": True, "prior": 0.5},
             })
             dataset = DummyEntityDataset([0, 0, 1, 1])
             captured = {}
@@ -129,16 +129,21 @@ class TestRunAuditMetrics(unittest.TestCase):
                 captured["ground_truth"] = ground_truth.clone()
                 return {"AUC": 0.6, "TPR@1%FPR": 0.3, "TPR@0.1%FPR": 0.2, "n_audit_points": 2}
 
-            sample_scores = attacks.BASE(
+            attack_config = run_audit_module.utils.Config({
+                "offline": True,
+                "prior": 0.5,
+            })
+            expected_entity_scores = attacks.CompositeBASE(
+                attack_config=attack_config,
                 shadow_loss_sigs=torch.tensor([[0.9, 0.2, 1.1, 1.2], [1.0, 0.3, 0.8, 0.9]], dtype=torch.float32),
                 shadow_train_mask=torch.tensor([[1, 1, 0, 0], [0, 0, 1, 1]], dtype=torch.bool),
-                offline=True,
-                prior=0.5,
-            ).run_attack(torch.tensor([0.2, 0.5, 0.1, 0.1], dtype=torch.float32))
-            expected_entity_scores = attacks.composite_BASE({
-                0: sample_scores[torch.tensor([0, 1])],
-                1: sample_scores[torch.tensor([2, 3])],
-            })
+            ).run_attack(
+                audit_table={
+                    0: torch.tensor([0, 1], dtype=torch.long),
+                    1: torch.tensor([2, 3], dtype=torch.long),
+                },
+                target_loss_sigs=torch.tensor([0.2, 0.5, 0.1, 0.1], dtype=torch.float32),
+            )
 
             with (
                 patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
@@ -152,8 +157,61 @@ class TestRunAuditMetrics(unittest.TestCase):
             expected_score_tensor = torch.stack([expected_entity_scores[0], expected_entity_scores[1]]).to(dtype=torch.float32)
             self.assertTrue(torch.allclose(captured["score"], expected_score_tensor, atol=1e-6))
             metrics_path = (
-                path_utils.metrics_dir_from_target(tmpdir, target_path, "BASE-off", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(target_path, "BASE-off", "entity")
+                path_utils.metrics_dir_from_target(tmpdir, target_path, "CompositeBASE-off", "entity", entity_audit_mode="all")
+                / path_utils.metrics_pickle_name_from_target(target_path, "CompositeBASE-off", "entity")
+            )
+            self.assertTrue(metrics_path.exists())
+
+    def test_run_entity_audit_uses_joint_xgb_with_updated_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s0-sz64-epoch10.pth"
+            shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s1-sz64-epoch10.pth"
+            shadow_path_b = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-s2-sz64-epoch10.pth"
+            target_loss_path = self._write_loss_file(tmpdir, target_path, 3, [0.2, 0.5, 0.1, 0.1], [1, 0, 0, 0])
+            shadow_loss_path_a = self._write_loss_file(tmpdir, shadow_path_a, 3, [0.9, 0.2, 1.1, 1.2], [1, 1, 0, 0])
+            shadow_loss_path_b = self._write_loss_file(tmpdir, shadow_path_b, 3, [1.0, 0.3, 0.8, 0.9], [0, 0, 1, 1])
+            config = run_audit_module.utils.Config({
+                "dataset": "celeba",
+                "data_dir": tmpdir,
+                "audit_mode": "entity",
+                "mode": "all",
+                "res_dir": tmpdir,
+                "target_loss_paths": [str(target_loss_path)],
+                "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
+                "attack": {"name": "JointXGB", "attack": "JointXGB", "offline": True, "prior": 0.5},
+            })
+            dataset = DummyEntityDataset([0, 0, 1, 1])
+            captured = {}
+
+            class FakeJointXGB:
+                def __init__(self, **kwargs):
+                    self.kwargs = kwargs
+
+                def run_attack(self, target_loss_sigs):
+                    return {
+                        0: torch.tensor(0.7, dtype=torch.float32),
+                        1: torch.tensor(0.2, dtype=torch.float32),
+                    }
+
+            def fake_evaluate(score, ground_truth):
+                captured["score"] = score.clone()
+                captured["ground_truth"] = ground_truth.clone()
+                return {"AUC": 0.8, "TPR@1%FPR": 0.4, "TPR@0.1%FPR": 0.3, "n_audit_points": 2}
+
+            with (
+                patch.object(run_audit_module, "EntityDataset", DummyEntityDataset),
+                patch.object(run_audit_module, "load_dataset", return_value=dataset),
+                patch.object(run_audit_module.attacks, "JointXGB", FakeJointXGB),
+                patch.object(run_audit_module.evaluation, "evaluate_MIA", side_effect=fake_evaluate),
+                patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
+            ):
+                run_audit_module.run_entity_audit(config=config)
+
+            self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
+            self.assertTrue(torch.allclose(captured["score"], torch.tensor([0.7, 0.2], dtype=torch.float32), atol=1e-6))
+            metrics_path = (
+                path_utils.metrics_dir_from_target(tmpdir, target_path, "JointXGB", "entity", entity_audit_mode="all")
+                / path_utils.metrics_pickle_name_from_target(target_path, "JointXGB", "entity")
             )
             self.assertTrue(metrics_path.exists())
 
@@ -171,7 +229,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "res_dir": tmpdir,
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(shadow_loss_path)],
-                "attack": {"name": "BASE", "attack": "BASE", "offline": True, "prior": 0.5},
+                "attack": {"name": "CompositeBASE", "attack": "CompositeBASE", "offline": True, "prior": 0.5},
             })
             with self.assertRaisesRegex(ValueError, "mode='all'.*n_audit_samples_per_entity"):
                 run_audit_module.run_entity_audit(config=config)

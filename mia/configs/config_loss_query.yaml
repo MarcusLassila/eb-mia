@@ -1,0 +1,8 @@
+dataset: "CelebA2"
+data_dir: ""
+batch_size: 512
+res_dir: ""
+n_loss_samples: 1
+checkpoint_paths:
+  - ""
+lira_score_paths: []

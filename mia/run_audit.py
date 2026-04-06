@@ -3,6 +3,7 @@ from data.utils import load_dataset
 from . import attacks
 from . import evaluation
 from . import path_utils
+from .utils import indices_of_shadow_models, load_loss_signals
 import utils
 
 import argparse
@@ -12,36 +13,6 @@ from tqdm.auto import tqdm
 import pickle
 import yaml
 import numpy as np
-
-def composite_attack_name(sample_attack):
-    '''
-    Return the composite attack function name and display name.
-    Args:
-        sample_attack (str): Saved sample-attack name.
-    Returns:
-        tuple[str, str]: Composite function name and display name.
-    '''
-    if sample_attack.startswith("BASE"):
-        return "composite_BASE", sample_attack.replace("BASE", "CompositeBASE", 1)
-    if sample_attack.startswith("LiRA"):
-        return "composite_LiRA", sample_attack.replace("LiRA", "CompositeLiRA", 1)
-    raise ValueError(f"Could not infer composite attack from sample attack name: {sample_attack}")
-
-def indices_of_shadow_models(index_target, n_models):
-    '''
-    Return round-robin shadow indices excluding the target and its complement.
-    Args:
-        index_target (int): Index of the target model.
-        n_models (int): Total number of models.
-    Returns:
-        list[int]: Selected shadow model indices.
-    '''
-    assert 0 <= index_target < n_models
-    if index_target % 2 == 0:
-        excluded_indices = {index_target, index_target + 1}
-    else:
-        excluded_indices = {index_target - 1, index_target}
-    return sorted(set(range(n_models)) - excluded_indices)
 
 def attack_config_from_config(config):
     '''
@@ -68,33 +39,7 @@ def get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask):
     Returns:
         MIA: Instantiated attacker.
     '''
-    match attack_config.attack:
-        case "BASE":
-            attacker = attacks.BASE(
-                shadow_loss_sigs=shadow_loss_sigs,
-                shadow_train_mask=shadow_train_mask,
-                offline=attack_config.offline,
-                prior=attack_config.prior,
-            )
-        case "NormalBASE":
-            attacker = attacks.NormalBASE(
-                shadow_loss_sigs=shadow_loss_sigs,
-                shadow_train_mask=shadow_train_mask,
-                offline=attack_config.offline,
-                prior=attack_config.prior,
-                use_global_var=getattr(attack_config, "use_global_var", True),
-            )
-        case "LiRA":
-            attacker = attacks.LiRA(
-                shadow_loss_sigs=shadow_loss_sigs,
-                shadow_train_mask=shadow_train_mask,
-                offline=attack_config.offline,
-                use_global_var=getattr(attack_config, "use_global_var", True),
-                loss_transformation=getattr(attack_config, "loss_transformation", "logit_scaling"),
-            )
-        case _:
-            raise ValueError(f"No MIA: {attack_config.attack}")
-    return attacker
+    return getattr(attacks, attack_config.attack)(shadow_loss_sigs, shadow_train_mask, **attack_config.__dict__)
 
 def get_audit_indices(n_audit_samples, membership_mask):
     assert n_audit_samples <= membership_mask.shape[0]
@@ -188,28 +133,6 @@ def get_entity_audit_table(data_population: EntityDataset, target_train_index, m
         raise RuntimeError("Failed to include both target and non-target entities in the audit table.")
 
     return {entity_id: selected_index_table[entity_id] for entity_id in entity_ids}
-
-def load_loss_signals(loss_path):
-    '''
-    Load one target checkpoint's loss signals and train mask.
-    Args:
-        loss_path (str | Path): Loss-signal pickle path.
-    Returns:
-        tuple[torch.Tensor, torch.Tensor]: Loss signals and membership mask.
-    '''
-    with open(loss_path, "rb") as file:
-        payload = pickle.load(file)
-    if not isinstance(payload, dict):
-        raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
-    if "loss_sigs" not in payload or "train_mask" not in payload:
-        raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
-    loss_sigs = torch.tensor(payload["loss_sigs"], dtype=torch.float32)
-    train_mask = torch.tensor(payload["train_mask"], dtype=torch.bool)
-    if loss_sigs.ndim != 1 or train_mask.ndim != 1:
-        raise ValueError(f"Loss-signal pickle must store 1D tensors: {loss_path}")
-    if len(loss_sigs) != len(train_mask):
-        raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")
-    return loss_sigs, train_mask
 
 def resolve_target_shadow_paths(config):
     '''
@@ -313,22 +236,25 @@ def run_entity_audit(config):
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     assert isinstance(data_population, EntityDataset)
 
-    composite_attack_fn_name, attack = composite_attack_name(sample_attack)
-    composite_attack_fn = getattr(attacks, composite_attack_fn_name)
     all_metrics = []
     for target_loss_path, shadow_loss_paths in tqdm(
         zip(target_loss_paths, shadow_path_groups),
         total=len(target_loss_paths),
         desc="Running entity-level audit",
     ):
-        target_loss_sig, train_mask = load_loss_signals(target_loss_path)
-        if len(target_loss_sig) != len(data_population):
-            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sig)}, expected {len(data_population)}.")
-        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sig))
-        attacker = get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask)
-        sample_scores = attacker.run_attack(target_loss_sig)
+        target_loss_sigs, train_mask = load_loss_signals(target_loss_path)
+        if len(target_loss_sigs) != len(data_population):
+            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sigs)}, expected {len(data_population)}.")
+        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sigs))
         target_train_index = utils.mask_to_index(train_mask)
         train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
+        shadow_entity_mask = torch.stack([
+            torch.bincount(
+                data_population.entity_ids[sample_mask],
+                minlength=data_population.n_entities,
+            ) > 0
+            for sample_mask in shadow_train_mask
+        ])
         audit_table = get_entity_audit_table(
             data_population,
             target_train_index,
@@ -340,22 +266,30 @@ def run_entity_audit(config):
         audit_entity_ids = torch.tensor(sorted(audit_table.keys()), dtype=torch.long)
         ground_truth = torch.isin(audit_entity_ids, train_entity_ids).to(dtype=torch.long)
 
-        if composite_attack_fn_name == "composite_BASE":
-            entity_sample_scores = {
-                entity_id: sample_scores[indices]
-                for entity_id, indices in audit_table.items()
-            }
-            score = composite_attack_fn(entity_sample_scores)
-        elif composite_attack_fn_name == "composite_LiRA":
-            loss_sigs = torch.cat([target_loss_sig.unsqueeze(0), shadow_loss_sigs], dim=0)
-            shadow_entity_mask = torch.stack([
-                torch.bincount(
-                    data_population.entity_ids[sample_mask],
-                    minlength=data_population.n_entities,
-                ) > 0
-                for sample_mask in shadow_train_mask
-            ])
-            score = composite_attack_fn(audit_table, loss_sigs, shadow_entity_mask)
+        match attack_config.attack:
+            case "CompositeBASE":
+                score = attacks.CompositeBASE(
+                    attack_config=attack_config,
+                    shadow_loss_sigs=shadow_loss_sigs,
+                    shadow_train_mask=shadow_train_mask,
+                ).run_attack(audit_table=audit_table, target_loss_sigs=target_loss_sigs)
+            case "CompositeLiRA":
+                score = attacks.CompositeLiRA(
+                    audit_table=audit_table,
+                    shadow_loss_sigs=shadow_loss_sigs,
+                    shadow_entity_mask=shadow_entity_mask,
+                    offline=attack_config.offline,
+                ).run_attack(target_loss_sigs)
+            case "JointXGB":
+                score = attacks.JointXGB(
+                    attack_config=attack_config,
+                    audit_table=audit_table,
+                    shadow_loss_sigs=shadow_loss_sigs,
+                    shadow_train_mask=shadow_train_mask,
+                    shadow_entity_mask=shadow_entity_mask,
+                ).run_attack(target_loss_sigs)
+            case _:
+                raise ValueError(f"Unsupported entity-level attack: {attack_config.attack}")
         score = torch.stack([score[entity_id] for entity_id in sorted(audit_table.keys())]).to(dtype=torch.float32)
         assert len(score) == len(ground_truth)
         metrics = evaluation.evaluate_MIA(score=score, ground_truth=ground_truth)
@@ -381,7 +315,7 @@ def run_entity_audit(config):
         )
         with open(result_metrics_dir / filename, "wb") as f:
             pickle.dump(metrics, f)
-    print_average_metrics_table(attack, all_metrics)
+    print_average_metrics_table(attack_config.name, all_metrics)
 
 def parse_args(argv=None):
     '''

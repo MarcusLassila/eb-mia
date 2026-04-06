@@ -64,11 +64,9 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(path) for path in shadow_loss_paths],
                 "attack": {
-                    "name": "LiRA-online-none",
-                    "attack": "LiRA",
+                    "name": "CompositeLiRA-online-none",
+                    "attack": "CompositeLiRA",
                     "offline": False,
-                    "use_global_var": True,
-                    "loss_transformation": "none",
                 },
             })
             dataset = DummyEntityDataset([0, 0, 1, 1])
@@ -91,8 +89,8 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
             self.assertEqual(captured["score"].shape, (2,))
             self.assertGreater(float(captured["score"][0]), float(captured["score"][1]))
             metrics_path = (
-                path_utils.metrics_dir_from_target(tmpdir, target_path, "LiRA-online-none", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(target_path, "LiRA-online-none", "entity")
+                path_utils.metrics_dir_from_target(tmpdir, target_path, "CompositeLiRA-online-none", "entity", entity_audit_mode="all")
+                / path_utils.metrics_pickle_name_from_target(target_path, "CompositeLiRA-online-none", "entity")
             )
             self.assertTrue(metrics_path.exists())
 

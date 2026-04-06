@@ -80,7 +80,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                 "mode": "all",
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
-                "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5},
+                "attack": {"name": "CompositeBASE-off", "attack": "CompositeBASE", "offline": True, "prior": 0.5},
             })
 
             with (
@@ -90,8 +90,8 @@ class TestAuditEndToEnd(unittest.TestCase):
                 run_audit_module.run_entity_audit(config=audit_config)
 
             metrics_path = (
-                path_utils.metrics_dir_from_target(tmpdir, target_path, "BASE-off", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(target_path, "BASE-off", "entity")
+                path_utils.metrics_dir_from_target(tmpdir, target_path, "CompositeBASE-off", "entity", entity_audit_mode="all")
+                / path_utils.metrics_pickle_name_from_target(target_path, "CompositeBASE-off", "entity")
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

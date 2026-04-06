@@ -12,8 +12,7 @@ target_loss_paths:
 shadow_loss_paths:
   - "DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000/loss_signals"
 attack:
-  name: "LiRA-off"
-  attack: "LiRA"
+  name: "JointXGB"
+  attack: "JointXGB"
   offline: true
-  use_global_var: true
-  loss_transformation: "none"
+  prior: 0.5

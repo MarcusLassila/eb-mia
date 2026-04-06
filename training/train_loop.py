@@ -218,8 +218,8 @@ class TrainLoop:
                     "train_config": self.train_config,
                     "train_losses": self.train_losses,
                     "val_losses": self.val_losses,
-                    "train_indices": torch.tensor(self.train_dataset.indices, dtype=torch.long),
-                    "val_indices": torch.tensor(self.val_dataset.indices, dtype=torch.long),
+                    "train_indices": self.train_dataset.indices,
+                    "val_indices": self.val_dataset.indices,
                 }
                 torch.save(checkpoint, current_epoch_savepath)
 

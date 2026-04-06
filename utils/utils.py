@@ -13,7 +13,6 @@ class Config:
     def __str__(self):
         return yaml.dump(self.__dict__)
 
-
 def get_root():
     '''
     Return the path to the root of the repository.
