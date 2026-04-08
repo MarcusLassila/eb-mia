@@ -141,6 +141,7 @@ def train_model_from_scratch(
     assert height == config.image_resolution
     train_config = get_train_config(config)
     savepath = build_checkpoint_savepath(config, savedir, train_indices_path.stem, channels == 1)
+    accelerator.print(f"Number of training points: {len(train_dataset)}")
     match config.model:
         case "DDPM":
             model_config = {
