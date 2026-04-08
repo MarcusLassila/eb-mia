@@ -41,11 +41,29 @@ class LossQuery:
 
     @torch.inference_mode()
     def compute_averaged_loss(self, model: AbstractGenerativeModel, samples: torch.Tensor):
+        '''
+        Compute averaged per-sample losses for one batch.
+        Args:
+            model (AbstractGenerativeModel): Generative model used for querying.
+            samples (torch.Tensor): Batch of samples on the evaluation device.
+        Returns:
+            torch.Tensor: Averaged per-sample losses on CPU.
+        '''
+        batch_size = samples.shape[0]
         match model.__class__.__name__:
             case "DDPM":
                 loss_samples = []
+                step_index = int(model.time_steps * 0.1)
                 for _ in range(self.n_loss_samples):
-                    t = torch.ones(size=(samples.shape[0],), device=samples.device, dtype=torch.long) * int(model.time_steps * 0.1)
+                    t = torch.full(size=(batch_size,), fill_value=step_index, device=samples.device, dtype=torch.long)
+                    loss = model.per_sample_loss(samples, t).cpu()
+                    loss_samples.append(loss)
+                avg_loss = torch.stack(loss_samples).mean(dim=0)
+            case "FlowMatching":
+                loss_samples = []
+                query_time = 0.25 # TODO: Find optimal query time
+                for _ in range(self.n_loss_samples):
+                    t = torch.full(size=(batch_size,), fill_value=query_time, device=samples.device, dtype=torch.float32)
                     loss = model.per_sample_loss(samples, t).cpu()
                     loss_samples.append(loss)
                 avg_loss = torch.stack(loss_samples).mean(dim=0)
