@@ -1,4 +1,5 @@
 from .utils import indices_of_shadow_models
+from utils import mask_to_index
 
 from abc import ABC, abstractmethod
 import numpy as np
@@ -176,12 +177,13 @@ class CompositeBASE:
 
 class CompositeLiRA:
 
-    def __init__(self, audit_table, shadow_loss_sigs, shadow_entity_mask, offline=True):
+    def __init__(self, audit_table, shadow_loss_sigs, shadow_entity_mask, offline=True, use_full_cov=False):
         self.audit_table = audit_table
         self.shadow_loss_sigs = shadow_loss_sigs
         self.shadow_entity_mask = shadow_entity_mask
         self.offline = offline
-        self.mean_in, self.var_in, self.mean_out, self.var_out = self.get_mean_and_var()
+        self.use_full_cov = use_full_cov
+        self.mean_in, self.var_in, self.cov_in, self.mean_out, self.var_out, self.cov_out = self.get_mean_and_var()
 
     def loss_transformation(self, loss_sigs):
         # TODO: Add other loss transformations
@@ -200,47 +202,60 @@ class CompositeLiRA:
             mean_out[entity_id] = phi_out[entity_id].mean(dim=0)
         var_in = torch.cat([*phi_in.values()], dim=0).var().clamp_min(1e-9)
         var_out = torch.cat([*phi_out.values()], dim=0).var().clamp_min(1e-9)
-        return mean_in, var_in, mean_out, var_out
+        x_in = torch.stack([*phi_in.values()], dim=0)
+        x_in = x_in.view(x_in.shape[0] * x_in.shape[1], -1)
+        x_out = torch.stack([*phi_in.values()], dim=0)
+        x_out = x_out.view(x_out.shape[0] * x_out.shape[1], -1) 
+        x_in_centered = x_in - x_in.mean(dim=0, keepdim=True)
+        x_out_centered = x_out - x_out.mean(dim=0, keepdim=True)
+        cov_in = (x_in_centered.T @ x_in_centered) / (x_in.shape[0] - 1)
+        cov_out = (x_out_centered.T @ x_out_centered) / (x_out.shape[0] - 1)
+        return mean_in, var_in, cov_in, mean_out, var_out, cov_out
 
     def run_attack(self, target_loss_sigs):
         phi_target = self.loss_transformation(target_loss_sigs)
         score = {}
         for entity_id, indices in self.audit_table.items():
-            cov_in = np.eye(len(indices), dtype=np.float32) * float(self.var_in)
-            cov_out = np.eye(len(indices), dtype=np.float32) * float(self.var_out)
+            if self.use_full_cov:
+                cov_in = self.cov_in.numpy()
+                cov_out = self.cov_out.numpy()
+            else:
+                cov_in = np.eye(len(indices), dtype=np.float32) * float(self.var_in)
+                cov_out = np.eye(len(indices), dtype=np.float32) * float(self.var_out)
             if self.offline:
-                p = multivariate_normal.logcdf(
+                log_p = multivariate_normal.logcdf(
                     phi_target[indices].cpu().numpy(),
                     mean=self.mean_out[entity_id].cpu().numpy(),
                     cov=cov_out,
                 )
-                score[entity_id] = torch.tensor(p, dtype=torch.float32)
+                score[entity_id] = torch.tensor(log_p, dtype=torch.float32)
             else:
-                p_in = multivariate_normal.logpdf(
+                log_p_in = multivariate_normal.logpdf(
                     phi_target[indices].cpu().numpy(),
                     mean=self.mean_in[entity_id].cpu().numpy(),
                     cov=cov_in,
                 )
-                p_out = multivariate_normal.logpdf(
+                log_p_out = multivariate_normal.logpdf(
                     phi_target[indices].cpu().numpy(),
                     mean=self.mean_out[entity_id].cpu().numpy(),
                     cov=cov_out,
                 )
-                score[entity_id] = torch.tensor(p_in - p_out, dtype=torch.float32)
+                score[entity_id] = torch.tensor(log_p_in - log_p_out, dtype=torch.float32)
         return score
 
 class JointXGB:
 
-    def __init__(self, attack_config, audit_table, shadow_loss_sigs, shadow_train_mask, shadow_entity_mask, sample_level_attack="BASE"):
+    def __init__(self, attack_config, entity_index_table, shadow_loss_sigs, shadow_train_mask, shadow_entity_mask, n_features, feature_strategy="min-max-mean-std", sample_level_attack="BASE"):
         self.attack_config = attack_config
-        self.audit_table = audit_table
-        assert len({len(indices) for indices in audit_table.values()}) == 1, "XGB requires a fixed number of features"
+        self.entity_index_table = entity_index_table
         self.n_shadow_models = shadow_loss_sigs.shape[0]
+        self.n_features = n_features
         assert self.n_shadow_models == shadow_train_mask.shape[0]
         self.shadow_loss_sigs = shadow_loss_sigs
         self.shadow_train_mask = shadow_train_mask
         self.shadow_entity_mask = shadow_entity_mask
         self.sample_level_attack = sample_level_attack
+        self.feature_strategy = feature_strategy
         X_train, X_test, y_train, y_test = self.create_dataset()
         self.model = self.fit_model(X_train, X_test, y_train, y_test)
 
@@ -261,17 +276,34 @@ class JointXGB:
         scores = scores.to(dtype=torch.float32).cpu().numpy()
         return scores
 
+    def make_features(self, scores: np.ndarray):
+        match self.feature_strategy:
+            case "sorted":
+                features = np.sort(scores)
+            case "min-max":
+                features = np.array([scores.min(), scores.max()])
+            case "min-max-mean-std":
+                features = np.array([scores.min(), scores.max(), scores.mean(), scores.std()])
+            case _:
+                raise ValueError(f"Unsupported feature extraction strategy: {self.feature_strategy}")
+        return features
+
     def create_dataset(self):
         features, labels = [], []
-        for shadow_index in range(self.n_shadow_models):
+        for shadow_index, train_mask in enumerate(self.shadow_train_mask):
             simul_shadow_indices = indices_of_shadow_models(shadow_index, self.n_shadow_models)
             sample_scores = self.get_sample_scores(
                 self.shadow_loss_sigs[shadow_index],
                 self.shadow_loss_sigs[simul_shadow_indices],
                 self.shadow_train_mask[simul_shadow_indices],
             )
-            for entity_id, indices in self.audit_table.items():
-                features.append(sample_scores[indices])
+            train_indices = set(mask_to_index(train_mask).tolist())
+            for entity_id, indices in self.entity_index_table.items():
+                non_train_indices = sorted(set(indices) - train_indices)
+                if len(non_train_indices) < self.n_features:
+                    continue
+                selected_indices = non_train_indices[:self.n_features]
+                features.append(self.make_features(sample_scores[selected_indices]))
                 labels.append(int(self.shadow_entity_mask[shadow_index, entity_id]))
         features = np.array(features, dtype=np.float32)
         labels = np.array(labels, dtype=np.int32)
@@ -281,17 +313,18 @@ class JointXGB:
         model = XGBClassifier(
             objective="binary:logistic",
             eval_metric="logloss",
-            use_label_encoder=False,
         )
         model.fit(X_train, y_train)
         accuracy = model.score(X_test, y_test)
         print(f"XGB model fitted. Test accuracy: {accuracy}")
+        print(len(X_train))
         return model
 
-    def run_attack(self, target_loss_sigs):
+    def run_attack(self, audit_table, target_loss_sigs):
         target_sample_scores = self.get_sample_scores(target_loss_sigs, self.shadow_loss_sigs, self.shadow_train_mask)
         score = {}
-        for entity_id, indices in self.audit_table.items():
-            prob_label_1 = self.model.predict_proba(target_sample_scores[indices].reshape(1, -1))[0, 1]
+        for entity_id, indices in audit_table.items():
+            assert len(indices) == self.n_features
+            prob_label_1 = self.model.predict_proba(self.make_features(target_sample_scores[indices]).reshape(1, -1))[0, 1]
             score[entity_id] = torch.tensor(prob_label_1, dtype=torch.float32)
         return score

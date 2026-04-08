@@ -174,7 +174,8 @@ class TestRunAuditMetrics(unittest.TestCase):
                 "dataset": "celeba",
                 "data_dir": tmpdir,
                 "audit_mode": "entity",
-                "mode": "all",
+                "mode": "exclude_train",
+                "n_audit_samples_per_entity": 1,
                 "res_dir": tmpdir,
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
@@ -187,7 +188,7 @@ class TestRunAuditMetrics(unittest.TestCase):
                 def __init__(self, **kwargs):
                     self.kwargs = kwargs
 
-                def run_attack(self, target_loss_sigs):
+                def run_attack(self, audit_table, target_loss_sigs):
                     return {
                         0: torch.tensor(0.7, dtype=torch.float32),
                         1: torch.tensor(0.2, dtype=torch.float32),
@@ -210,8 +211,20 @@ class TestRunAuditMetrics(unittest.TestCase):
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
             self.assertTrue(torch.allclose(captured["score"], torch.tensor([0.7, 0.2], dtype=torch.float32), atol=1e-6))
             metrics_path = (
-                path_utils.metrics_dir_from_target(tmpdir, target_path, "JointXGB", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(target_path, "JointXGB", "entity")
+                path_utils.metrics_dir_from_target(
+                    tmpdir,
+                    target_path,
+                    "JointXGB",
+                    "entity",
+                    entity_audit_mode="exclude_train",
+                    n_audit_samples_per_entity=1,
+                )
+                / path_utils.metrics_pickle_name_from_target(
+                    target_path,
+                    "JointXGB",
+                    "entity",
+                    n_audit_samples_per_entity=1,
+                )
             )
             self.assertTrue(metrics_path.exists())
 

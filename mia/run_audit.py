@@ -234,8 +234,8 @@ def run_entity_audit(config):
         raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
     image_size = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])["size"]
     data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
+    entity_index_table = data_population.get_entity_index_table()
     assert isinstance(data_population, EntityDataset)
-
     all_metrics = []
     for target_loss_path, shadow_loss_paths in tqdm(
         zip(target_loss_paths, shadow_path_groups),
@@ -281,13 +281,16 @@ def run_entity_audit(config):
                     offline=attack_config.offline,
                 ).run_attack(target_loss_sigs)
             case "JointXGB":
+                assert config.mode == "exclude_train", "Other modes are not yet supported"
+                assert hasattr(config, "n_audit_samples_per_entity"), "Must specify a fixed number of audit samples per entity"
                 score = attacks.JointXGB(
                     attack_config=attack_config,
-                    audit_table=audit_table,
+                    entity_index_table=entity_index_table,
                     shadow_loss_sigs=shadow_loss_sigs,
                     shadow_train_mask=shadow_train_mask,
                     shadow_entity_mask=shadow_entity_mask,
-                ).run_attack(target_loss_sigs)
+                    n_features=config.n_audit_samples_per_entity,
+                ).run_attack(audit_table=audit_table, target_loss_sigs=target_loss_sigs)
             case _:
                 raise ValueError(f"Unsupported entity-level attack: {attack_config.attack}")
         score = torch.stack([score[entity_id] for entity_id in sorted(audit_table.keys())]).to(dtype=torch.float32)
