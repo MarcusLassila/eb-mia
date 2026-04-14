@@ -26,6 +26,10 @@ class FakeCelebAHQ(FakeDataset):
     pass
 
 
+class FakeVGGFace2(FakeDataset):
+    pass
+
+
 class FakeFlowers(FakeDataset):
     pass
 
@@ -37,6 +41,7 @@ class TestLoadDataset(unittest.TestCase):
             MNIST=FakeMNIST,
             CIFAR10=FakeCIFAR10,
             CelebA=FakeCelebA,
+            VGGFace2=FakeVGGFace2,
             CelebAHQ=FakeCelebAHQ,
             Flowers=FakeFlowers,
         ):
@@ -112,6 +117,39 @@ class TestLoadDataset(unittest.TestCase):
                     "data_dir": "root",
                     "transform": "t",
                     "random_horizontal_flip": False,
+                },
+            )
+
+            dataset = utils_module.load_dataset(
+                "VGGFace2",
+                data_dir="root",
+                transform="t",
+                size=64,
+                grayscale=True,
+                random_horizontal_flip=False,
+            )
+            self.assertIsInstance(dataset, FakeVGGFace2)
+            self.assertEqual(
+                dataset.kwargs,
+                {
+                    "data_dir": "root",
+                    "transform": "t",
+                    "size": 64,
+                    "grayscale": True,
+                    "random_horizontal_flip": False,
+                },
+            )
+
+            dataset = utils_module.load_dataset("VGGFace2", data_dir="root", transform="t")
+            self.assertIsInstance(dataset, FakeVGGFace2)
+            self.assertEqual(
+                dataset.kwargs,
+                {
+                    "data_dir": "root",
+                    "transform": "t",
+                    "size": 128,
+                    "grayscale": False,
+                    "random_horizontal_flip": True,
                 },
             )
 

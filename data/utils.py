@@ -28,6 +28,22 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
                 grayscale=kwargs.get("grayscale", False),
                 random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
             )
+        case "CelebA2":
+            dataset = CelebA2(
+                data_dir=data_dir,
+                transform=transform,
+                size=kwargs.get("size", 128),
+                grayscale=kwargs.get("grayscale", False),
+                random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
+            )
+        case "VGGFace2":
+            dataset = VGGFace2(
+                data_dir=data_dir,
+                transform=transform,
+                size=kwargs.get("size", 128),
+                grayscale=kwargs.get("grayscale", False),
+                random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
+            )
         case "CelebAHQ":
             dataset = CelebAHQ(
                 data_dir=data_dir,
