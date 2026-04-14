@@ -87,7 +87,7 @@ def parse_properties_from_checkpoint_path(path):
         split_stem,
     )
     ent_match = re.match(
-        r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>\d+p\d+)-p(?P<per_entity_fraction>\d+p\d+)-s(?P<seed>\d+)(?P<comp>-comp)?$",
+        r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>\d+p\d+)-p(?P<per_entity_fraction>\d+p\d+)(?:-h(?P<per_entity_hold_out>\d+p\d+))?-s(?P<seed>\d+)(?P<comp>-comp)?$",
         split_stem,
     )
     if smpl_match is not None:
@@ -112,6 +112,10 @@ def parse_properties_from_checkpoint_path(path):
             "split_mode": "entity",
             "entity_fraction": float(ent_match.group("entity_fraction").replace("p", ".")),
             "per_entity_fraction": float(ent_match.group("per_entity_fraction").replace("p", ".")),
+            "per_entity_hold_out": (
+                float(ent_match.group("per_entity_hold_out").replace("p", "."))
+                if ent_match.group("per_entity_hold_out") is not None else 0.0
+            ),
             "seed": int(ent_match.group("seed")),
             "complement": ent_match.group("comp") is not None,
         })

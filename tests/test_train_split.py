@@ -133,6 +133,38 @@ class TestTrainSplit(unittest.TestCase):
             indices = train_split.load_indices(path, len_dataset=len(dataset))
         self.assertEqual(indices, [1, 3, 9, 10])
 
+    def test_cli_entity_mode_includes_hold_out_fraction_in_file_name(self):
+        rng_factory = np.random.default_rng
+        dataset = _FakeEntityDataset()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch.object(train_split, "load_dataset", return_value=dataset),
+                patch.object(
+                    train_split.np.random,
+                    "default_rng",
+                    side_effect=lambda seed=None: rng_factory(7),
+                ),
+            ):
+                train_split.main([
+                    "--dataset",
+                    "CelebA",
+                    "--output-dir",
+                    tmpdir,
+                    "--seed",
+                    "7",
+                    "--mode",
+                    "entity",
+                    "--entity-fraction",
+                    "0.5",
+                    "--per-entity-fraction",
+                    "0.5",
+                    "--per-entity-hold-out",
+                    "0.25",
+                ])
+            path = Path(tmpdir) / "CelebA-ent-f0p5-p0p5-h0p25-s7.pkl"
+            indices = train_split.load_indices(path, len_dataset=len(dataset))
+        self.assertEqual(indices, [1, 2, 9, 10])
+
     def test_cli_entity_complement_mode_creates_expected_indices(self):
         rng_factory = np.random.default_rng
         dataset = _FakeEntityDataset()
