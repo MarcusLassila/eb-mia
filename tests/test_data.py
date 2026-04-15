@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from datasets import load_dataset as hf_load_dataset
@@ -201,7 +202,7 @@ class TestData(unittest.TestCase):
                 return len(self._data)
 
         def fake_load_dataset(name, config_name, split, cache_dir):
-            self.assertEqual(name, "logasja/VGGFace2")
+            self.assertTrue(name.endswith("logasja___VGGFace2"))
             self.assertEqual(config_name, "256")
             if split == "train":
                 return FakeSplit([10, 10, 30])
@@ -213,13 +214,19 @@ class TestData(unittest.TestCase):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.datasets.concatenate_datasets",
-                side_effect=fake_concatenate_datasets,
-            ):
+            local_repo_dir = str(Path(tmpdir) / "logasja___VGGFace2")
+            with patch("data.datasets.snapshot_download", return_value=local_repo_dir) as snapshot_fn, patch(
+                "data.datasets.load_dataset",
+                side_effect=fake_load_dataset,
+            ), patch("data.datasets.concatenate_datasets", side_effect=fake_concatenate_datasets):
                 dataset = data_module.VGGFace2(
                     data_dir=tmpdir,
                     transform=lambda x: x,
+                )
+                snapshot_fn.assert_called_once_with(
+                    repo_id="logasja/VGGFace2",
+                    repo_type="dataset",
+                    local_dir=local_repo_dir,
                 )
                 self.assertEqual(len(dataset), 5)
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 3])
@@ -253,7 +260,7 @@ class TestData(unittest.TestCase):
         image = Image.new("RGB", (256, 256), color=(128, 128, 128))
 
         def fake_load_dataset(name, config_name, split, cache_dir):
-            self.assertEqual(name, "logasja/VGGFace2")
+            self.assertTrue(name.endswith("logasja___VGGFace2"))
             self.assertEqual(config_name, "256")
             return FakeSplit([0, 1], image)
 
@@ -261,16 +268,18 @@ class TestData(unittest.TestCase):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
-                "data.datasets.concatenate_datasets",
-                side_effect=fake_concatenate_datasets,
-            ):
+            local_repo_dir = str(Path(tmpdir) / "logasja___VGGFace2")
+            with patch("data.datasets.snapshot_download", return_value=local_repo_dir) as snapshot_fn, patch(
+                "data.datasets.load_dataset",
+                side_effect=fake_load_dataset,
+            ), patch("data.datasets.concatenate_datasets", side_effect=fake_concatenate_datasets):
                 gray_dataset = data_module.VGGFace2(data_dir=tmpdir, transform=None, size=32, grayscale=True)
                 gray_sample = gray_dataset[0]
                 self.assertEqual(tuple(gray_sample.shape), (1, 32, 32))
                 color_dataset = data_module.VGGFace2(data_dir=tmpdir, transform=None, size=64, grayscale=False)
                 color_sample = color_dataset[0]
                 self.assertEqual(tuple(color_sample.shape), (3, 64, 64))
+                self.assertEqual(snapshot_fn.call_count, 2)
 
     def test_vggface2_huggingface_tiny_split(self):
         if os.environ.get("RUN_REMOTE_DATASET_TESTS") != "1":

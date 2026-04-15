@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from pathlib import Path
 
 import torch
 from datasets import concatenate_datasets, load_dataset
+from huggingface_hub import snapshot_download
 from torchvision import datasets
 from torchvision import transforms as T
 from torch.utils.data import ConcatDataset, Dataset
@@ -245,8 +247,14 @@ class VGGFace2(EntityDataset):
             self.transform = T.Compose(transforms)
         else:
             self.transform = transform
-        train_split = load_dataset("logasja/VGGFace2", "256", split="train", cache_dir=data_dir)
-        test_split = load_dataset("logasja/VGGFace2", "256", split="test", cache_dir=data_dir)
+        local_repo_dir = Path(data_dir) / "logasja___VGGFace2"
+        snapshot_download(
+            repo_id="logasja/VGGFace2",
+            repo_type="dataset",
+            local_dir=str(local_repo_dir),
+        )
+        train_split = load_dataset(str(local_repo_dir), "256", split="train", cache_dir=data_dir)
+        test_split = load_dataset(str(local_repo_dir), "256", split="test", cache_dir=data_dir)
         self.dataset = concatenate_datasets([train_split, test_split])
         entity_ids = torch.tensor(self.dataset["class_id"], dtype=torch.long)
         self._entity_ids = _normalize_entity_ids(entity_ids)
