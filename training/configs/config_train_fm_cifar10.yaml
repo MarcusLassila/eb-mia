@@ -1,35 +1,37 @@
 batch_size: 64
 simul_batch_size: 256
 torch_compile: true
-dataset: "CelebA"
-image_resolution: 64
-epochs: 1500
-epochs_per_checkpoint: 250
-lr: 0.0001
+dataset: "CIFAR10"
+image_resolution: 32
+epochs: 1000
+epochs_per_checkpoint: 200
+lr: 0.0005
 weight_decay: 0.0
 ema_decay: 0.9999
-grad_clip: 1.0
-autocast_dtype: "bfloat16"
-lr_scheduler: "none"
+grad_clip: 0.0
+autocast_dtype: "float32"
+lr_scheduler: "linear"
+lr_scheduler_params:
+  min_lr: 0.00000001
+  warmup_steps: 22500
 dataloader_config:
   num_workers: 0
   pin_memory: false
   persistent_workers: false
   prefetch_factor: null
 val_frac: 0.05
-model: "DDPM"
-base_channels: 128
+model: "FlowMatching"
+std_min: 0.01
+base_channels: 256
 channel_mult:
 - 1
 - 2
-- 3
-- 4
-n_res_blocks_per_level: 3
+- 2
+- 2
+n_res_blocks_per_level: 2
 n_attention_heads: null
 channels_per_head: 64
 attention_resolutions:
-- 8
 - 16
-- 32
 dropout: 0.0
 use_sdpa: true

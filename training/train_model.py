@@ -295,7 +295,7 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
     if config_file is None:
         config = None
     else:
-        config_path = utils.resolve_path(Path("training") / "configs" / f"{config_file}.yaml", root)
+        config_path = utils.resolve_path(Path("training") / "configs" / f"{config_file}", root)
         with open(config_path, "r") as file:
             config = utils.Config(yaml.safe_load(file))
         config.suffix = suffix
@@ -347,12 +347,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default=None,
+        required=True,
     )
     parser.add_argument(
         "--train-indices-path",
         type=str,
-        default=None,
+        required=True,
     )
     parser.add_argument(
         "--checkpoint-path",

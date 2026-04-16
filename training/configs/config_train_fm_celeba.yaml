@@ -3,21 +3,24 @@ simul_batch_size: 256
 torch_compile: true
 dataset: "CelebA"
 image_resolution: 64
-epochs: 1500
-epochs_per_checkpoint: 250
+epochs: 1000
+epochs_per_checkpoint: 100
 lr: 0.0001
 weight_decay: 0.0
 ema_decay: 0.9999
 grad_clip: 1.0
 autocast_dtype: "bfloat16"
-lr_scheduler: "none"
+lr_scheduler: "linear"
+lr_scheduler_params:
+  warm_up_steps: 20000
 dataloader_config:
   num_workers: 0
   pin_memory: false
   persistent_workers: false
   prefetch_factor: null
 val_frac: 0.05
-model: "DDPM"
+model: "FlowMatching"
+std_min: 0.01
 base_channels: 128
 channel_mult:
 - 1
