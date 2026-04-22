@@ -1,9 +1,8 @@
-from data.datasets import EntityDataset
-from data.utils import load_dataset
+from data.dataset_metadata import entity_index_table_from_entity_ids, load_dataset_metadata
 from . import attacks
 from . import evaluation
 from . import path_utils
-from .utils import indices_of_shadow_models, load_loss_signals
+from .utils import indices_of_shadow_models, select_sample_audit_indices, select_entity_audit_indices, load_loss_signals
 import utils
 
 import argparse
@@ -41,99 +40,6 @@ def get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask):
     '''
     return getattr(attacks, attack_config.attack)(shadow_loss_sigs, shadow_train_mask, **attack_config.__dict__)
 
-def get_audit_indices(n_audit_samples, membership_mask):
-    assert n_audit_samples <= membership_mask.shape[0]
-    member_indices = utils.mask_to_index(membership_mask)
-    non_member_indices = utils.mask_to_index(~membership_mask)
-    if 2 * member_indices.shape[0] < n_audit_samples:
-        n_in_samples = member_indices.shape[0]
-        n_out_samples = n_audit_samples - n_in_samples
-    elif 2 * non_member_indices.shape[0] < n_audit_samples:
-        n_out_samples = non_member_indices.shape[0]
-        n_in_samples = n_audit_samples - n_out_samples
-    else:
-        n_in_samples = n_audit_samples // 2
-        n_out_samples = n_audit_samples // 2 + n_audit_samples % 2
-    rand_mask = torch.randperm(member_indices.shape[0])
-    selected_members = member_indices[rand_mask][:n_in_samples]
-    rand_mask = torch.randperm(non_member_indices.shape[0])
-    selected_non_members = non_member_indices[rand_mask][:n_out_samples]
-    audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
-    return audit_indices
-
-def get_entity_audit_table(data_population: EntityDataset, target_train_index, mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
-    '''
-    Build an entity-to-indices table with optional size filtering.
-    Args:
-        data_population (EntityDataset): Full population dataset.
-        target_train_index (torch.Tensor): Target training indices.
-        mode (str): Entity audit mode.
-        min_samples_per_entity (int | None): Optional minimum entity size.
-        max_samples_per_entity (int | None): Optional maximum entity size.
-        n_audit_samples_per_entity (int | None): Optional fixed per-entity sample count.
-    Returns:
-        dict[int, list[int]]: Selected indices for each audited entity.
-    '''
-    table = data_population.get_entity_index_table()
-    selected_index_table = {}
-    target_entities = set()
-    target_train_index = set(target_train_index.tolist())
-    for entity_id, indices in table.items():
-        indices = set(indices)
-        if indices & target_train_index:
-            target_entities.add(entity_id)
-        match mode:
-            case "all":
-                selected_indices = indices
-            case "max_one_train":
-                overlap = sorted(indices & target_train_index)
-                if len(overlap) > 1:
-                    keep = overlap[0]
-                    indices = indices - set(overlap)
-                    indices.add(keep)
-                selected_indices = indices
-                assert len(selected_indices & target_train_index) <= 1
-            case "exclude_train":
-                selected_indices = indices - target_train_index
-            case _:
-                raise ValueError(f"Unknown entity audit mode: {mode}")
-        n_selected = len(selected_indices)
-        if n_selected == 0:
-            continue
-        if n_audit_samples_per_entity is not None:
-            if n_selected < n_audit_samples_per_entity:
-                continue
-            if n_selected > n_audit_samples_per_entity:
-                selected_indices_sorted = sorted(selected_indices)
-                if mode == "max_one_train":
-                    selected_target_indices = sorted(selected_indices & target_train_index)
-                    if selected_target_indices:
-                        keep = selected_target_indices[0]
-                        selected_indices_sorted = [keep] + [idx for idx in selected_indices_sorted if idx != keep][:n_audit_samples_per_entity - 1]
-                    else:
-                        selected_indices_sorted = selected_indices_sorted[:n_audit_samples_per_entity]
-                else:
-                    selected_indices_sorted = selected_indices_sorted[:n_audit_samples_per_entity]
-                selected_indices = set(selected_indices_sorted)
-                n_selected = len(selected_indices)
-        if min_samples_per_entity is not None and n_selected < min_samples_per_entity:
-            continue
-        if max_samples_per_entity is not None and n_selected > max_samples_per_entity:
-            continue
-        selected_index_table[entity_id] = sorted(selected_indices)
-
-    entity_ids = sorted(selected_index_table.keys())
-    target_entity_ids = [entity_id for entity_id in entity_ids if entity_id in target_entities]
-    non_target_entity_ids = [entity_id for entity_id in entity_ids if entity_id not in target_entities]
-    if target_entity_ids and non_target_entity_ids:
-        n_keep_per_group = min(len(target_entity_ids), len(non_target_entity_ids))
-        keep_entity_ids = set(target_entity_ids[:n_keep_per_group] + non_target_entity_ids[:n_keep_per_group])
-        entity_ids = [entity_id for entity_id in entity_ids if entity_id in keep_entity_ids]
-    else:
-        raise RuntimeError("Failed to include both target and non-target entities in the audit table.")
-
-    return {entity_id: selected_index_table[entity_id] for entity_id in entity_ids}
-
 def resolve_target_shadow_paths(config):
     '''
     Resolve per-target shadow loss-signal path groups for auditing.
@@ -144,9 +50,14 @@ def resolve_target_shadow_paths(config):
     '''
     target_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "target_loss_paths")
     if getattr(config, "round_robin", False):
+        target_train_masks = []
+        for target_loss_path in target_loss_paths:
+            _, train_mask = load_loss_signals(target_loss_path)
+            target_train_masks.append(train_mask)
+        target_train_masks = torch.stack(target_train_masks)
         shadow_path_groups = []
         for target_idx in range(len(target_loss_paths)):
-            shadow_indices = indices_of_shadow_models(target_idx, len(target_loss_paths))
+            shadow_indices = indices_of_shadow_models(target_idx, target_train_masks)
             shadow_path_groups.append([target_loss_paths[idx] for idx in shadow_indices])
         return target_loss_paths, shadow_path_groups
     shadow_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "shadow_loss_paths")
@@ -170,6 +81,42 @@ def load_shadow_signals(shadow_loss_paths, target_len):
         shadow_loss_sigs.append(loss_sig)
         shadow_train_mask.append(train_mask)
     return torch.stack(shadow_loss_sigs), torch.stack(shadow_train_mask)
+
+def validate_entity_hold_out_indices(entity_index_table, loss_paths, target_len, hold_out_frac):
+    '''
+    Validate that entity hold-out indices are unused by every model.
+    Args:
+        entity_index_table (dict[int, list[int]]): Population indices for each entity.
+        loss_paths (list[Path]): Loss-signal paths for all audited models.
+        target_len (int): Expected number of samples per train mask.
+        hold_out_frac (float): Fraction of each entity reserved for hold-out.
+    Returns:
+        None
+    '''
+    if hold_out_frac <= 0.0:
+        return
+    all_train_masks = []
+    for loss_path in loss_paths:
+        _, train_mask = load_loss_signals(loss_path)
+        if len(train_mask) != target_len:
+            raise ValueError(f"Unexpected train-mask length in {loss_path}: got {len(train_mask)}, expected {target_len}.")
+        all_train_masks.append(train_mask)
+    stacked_train_masks = torch.stack(all_train_masks)
+    for entity_id, entity_indices in entity_index_table.items():
+        n_train_candidates = int(len(entity_indices) * (1.0 - hold_out_frac))
+        hold_out_indices = entity_indices[n_train_candidates:]
+        if not hold_out_indices:
+            continue
+        hold_out_train_mask = stacked_train_masks[:, hold_out_indices]
+        if torch.any(hold_out_train_mask):
+            used_index_mask = hold_out_train_mask.any(dim=0)
+            used_model_mask = hold_out_train_mask.any(dim=1)
+            used_indices = torch.tensor(hold_out_indices, dtype=torch.long)[used_index_mask].tolist()
+            used_paths = [str(loss_paths[idx]) for idx in utils.mask_to_index(used_model_mask).tolist()]
+            raise ValueError(
+                f"Entity hold-out indices must be unused by all models. "
+                f"Entity {entity_id} hold-out indices {used_indices} appear in train masks for {used_paths}."
+            )
 
 def print_average_metrics_table(attack, metrics_list):
     '''
@@ -197,22 +144,22 @@ def run_sample_audit(config):
     attack_config = attack_config_from_config(config)
     attack = getattr(attack_config, "name", attack_config.attack)
     target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
-    image_size = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])["size"]
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
     all_metrics = []
     for target_loss_path, shadow_loss_paths in tqdm(
         zip(target_loss_paths, shadow_path_groups),
         total=len(target_loss_paths),
         desc="Running sample-level audit",
     ):
-        target_loss_sig, membership_mask = load_loss_signals(target_loss_path)
-        if len(target_loss_sig) != len(data_population):
-            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sig)}, expected {len(data_population)}.")
-        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sig))
+        target_loss_sigs, target_train_mask = load_loss_signals(target_loss_path)
+        n_population = len(target_loss_sigs)
+        shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sigs))
         attacker = get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask)
-        scores = attacker.run_attack(target_loss_sig)
-        audit_indices = get_audit_indices(getattr(config, "n_audit_samples", len(data_population)), membership_mask)
-        ground_truth = membership_mask.to(dtype=torch.long)[audit_indices]
+        scores = attacker.run_attack(target_loss_sigs)
+        audit_indices = select_sample_audit_indices(
+            getattr(config, "n_audit_samples", n_population),
+            target_train_mask,
+        )
+        ground_truth = target_train_mask.to(dtype=torch.long)[audit_indices]
         audit_scores = scores[audit_indices]
         metrics = evaluation.evaluate_MIA(score=audit_scores, ground_truth=ground_truth)
         all_metrics.append(metrics)
@@ -226,42 +173,60 @@ def run_sample_audit(config):
     print_average_metrics_table(attack, all_metrics)
 
 def run_entity_audit(config):
+    '''
+    Run an entity-level membership inference audit.
+    Args:
+        config (Config): Audit configuration.
+    Returns:
+        None
+    '''
     attack_config = attack_config_from_config(config)
     sample_attack = getattr(attack_config, "name", attack_config.attack)
     target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
-    n_audit_samples_per_entity = getattr(config, "n_audit_samples_per_entity", None)
-    if config.mode == "all" and n_audit_samples_per_entity is not None:
-        raise ValueError("mode='all' is incompatible with n_audit_samples_per_entity.")
-    image_size = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])["size"]
-    data_population = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
-    entity_index_table = data_population.get_entity_index_table()
-    assert isinstance(data_population, EntityDataset)
+    target_properties = path_utils.target_properties_from_loss_signals_pickle_path(target_loss_paths[0])
+    hold_out_frac = target_properties["per_entity_hold_out"]
+    metadata = load_dataset_metadata(config.dataset)
+    entity_ids = torch.tensor(metadata["entity_ids"], dtype=torch.long)
+    n_entities = int(metadata["n_entities"])
+    n_population = int(metadata["n_samples"])
+    entity_index_table = entity_index_table_from_entity_ids(metadata["entity_ids"])
+    min_samples_per_entity = getattr(config, "min_samples_per_entity", None)
+    max_samples_per_entity = getattr(config, "max_samples_per_entity", None)
+    if hold_out_frac > 0.0:
+        all_loss_paths = target_loss_paths + [path for shadow_paths in shadow_path_groups for path in shadow_paths]
+        unique_loss_paths = list(dict.fromkeys(all_loss_paths))
+        validate_entity_hold_out_indices(
+            entity_index_table=entity_index_table,
+            loss_paths=unique_loss_paths,
+            target_len=n_population,
+            hold_out_frac=hold_out_frac,
+        )
     all_metrics = []
     for target_loss_path, shadow_loss_paths in tqdm(
         zip(target_loss_paths, shadow_path_groups),
         total=len(target_loss_paths),
         desc="Running entity-level audit",
     ):
-        target_loss_sigs, train_mask = load_loss_signals(target_loss_path)
-        if len(target_loss_sigs) != len(data_population):
-            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sigs)}, expected {len(data_population)}.")
+        target_loss_sigs, target_train_mask = load_loss_signals(target_loss_path)
+        if len(target_loss_sigs) != n_population:
+            raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sigs)}, expected {n_population}.")
         shadow_loss_sigs, shadow_train_mask = load_shadow_signals(shadow_loss_paths, len(target_loss_sigs))
-        target_train_index = utils.mask_to_index(train_mask)
-        train_entity_ids = torch.unique(data_population.entity_ids[target_train_index])
+        target_train_index = utils.mask_to_index(target_train_mask)
+        train_entity_ids = torch.unique(entity_ids[target_train_index])
         shadow_entity_mask = torch.stack([
             torch.bincount(
-                data_population.entity_ids[sample_mask],
-                minlength=data_population.n_entities,
+                entity_ids[sample_mask],
+                minlength=n_entities,
             ) > 0
             for sample_mask in shadow_train_mask
         ])
-        audit_table = get_entity_audit_table(
-            data_population,
-            target_train_index,
+        audit_table = select_entity_audit_indices(
+            entity_index_table=entity_index_table,
+            train_mask=target_train_mask,
             mode=config.mode,
-            min_samples_per_entity=getattr(config, "min_samples_per_entity", None),
-            max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
-            n_audit_samples_per_entity=n_audit_samples_per_entity,
+            min_samples_per_entity=min_samples_per_entity,
+            max_samples_per_entity=max_samples_per_entity,
+            hold_out_frac=hold_out_frac,
         )
         audit_entity_ids = torch.tensor(sorted(audit_table.keys()), dtype=torch.long)
         ground_truth = torch.isin(audit_entity_ids, train_entity_ids).to(dtype=torch.long)
@@ -305,16 +270,16 @@ def run_entity_audit(config):
             sample_attack,
             config.audit_mode,
             entity_audit_mode=config.mode,
-            n_audit_samples_per_entity=getattr(config, "n_audit_samples_per_entity", None),
+            min_samples_per_entity=min_samples_per_entity,
+            max_samples_per_entity=max_samples_per_entity,
         )
         result_metrics_dir.mkdir(parents=True, exist_ok=True)
         filename = path_utils.metrics_pickle_name_from_target(
             target_path,
             sample_attack,
             config.audit_mode,
-            min_samples_per_entity=getattr(config, "min_samples_per_entity", None),
-            max_samples_per_entity=getattr(config, "max_samples_per_entity", None),
-            n_audit_samples_per_entity=n_audit_samples_per_entity,
+            min_samples_per_entity=min_samples_per_entity,
+            max_samples_per_entity=max_samples_per_entity,
         )
         with open(result_metrics_dir / filename, "wb") as f:
             pickle.dump(metrics, f)

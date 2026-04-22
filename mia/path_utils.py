@@ -202,7 +202,14 @@ def target_properties_from_loss_signals_pickle_path(path):
     target_path = target_checkpoint_path_from_loss_signals_pickle_path(path)
     return utils.parse_properties_from_checkpoint_path(target_path)
 
-def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None, n_audit_samples_per_entity=None):
+def metrics_dir(
+    res_dir,
+    scores_path,
+    audit_mode,
+    entity_audit_mode=None,
+    min_samples_per_entity=None,
+    max_samples_per_entity=None,
+):
     '''
     Return an audit metrics directory derived from a score path.
     Args:
@@ -210,15 +217,16 @@ def metrics_dir(res_dir, scores_path, audit_mode, entity_audit_mode=None, n_audi
         scores_path (str | Path): Score pickle path.
         audit_mode (str): Audit mode name.
         entity_audit_mode (str | None): Optional entity-audit mode name.
-        n_audit_samples_per_entity (int | None): Optional per-entity sample count.
+        min_samples_per_entity (int | None): Optional minimum entity size.
+        max_samples_per_entity (int | None): Optional maximum entity size.
     Returns:
         Path: Audit metrics directory.
     '''
     if audit_mode == "entity":
         assert entity_audit_mode is not None
         folder_name = f"entity-{entity_audit_mode}"
-        if n_audit_samples_per_entity is not None:
-            folder_name += f"-n{n_audit_samples_per_entity}"
+        if min_samples_per_entity is not None and min_samples_per_entity == max_samples_per_entity:
+            folder_name += f"-n{min_samples_per_entity}"
     else:
         folder_name = audit_mode
     score_meta = _parse_scores_filename(scores_path)
@@ -269,7 +277,7 @@ def target_properties_from_scores_pickle_path(path):
     target_path = target_checkpoint_path_from_scores_pickle_path(path)
     return utils.parse_properties_from_checkpoint_path(target_path)
 
-def metrics_pickle_name(scores_path, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
+def metrics_pickle_name(scores_path, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None):
     '''
     Return a metrics filename derived from a score filename.
     Args:
@@ -277,7 +285,6 @@ def metrics_pickle_name(scores_path, audit_mode, min_samples_per_entity=None, ma
         audit_mode (str): Audit mode name.
         min_samples_per_entity (int | None): Optional minimum entity size.
         max_samples_per_entity (int | None): Optional maximum entity size.
-        n_audit_samples_per_entity (int | None): Optional per-entity sample count.
     Returns:
         str: Metrics pickle filename.
     '''
@@ -287,14 +294,20 @@ def metrics_pickle_name(scores_path, audit_mode, min_samples_per_entity=None, ma
     metrics_stem = "metrics_" + stem[len("scores_"):]
     metrics_stem += f"_mode-{audit_mode}"
     if audit_mode == "entity":
-        if n_audit_samples_per_entity is not None:
-            metrics_stem += f"_n-{n_audit_samples_per_entity}"
         min_value = "none" if min_samples_per_entity is None else str(min_samples_per_entity)
         max_value = "none" if max_samples_per_entity is None else str(max_samples_per_entity)
         metrics_stem += f"_min-{min_value}_max-{max_value}"
     return metrics_stem + ".pkl"
 
-def metrics_dir_from_target(res_dir, target_path, attack, audit_mode, entity_audit_mode=None, n_audit_samples_per_entity=None):
+def metrics_dir_from_target(
+    res_dir,
+    target_path,
+    attack,
+    audit_mode,
+    entity_audit_mode=None,
+    min_samples_per_entity=None,
+    max_samples_per_entity=None,
+):
     '''
     Return an audit metrics directory derived from target checkpoint metadata.
     Args:
@@ -303,20 +316,21 @@ def metrics_dir_from_target(res_dir, target_path, attack, audit_mode, entity_aud
         attack (str): Attack name.
         audit_mode (str): Audit mode name.
         entity_audit_mode (str | None): Optional entity-audit mode name.
-        n_audit_samples_per_entity (int | None): Optional per-entity sample count.
+        min_samples_per_entity (int | None): Optional minimum entity size.
+        max_samples_per_entity (int | None): Optional maximum entity size.
     Returns:
         Path: Audit metrics directory.
     '''
     if audit_mode == "entity":
         assert entity_audit_mode is not None
         folder_name = f"entity-{entity_audit_mode}"
-        if n_audit_samples_per_entity is not None:
-            folder_name += f"-n{n_audit_samples_per_entity}"
+        if min_samples_per_entity is not None and min_samples_per_entity == max_samples_per_entity:
+            folder_name += f"-n{min_samples_per_entity}"
     else:
         folder_name = audit_mode
     return audit_result_dir(res_dir, target_path) / f"{attack}-{folder_name}"
 
-def metrics_pickle_name_from_target(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None, n_audit_samples_per_entity=None):
+def metrics_pickle_name_from_target(target_path, attack, audit_mode, min_samples_per_entity=None, max_samples_per_entity=None):
     '''
     Return a metrics filename derived from a target checkpoint and attack name.
     Args:
@@ -325,7 +339,6 @@ def metrics_pickle_name_from_target(target_path, attack, audit_mode, min_samples
         audit_mode (str): Audit mode name.
         min_samples_per_entity (int | None): Optional minimum entity size.
         max_samples_per_entity (int | None): Optional maximum entity size.
-        n_audit_samples_per_entity (int | None): Optional per-entity sample count.
     Returns:
         str: Metrics pickle filename.
     '''
@@ -336,8 +349,6 @@ def metrics_pickle_name_from_target(target_path, attack, audit_mode, min_samples
         f"mode-{audit_mode}",
     ])
     if audit_mode == "entity":
-        if n_audit_samples_per_entity is not None:
-            metrics_stem += f"_n-{n_audit_samples_per_entity}"
         min_value = "none" if min_samples_per_entity is None else str(min_samples_per_entity)
         max_value = "none" if max_samples_per_entity is None else str(max_samples_per_entity)
         metrics_stem += f"_min-{min_value}_max-{max_value}"
@@ -452,11 +463,11 @@ def metrics_folder_label(metrics_dir, common_meta):
     assert folder_match is not None
     attack = folder_match.group("attack")
     mode = folder_match.group("mode")
-    n_audit_samples_per_entity = None
+    fixed_samples_per_entity = None
     entity_n_match = re.match(r"^(entity-.+)-n(?P<n>\d+)$", mode)
     if entity_n_match is not None:
         mode = entity_n_match.group(1)
-        n_audit_samples_per_entity = int(entity_n_match.group("n"))
+        fixed_samples_per_entity = int(entity_n_match.group("n"))
     if mode.startswith("entity-"):
         mode = "ent-" + mode[len("entity-"):]
     mode = mode.replace("max_one_train", "max_one")
@@ -475,8 +486,8 @@ def metrics_folder_label(metrics_dir, common_meta):
         split_info = split_info[len("rand-"):]
     epoch = re.sub(r"^epoch", "e", match.group("epoch"))
     label = f"{attack}-{split_info}-{epoch}-{mode}"
-    if mode.startswith("ent-") and n_audit_samples_per_entity is not None:
-        label += f"-n{n_audit_samples_per_entity}"
+    if mode.startswith("ent-") and fixed_samples_per_entity is not None:
+        label += f"-n{fixed_samples_per_entity}"
     return label
 
 def resolve_evaluation_paths(config, metrics_folders_override=None):

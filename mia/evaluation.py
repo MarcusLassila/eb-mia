@@ -117,6 +117,111 @@ def collect_metrics_folder_summaries(metrics_dirs, low_exponent=-4):
         summary["label"] = path_utils.metrics_folder_label(summary["path"], common_meta)
     return fpr_space, summaries
 
+def _latex_escape(text):
+    '''
+    Escape special LaTeX characters in plain text.
+    Args:
+        text (str): Input text.
+    Returns:
+        str: Escaped text safe for LaTeX.
+    '''
+    escaped_text = str(text)
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+    }
+    for source, target in replacements.items():
+        escaped_text = escaped_text.replace(source, target)
+    return escaped_text
+
+def _tikz_coordinates(x_values, y_values):
+    '''
+    Format paired x/y values as pgfplots coordinates.
+    Args:
+        x_values (np.ndarray): X-axis values.
+        y_values (np.ndarray): Y-axis values.
+    Returns:
+        str: TikZ coordinate list.
+    '''
+    coordinate_rows = []
+    for x_value, y_value in zip(x_values, y_values):
+        coordinate_rows.append(f"({float(x_value):.8e},{float(y_value):.8e})")
+    return " ".join(coordinate_rows)
+
+def write_average_roc_tikz_plot(output_dir, fpr_space, summaries):
+    '''
+    Write a pgfplots TikZ file for averaged ROC curves.
+    Args:
+        output_dir (str | Path): Directory for the saved figure.
+        fpr_space (np.ndarray): FPR grid used for plotting.
+        summaries (list[dict]): Metrics summaries to plot.
+    Returns:
+        Path: Saved TikZ file path.
+    '''
+    output_dir = Path(output_dir)
+    reference_targets = summaries[0]["target_stems"]
+    for summary in summaries[1:]:
+        if summary["target_stems"] != reference_targets:
+            raise ValueError("All metrics folders must be computed on the same target models.")
+    common_meta = path_utils.common_target_meta(reference_targets)
+    size_label = f"sz{common_meta['size']}" + ("-gray" if common_meta["gray"] else "")
+    title = (
+        f"{common_meta['model']}-{common_meta['dataset']}-{size_label}"
+        f" | {len(reference_targets)} target models"
+    )
+    tikz_lines = [
+        r"\documentclass[tikz]{standalone}",
+        r"\usepackage{pgfplots}",
+        r"\pgfplotsset{compat=1.18}",
+        r"\begin{document}",
+        r"\begin{tikzpicture}",
+        r"\begin{axis}[",
+        r"width=12cm,",
+        r"height=9cm,",
+        r"xmode=log,",
+        r"ymode=log,",
+        f"xmin={float(fpr_space[0]):.8e},",
+        r"xmax=1,",
+        f"ymin={float(fpr_space[0]):.8e},",
+        r"ymax=1,",
+        r"xlabel={FPR},",
+        r"ylabel={TPR},",
+        f"title={{{_latex_escape(title)}}},",
+        r"grid=both,",
+        r"legend pos=south east,",
+        r"]",
+    ]
+    for summary in summaries:
+        auc_stats = summary["AUC"]
+        label = (
+            f"{summary['label']} | "
+            f"AUC: {100*auc_stats['mean']:.2f}% ± {100*auc_stats['std']:.2f}%"
+        )
+        coordinates = _tikz_coordinates(fpr_space, summary["mean_tpr"])
+        tikz_lines.append(r"\addplot+[mark=none] coordinates {")
+        tikz_lines.append(coordinates)
+        tikz_lines.append(r"};")
+        tikz_lines.append(f"\\addlegendentry{{{_latex_escape(label)}}}")
+    baseline_coordinates = _tikz_coordinates(fpr_space, fpr_space)
+    tikz_lines.append(r"\addplot+[black, dashed, mark=none] coordinates {")
+    tikz_lines.append(baseline_coordinates)
+    tikz_lines.append(r"};")
+    tikz_lines.extend([
+        r"\end{axis}",
+        r"\end{tikzpicture}",
+        r"\end{document}",
+    ])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tikz_path = output_dir / f"average_roc_curves_{summaries[0]['path'].stem}.tex"
+    tikz_path.write_text("\n".join(tikz_lines) + "\n")
+    return tikz_path
+
 def plot_average_roc_curves(output_dir, fpr_space, summaries):
     '''
     Plot averaged ROC curves for summaries.
@@ -161,6 +266,7 @@ def plot_average_roc_curves(output_dir, fpr_space, summaries):
     output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_dir / f"average_roc_curves_{summaries[0]['path'].stem}.png")
     plt.close()
+    write_average_roc_tikz_plot(output_dir, fpr_space, summaries)
     print(f"Saved average roc plot in {output_dir}")
 
 def _format_pct_mean_std(stats):
