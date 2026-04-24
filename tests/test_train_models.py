@@ -33,7 +33,45 @@ class _DummyModel:
         self.network = torch.nn.Linear(1, 1)
 
 
+def _write_mock_train_config(config_dir: Path, filename: str):
+    config_text = (
+        "batch_size: 2\n"
+        "simul_batch_size: 2\n"
+        "torch_compile: false\n"
+        "dataset: \"Dummy\"\n"
+        "epochs: 1\n"
+        "epochs_per_checkpoint: 1\n"
+        "lr: 0.001\n"
+        "weight_decay: 0.0\n"
+        "ema_decay: 0.0\n"
+        "grad_clip: 0.0\n"
+        "autocast_dtype: \"float16\"\n"
+        "lr_scheduler: \"none\"\n"
+        "image_resolution: 2\n"
+        "val_frac: 0.2\n"
+        "model: \"VAE\"\n"
+        "latent_dim: 2\n"
+    )
+    config_path = config_dir / filename
+    config_path.write_text(config_text)
+
+
 class TestTrainModels(unittest.TestCase):
+    def test_build_arg_parser_allows_resume_without_config_or_train_indices(self):
+        parser = train_model.build_arg_parser()
+        args = parser.parse_args([
+            "--checkpoint-path",
+            "checkpoint.pth",
+            "--data-dir",
+            "datasets",
+            "--save-dir",
+            "checkpoints",
+        ])
+
+        self.assertIsNone(args.config)
+        self.assertIsNone(args.train_indices_path)
+        self.assertEqual(args.checkpoint_path, "checkpoint.pth")
+
     def test_train_model_from_scratch_passes_ddpm_res_block_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "train_indices.pkl"
@@ -205,34 +243,17 @@ class TestTrainModels(unittest.TestCase):
                     self.assertTrue(torch.equal(train_kwargs["val_dataset"].indices, torch.tensor([1, 3], dtype=torch.long)))
 
     def test_main_passes_cli_train_indices_to_scratch_training(self):
-        config_text = (
-            "torch_compile: false\n"
-            "dataset: Dummy\n"
-            "image_resolution: 2\n"
-            "val_frac: 0.2\n"
-            "model: VAE\n"
-            "latent_dim: 2\n"
-            "batch_size: 2\n"
-            "simul_batch_size: 2\n"
-            "epochs: 1\n"
-            "epochs_per_checkpoint: 1\n"
-            "lr: 0.001\n"
-            "weight_decay: 0.0\n"
-            "ema_decay: 0.0\n"
-            "grad_clip: 0.0\n"
-            "autocast_dtype: float16\n"
-            "lr_scheduler: none\n"
-        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             config_dir = root / "training" / "configs"
             config_dir.mkdir(parents=True, exist_ok=True)
-            (config_dir / "test_config.yaml").write_text(config_text)
+            config_file = "config_train_vae_dummy.yaml"
+            _write_mock_train_config(config_dir, config_file)
             with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
                 with mock.patch.object(train_model, "AcceleratorLite", return_value=_DummyAccelerator()):
                     with mock.patch.object(train_model, "train_model_from_scratch") as mock_train:
                         train_model.main(
-                            config_file="test_config",
+                            config_file=config_file,
                             suffix="",
                             train_indices_path="from_cli.pkl",
                             data_dir="datasets",
@@ -279,36 +300,19 @@ class TestTrainModels(unittest.TestCase):
             self.assertTrue(mock_accelerator.call_args.kwargs["torch_compile"])
 
     def test_main_resume_with_config_and_cli_train_indices(self):
-        config_text = (
-            "torch_compile: false\n"
-            "dataset: Dummy\n"
-            "image_resolution: 2\n"
-            "val_frac: 0.2\n"
-            "model: VAE\n"
-            "latent_dim: 2\n"
-            "batch_size: 2\n"
-            "simul_batch_size: 2\n"
-            "epochs: 1\n"
-            "epochs_per_checkpoint: 1\n"
-            "lr: 0.001\n"
-            "weight_decay: 0.0\n"
-            "ema_decay: 0.0\n"
-            "grad_clip: 0.0\n"
-            "autocast_dtype: float16\n"
-            "lr_scheduler: none\n"
-        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             config_dir = root / "training" / "configs"
             config_dir.mkdir(parents=True, exist_ok=True)
-            (config_dir / "test_config.yaml").write_text(config_text)
+            config_file = "config_train_vae_dummy.yaml"
+            _write_mock_train_config(config_dir, config_file)
             checkpoint = {"train_config": {}, "model_config": {}}
             with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
                 with mock.patch.object(train_model.utils, "load_checkpoint", return_value=checkpoint):
                     with mock.patch.object(train_model, "AcceleratorLite", return_value=_DummyAccelerator()):
                         with mock.patch.object(train_model, "train_model_from_checkpoint") as mock_train:
                             train_model.main(
-                                config_file="test_config",
+                                config_file=config_file,
                                 train_indices_path="override.pkl",
                                 checkpoint_path="checkpoint.pth",
                                 data_dir="datasets",

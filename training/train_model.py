@@ -339,20 +339,25 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
             train_indices_path=train_indices_path,
         )
 
-if __name__ == "__main__":
+def build_arg_parser():
+    '''
+    Build the CLI parser for model training and resume commands.
+    Returns:
+        argparse.ArgumentParser: Parser with conditional validation handled after parsing.
+    '''
     import argparse
-    torch.set_float32_matmul_precision('high')
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--suffix", type=str, default="")
     parser.add_argument(
         "--config",
         type=str,
-        required=True,
+        default=None,
     )
     parser.add_argument(
         "--train-indices-path",
         type=str,
-        required=True,
+        default=None,
     )
     parser.add_argument(
         "--checkpoint-path",
@@ -373,6 +378,11 @@ if __name__ == "__main__":
         "--torch-compile",
         action="store_true",
     )
+    return parser
+
+if __name__ == "__main__":
+    torch.set_float32_matmul_precision('high')
+    parser = build_arg_parser()
     args = parser.parse_args()
     if args.checkpoint_path is None and (args.config is None or args.train_indices_path is None):
         parser.error("--config and --train-indices-path are required unless --checkpoint-path is provided.")
