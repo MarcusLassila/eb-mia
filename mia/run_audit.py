@@ -190,7 +190,7 @@ def run_entity_audit(config):
     n_entities = int(metadata["n_entities"])
     n_population = int(metadata["n_samples"])
     entity_index_table = entity_index_table_from_entity_ids(metadata["entity_ids"])
-    min_samples_per_entity = getattr(config, "min_samples_per_entity", None)
+    min_samples_per_entity = getattr(config, "min_samples_per_entity", 0)
     max_samples_per_entity = getattr(config, "max_samples_per_entity", None)
     if hold_out_frac > 0.0:
         all_loss_paths = target_loss_paths + [path for shadow_paths in shadow_path_groups for path in shadow_paths]
@@ -247,14 +247,14 @@ def run_entity_audit(config):
                 ).run_attack(target_loss_sigs)
             case "JointXGB":
                 assert config.mode == "exclude_train", "Other modes are not yet supported"
-                assert hasattr(config, "n_audit_samples_per_entity"), "Must specify a fixed number of audit samples per entity"
+                assert 0 < min_samples_per_entity == max_samples_per_entity, "Must specifiy a fixed number of audit samples per entity"
                 score = attacks.JointXGB(
                     attack_config=attack_config,
                     entity_index_table=entity_index_table,
                     shadow_loss_sigs=shadow_loss_sigs,
                     shadow_train_mask=shadow_train_mask,
                     shadow_entity_mask=shadow_entity_mask,
-                    n_features=config.n_audit_samples_per_entity,
+                    n_features=min_samples_per_entity,
                 ).run_attack(audit_table=audit_table, target_loss_sigs=target_loss_sigs)
             case _:
                 raise ValueError(f"Unsupported entity-level attack: {attack_config.attack}")
@@ -315,6 +315,8 @@ def main(argv=None):
     with open(args.config, "r") as file:
         config_dict = yaml.safe_load(file)
     config = utils.Config(config_dict)
+    seed = getattr(config, "seed", 0)
+    utils.set_manual_seed(seed)
     if args.target_loss_paths is not None:
         config.target_loss_paths = args.target_loss_paths
     if args.shadow_loss_paths is not None:

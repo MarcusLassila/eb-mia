@@ -68,8 +68,7 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
             })
 
             with (
-                patch.object(run_audit_module, "load_dataset", return_value=dataset),
-                patch.object(run_audit_module, "get_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
+                patch.object(run_audit_module, "select_sample_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
                 patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
             ):
                 run_audit_module.run_sample_audit(config=audit_config)
@@ -86,6 +85,7 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
             self.assertEqual(len(summaries), 1)
             self.assertIn("Evaluation summary", stdout.getvalue())
             self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.png").exists())
+            self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.tex").exists())
 
 
 if __name__ == "__main__":

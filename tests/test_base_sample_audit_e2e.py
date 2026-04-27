@@ -40,11 +40,9 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 "shadow_loss_paths": [str(shadow_loss_path_a), str(shadow_loss_path_b)],
                 "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5},
             })
-            dataset = list(range(4))
 
             with (
-                patch.object(run_audit_module, "load_dataset", return_value=dataset),
-                patch.object(run_audit_module, "get_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
+                patch.object(run_audit_module, "select_sample_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
                 patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
             ):
                 run_audit_module.run_sample_audit(config=config)
@@ -57,20 +55,21 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             )
             self.assertEqual(len(summaries), 1)
             self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.png").exists())
+            self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.tex").exists())
 
     def test_base_sample_audit_round_robin_uses_only_target_paths_and_excludes_complements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             target_paths = [
                 tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
-                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-comp-sz32-epoch4.pth",
                 tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth",
+                tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-comp-sz32-epoch4.pth",
                 tmpdir_path / "DDPM-cifar10-smpl-f0p5-s1-comp-sz32-epoch4.pth",
             ]
             target_loss_paths = [
                 self._write_loss_file(tmpdir, target_paths[0], [0.2, 0.4, 0.6, 0.8], [1, 0, 1, 0]),
-                self._write_loss_file(tmpdir, target_paths[1], [0.9, 0.9, 0.9, 0.9], [0, 1, 0, 1]),
-                self._write_loss_file(tmpdir, target_paths[2], [1.0, 0.3, 1.2, 0.4], [1, 1, 0, 0]),
+                self._write_loss_file(tmpdir, target_paths[1], [1.0, 0.3, 1.2, 0.4], [1, 1, 0, 0]),
+                self._write_loss_file(tmpdir, target_paths[2], [0.9, 0.9, 0.9, 0.9], [0, 1, 0, 1]),
                 self._write_loss_file(tmpdir, target_paths[3], [1.1, 0.2, 1.3, 0.5], [0, 0, 1, 1]),
             ]
             config = run_audit_module.utils.Config({
@@ -83,7 +82,6 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 "target_loss_paths": [str(path) for path in target_loss_paths],
                 "attack": {"name": "BASE-off", "attack": "BASE", "offline": True, "prior": 0.5},
             })
-            dataset = list(range(4))
             captured_scores = []
 
             def fake_evaluate(score, ground_truth):
@@ -98,8 +96,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             ).run_attack(torch.tensor([0.2, 0.4, 0.6, 0.8], dtype=torch.float32))
 
             with (
-                patch.object(run_audit_module, "load_dataset", return_value=dataset),
-                patch.object(run_audit_module, "get_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
+                patch.object(run_audit_module, "select_sample_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
                 patch.object(run_audit_module.evaluation, "evaluate_MIA", side_effect=fake_evaluate),
                 patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
             ):

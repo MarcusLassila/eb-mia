@@ -205,6 +205,25 @@ class TestEvaluationCli(unittest.TestCase):
         first_label = loglog_fn.call_args_list[0].kwargs["label"]
         self.assertIn("BASE-f0p5-p0p5-e1000-ent-all | AUC:", first_label)
 
+    def test_plot_average_roc_curves_writes_tikz_file_with_title_and_auc_label(self):
+        fpr_space = np.array([1e-4, 1e-2, 1.0], dtype=float)
+        summaries = [{
+            "target_stems": ("DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000",),
+            "mean_tpr": np.array([1e-4, 0.5, 1.0], dtype=float),
+            "AUC": {"mean": 0.75, "std": 0.05},
+            "label": "BASE-off-f0p5-p0p5-e1000-ent_all",
+            "path": Path("entity-all"),
+        }]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evaluation.plot_average_roc_curves(tmpdir, fpr_space, summaries)
+            tikz_path = Path(tmpdir) / "average_roc_curves_entity-all.tex"
+            self.assertTrue(tikz_path.exists())
+            tikz_text = tikz_path.read_text()
+        self.assertIn(r"\begin{axis}[", tikz_text)
+        self.assertIn(r"title={DDPM-CelebA-sz64 | 1 target models}", tikz_text)
+        self.assertIn(r"BASE-off-f0p5-p0p5-e1000-ent\_all | AUC: 75.00\% ± 5.00\%", tikz_text)
+        self.assertIn(r"\addplot+[black, dashed, mark=none] coordinates {", tikz_text)
+
     def test_collect_metrics_folder_summaries_asserts_fixed_fpr_metrics_consistency(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             folder = Path(tmpdir) / "sample"

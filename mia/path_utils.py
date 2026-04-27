@@ -4,7 +4,7 @@ import re
 import utils
 
 _SCORES_FILENAME_RE = re.compile(r"^scores_attack-(?P<attack>.+)_target-(?P<target>.+)\.pkl$")
-_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+)-ls(?P<n_loss_samples>\d+)\.pkl$")
+_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+)-ls(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)\.pkl$")
 _METRICS_FILENAME_RE = re.compile(r"^metrics_attack-(?P<attack>.+)_target-(?P<target>.+)_mode-(?P<mode>.+)\.pkl$")
 
 def audit_result_name(target_path):
@@ -82,16 +82,34 @@ def loss_signals_dir(res_dir, target_path):
     '''
     return audit_result_dir(res_dir, target_path) / "loss_signals"
 
-def loss_signals_pickle_name(target_path, n_loss_samples):
+def format_float_filename_token(value):
+    '''
+    Format a float for stable use in filenames.
+    Args:
+        value (float): Value to format.
+    Returns:
+        str: Filename-safe float token.
+    '''
+    value = float(value)
+    token = f"{value:.15f}"
+    token = token.rstrip("0")
+    token = token.rstrip(".")
+    if token == "":
+        token = "0"
+    return token.replace(".", "p")
+
+def loss_signals_pickle_name(target_path, n_loss_samples, noise_level=0.1):
     '''
     Return the normalized loss-signal pickle filename.
     Args:
         target_path (str | Path): Target checkpoint path.
         n_loss_samples (int): Number of loss samples used per point.
+        noise_level (float): Query noise level used for loss signals.
     Returns:
         str: Loss-signal pickle filename.
     '''
-    return f"loss_signals-{Path(target_path).stem}-ls{n_loss_samples}.pkl"
+    noise_level_token = format_float_filename_token(noise_level)
+    return f"loss_signals-{Path(target_path).stem}-ls{n_loss_samples}-nl{noise_level_token}.pkl"
 
 def _parse_scores_filename(path):
     '''
@@ -123,6 +141,7 @@ def _parse_loss_signals_filename(path):
     return {
         "target_stem": match.group("target"),
         "n_loss_samples": int(match.group("n_loss_samples")),
+        "noise_level": float(match.group("noise_level").replace("p", ".")),
     }
 
 def infer_attack_from_score_paths(score_paths):
@@ -180,6 +199,16 @@ def n_loss_samples_from_loss_signals_pickle_path(path):
         int: Parsed loss-sampling count.
     '''
     return _parse_loss_signals_filename(path)["n_loss_samples"]
+
+def noise_level_from_loss_signals_pickle_path(path):
+    '''
+    Extract the query noise level from a loss-signal pickle filename.
+    Args:
+        path (str | Path): Loss-signal pickle path.
+    Returns:
+        float: Parsed query noise level.
+    '''
+    return _parse_loss_signals_filename(path)["noise_level"]
 
 def target_checkpoint_path_from_loss_signals_pickle_path(path):
     '''

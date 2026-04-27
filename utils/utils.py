@@ -1,8 +1,10 @@
 from pathlib import Path
+import random
 import re
 import subprocess
 import yaml
 
+import numpy as np
 import torch
 
 class Config:
@@ -187,6 +189,18 @@ def get_train_indices(path: str):
     '''
     checkpoint = load_checkpoint(path, torch.device("cpu"))
     return checkpoint["train_indices"]
+
+def set_manual_seed(seed):
+    '''
+    Set the Python, NumPy, and Torch RNG seeds.
+    Args:
+        seed (int): Random seed.
+    Returns:
+        None
+    '''
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 def mask_to_index(mask: torch.Tensor):
     return mask.nonzero(as_tuple=True)[0]

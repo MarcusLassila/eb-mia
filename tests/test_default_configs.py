@@ -19,7 +19,6 @@ class TestDefaultConfigs(unittest.TestCase):
             "batch_size",
             "n_loss_samples",
             "checkpoint_paths",
-            "lira_score_paths",
         ):
             self.assertIn(key, config)
         self.assertIsInstance(config["dataset"], str)
@@ -28,9 +27,7 @@ class TestDefaultConfigs(unittest.TestCase):
         self.assertIsInstance(config["batch_size"], int)
         self.assertIsInstance(config["n_loss_samples"], int)
         self.assertIsInstance(config["checkpoint_paths"], list)
-        self.assertIsInstance(config["lira_score_paths"], list)
         self.assertTrue(all(isinstance(path, str) for path in config["checkpoint_paths"]))
-        self.assertTrue(all(isinstance(path, str) for path in config["lira_score_paths"]))
 
     def test_run_audit_sample_default_configs(self):
         for relative_path in ("mia/configs/config_audit_sample.yaml",):
@@ -52,14 +49,13 @@ class TestDefaultConfigs(unittest.TestCase):
         config = self._load("mia/configs/config_audit_entity.yaml")
         self.assertIsInstance(config, dict)
         self.assertIn("dataset", config)
-        self.assertIn("data_dir", config)
         self.assertIn("res_dir", config)
         self.assertIn("audit_mode", config)
         self.assertIn("round_robin", config)
         self.assertIn("mode", config)
-        self.assertIn("n_audit_samples_per_entity", config)
         self.assertIn("min_samples_per_entity", config)
         self.assertIn("max_samples_per_entity", config)
+        self.assertNotIn("n_audit_samples_per_entity", config)
         self.assertIn("target_loss_paths", config)
         self.assertIn("shadow_loss_paths", config)
         self.assertIn("attack", config)

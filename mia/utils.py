@@ -48,34 +48,46 @@ def select_entitywise_audit_indices(
     entity_indices,
     train_mask,
     mode,
-    min_samples_per_entity=None,
+    min_samples_per_entity=0,
     max_samples_per_entity=None,
     hold_out_frac=0.0,
 ):
-    if not torch.is_tensor(entity_indices):
-        entity_indices = torch.tensor(entity_indices, dtype=torch.long)
+    entity_indices = torch.as_tensor(entity_indices)
     train_indices = entity_indices[train_mask[entity_indices]]
+    train_indices = train_indices[torch.randperm(train_indices.shape[0])]
     non_train_indices = entity_indices[~train_mask[entity_indices]]
+    non_train_indices = non_train_indices[torch.randperm(non_train_indices.shape[0])]
     is_member_entity = train_indices.shape[0] > 0
+    if max_samples_per_entity is None:
+        max_samples_per_entity = entity_indices.shape[0]
     if mode == "all":
-        selected_indices = entity_indices.tolist()
+        if is_member_entity:
+            n = min(train_indices.shape[0], non_train_indices.shape[0])
+            selected_indices = torch.empty_like(entity_indices, dtype=torch.long)
+            selected_indices[: 2 * n: 2] = train_indices[:n]
+            selected_indices[1: 2 * n: 2] = non_train_indices[:n]
+            if n < train_indices.shape[0]:
+                selected_indices[2 * n:] = train_indices[n:]
+            elif n < non_train_indices.shape[0]:
+                selected_indices[2 * n:] = non_train_indices[n:]
+            selected_indices = selected_indices[:max_samples_per_entity].tolist()
+        else:
+            selected_indices = non_train_indices[:max_samples_per_entity].tolist()
     elif mode == "max_one_train":
         selected_indices = non_train_indices.tolist()
-        if train_indices.shape[0] > 0:
+        if is_member_entity:
             selected_indices.append(train_indices[0].item())
+        selected_indices = selected_indices[-max_samples_per_entity:]
     elif mode == "exclude_train":
-        selected_indices = non_train_indices.tolist()
+        selected_indices = non_train_indices[:max_samples_per_entity].tolist()
     elif mode == "hold_out":
         n = int(len(entity_indices) * (1.0 - hold_out_frac))
-        selected_indices = entity_indices[n:].tolist()
+        selected_indices = entity_indices[n:].tolist()[:max_samples_per_entity]
     else:
         raise ValueError(f"Unsupported mode: {mode}")
     n_selected = len(selected_indices)
-    if min_samples_per_entity is not None and n_selected < min_samples_per_entity:
+    if n_selected < min_samples_per_entity:
         selected_indices = [] # Not enough indices to reach minimum number of samples per entity so select nothing
-    if max_samples_per_entity is not None and n_selected > max_samples_per_entity:
-        n_remove = n_selected - max_samples_per_entity
-        selected_indices = selected_indices[n_remove:] # since max_one_train mode adds a train index at the end, it is the last to be removed
     selected_indices.sort()
     return selected_indices, is_member_entity
 

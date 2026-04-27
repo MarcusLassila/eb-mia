@@ -12,15 +12,21 @@ class TestMiaPathUtils(unittest.TestCase):
         result_name = path_utils.audit_result_name(target_path)
         self.assertEqual(result_name, "DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000")
 
+    def test_audit_result_name_preserves_hold_out_token(self):
+        target_path = "/tmp/DDPM-CelebA-ent-f0p5-p0p5-h0p25-s3-sz64-epoch1000.pth"
+        result_name = path_utils.audit_result_name(target_path)
+        self.assertEqual(result_name, "DDPM-CelebA-ent-f0p5-p0p5-h0p25-sz64-epoch1000")
+
     def test_loss_signal_path_helpers_and_metrics_names(self):
         target_path = Path("/tmp/DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000.pth")
         loss_path = path_utils.loss_signals_dir("/results", target_path) / path_utils.loss_signals_pickle_name(target_path, 10)
         self.assertEqual(
             loss_path,
-            Path("/results/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000/loss_signals/loss_signals-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000-ls10.pkl"),
+            Path("/results/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000/loss_signals/loss_signals-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000-ls10-nl0p1.pkl"),
         )
         self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
         self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 10)
+        self.assertEqual(path_utils.noise_level_from_loss_signals_pickle_path(loss_path), 0.1)
 
         result_dir = path_utils.metrics_dir_from_target("/results", target_path, "BASE", "entity", entity_audit_mode="all")
         self.assertEqual(
@@ -33,7 +39,8 @@ class TestMiaPathUtils(unittest.TestCase):
             "BASE",
             "entity",
             entity_audit_mode="max_one_train",
-            n_audit_samples_per_entity=10,
+            min_samples_per_entity=10,
+            max_samples_per_entity=10,
         )
         self.assertEqual(
             result_dir_with_n,

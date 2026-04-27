@@ -84,14 +84,27 @@ class TestAuditEndToEnd(unittest.TestCase):
             })
 
             with (
-                patch.object(run_audit_module, "load_dataset", return_value=dataset),
+                patch.object(
+                    run_audit_module,
+                    "load_dataset_metadata",
+                    return_value={
+                        "n_samples": 4,
+                        "entity_ids": [0, 0, 1, 1],
+                        "n_entities": 2,
+                    },
+                ),
                 patch.object(run_audit_module, "tqdm", side_effect=lambda iterable, **kwargs: iterable),
             ):
                 run_audit_module.run_entity_audit(config=audit_config)
 
             metrics_path = (
                 path_utils.metrics_dir_from_target(tmpdir, target_path, "CompositeBASE-off", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(target_path, "CompositeBASE-off", "entity")
+                / path_utils.metrics_pickle_name_from_target(
+                    target_path,
+                    "CompositeBASE-off",
+                    "entity",
+                    min_samples_per_entity=0,
+                )
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

@@ -1,10 +1,10 @@
 from .utils import indices_of_shadow_models
-from utils import mask_to_index
 
 from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from scipy.stats import multivariate_normal, norm
+from scipy.special import logsumexp
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
@@ -245,12 +245,10 @@ class CompositeLiRA:
 
 class JointXGB:
 
-    def __init__(self, attack_config, entity_index_table, shadow_loss_sigs, shadow_train_mask, shadow_entity_mask, n_features, feature_strategy="min-max-mean-std", sample_level_attack="BASE"):
+    def __init__(self, attack_config, entity_index_table, shadow_loss_sigs, shadow_train_mask, shadow_entity_mask, n_features, feature_strategy="summary-stats", sample_level_attack="BASE"):
         self.attack_config = attack_config
         self.entity_index_table = entity_index_table
-        self.n_shadow_models = shadow_loss_sigs.shape[0]
         self.n_features = n_features
-        assert self.n_shadow_models == shadow_train_mask.shape[0]
         self.shadow_loss_sigs = shadow_loss_sigs
         self.shadow_train_mask = shadow_train_mask
         self.shadow_entity_mask = shadow_entity_mask
@@ -282,29 +280,31 @@ class JointXGB:
                 features = np.sort(scores)
             case "min-max":
                 features = np.array([scores.min(), scores.max()])
-            case "min-max-mean-std":
-                features = np.array([scores.min(), scores.max(), scores.mean(), scores.std()])
+            case "summary-stats":
+                features = np.array([scores.min(), scores.max(), scores.mean(), scores.std(), -np.log1p(-scores).sum(), logsumexp(3 * scores) / 3])
+            case "score":
+                features = -np.log1p(-scores).reshape(1, -1).sum(axis=1)
             case _:
                 raise ValueError(f"Unsupported feature extraction strategy: {self.feature_strategy}")
         return features
 
     def create_dataset(self):
         features, labels = [], []
-        for shadow_index, train_mask in enumerate(self.shadow_train_mask):
-            simul_shadow_indices = indices_of_shadow_models(shadow_index, self.n_shadow_models)
+        for simul_target_index, simul_train_mask in enumerate(self.shadow_train_mask):
+            simul_shadow_indices = indices_of_shadow_models(simul_target_index, self.shadow_train_mask)
             sample_scores = self.get_sample_scores(
-                self.shadow_loss_sigs[shadow_index],
+                self.shadow_loss_sigs[simul_target_index],
                 self.shadow_loss_sigs[simul_shadow_indices],
                 self.shadow_train_mask[simul_shadow_indices],
             )
-            train_indices = set(mask_to_index(train_mask).tolist())
+            train_indices = set(mask_to_index(simul_train_mask).tolist())
             for entity_id, indices in self.entity_index_table.items():
                 non_train_indices = sorted(set(indices) - train_indices)
                 if len(non_train_indices) < self.n_features:
                     continue
                 selected_indices = non_train_indices[:self.n_features]
                 features.append(self.make_features(sample_scores[selected_indices]))
-                labels.append(int(self.shadow_entity_mask[shadow_index, entity_id]))
+                labels.append(int(self.shadow_entity_mask[simul_target_index, entity_id]))
         features = np.array(features, dtype=np.float32)
         labels = np.array(labels, dtype=np.int32)
         return train_test_split(features, labels, test_size=0.2, random_state=42)
