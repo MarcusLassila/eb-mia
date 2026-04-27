@@ -158,6 +158,55 @@ class TestLossQuery(unittest.TestCase):
         args = loss_query_module.parse_args(["--noise-level", "0.25"])
         self.assertEqual(args.noise_level, 0.25)
 
+    def test_main_prints_effective_settings_after_overrides(self):
+        '''
+        Print only effective loss-query settings after CLI overrides.
+        Returns:
+            None
+        '''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yaml"
+            configured_path = "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
+            override_path = "/tmp/DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+            with open(config_path, "w") as file:
+                file.write("\n".join([
+                    'dataset: "cifar10"',
+                    f'data_dir: "{tmpdir}"',
+                    "batch_size: 2",
+                    f'res_dir: "{tmpdir}"',
+                    "n_loss_samples: 3",
+                    "checkpoint_paths:",
+                    f'  - "{configured_path}"',
+                ]))
+
+            with (
+                patch.object(loss_query_module, "run_loss_query", return_value=[]) as run_loss_query_fn,
+                patch("builtins.print") as print_fn,
+            ):
+                loss_query_module.main([
+                    "--config",
+                    str(config_path),
+                    "--checkpoint-paths",
+                    override_path,
+                    "--noise-level",
+                    "0.25",
+                ])
+
+            run_loss_query_fn.assert_called_once()
+            printed_lines = [args.args[0] for args in print_fn.call_args_list]
+            self.assertIn("Loss query settings", printed_lines)
+            self.assertIn(f"config_path: {config_path}", printed_lines)
+            self.assertIn("device: cpu", printed_lines)
+            self.assertIn("dataset: cifar10", printed_lines)
+            self.assertIn(f"data_dir: {tmpdir}", printed_lines)
+            self.assertIn("batch_size: 2", printed_lines)
+            self.assertIn(f"res_dir: {tmpdir}", printed_lines)
+            self.assertIn("n_loss_samples: 3", printed_lines)
+            self.assertIn("noise_level: 0.25", printed_lines)
+            self.assertIn("checkpoint_paths:", printed_lines)
+            self.assertIn(f"  - {override_path}", printed_lines)
+            self.assertNotIn(f"  - {configured_path}", printed_lines)
+
 
 if __name__ == "__main__":
     unittest.main()

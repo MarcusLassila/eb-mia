@@ -139,6 +139,34 @@ def run_loss_query(config, device, checkpoint_paths_override=None, noise_level=0
         raise ValueError("No checkpoint_paths specified.")
     return saved_paths
 
+def print_loss_query_settings(config_path, config, device, checkpoint_paths, noise_level):
+    '''
+    Print effective loss-query settings after CLI overrides.
+    Args:
+        config_path (str | Path): Resolved config file path.
+        config (Config): Loss-query configuration.
+        device (torch.device): Device used for model evaluation.
+        checkpoint_paths (list[str] | None): Effective checkpoint paths.
+        noise_level (float): Effective query noise level.
+    Returns:
+        None
+    '''
+    print("Loss query settings")
+    print(f"config_path: {config_path}")
+    print(f"device: {device}")
+    print(f"dataset: {config.dataset}")
+    print(f"data_dir: {config.data_dir}")
+    print(f"batch_size: {config.batch_size}")
+    print(f"res_dir: {config.res_dir}")
+    print(f"n_loss_samples: {config.n_loss_samples}")
+    print(f"noise_level: {noise_level}")
+    print("checkpoint_paths:")
+    if checkpoint_paths:
+        for checkpoint_path in checkpoint_paths:
+            print(f"  - {checkpoint_path}")
+    else:
+        print("  - none")
+
 def parse_args(argv=None):
     '''
     Parse CLI arguments for loss querying.
@@ -183,10 +211,18 @@ def main(argv=None):
         config_dict = yaml.safe_load(file)
     config = utils.Config(config_dict)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint_paths = args.checkpoint_paths if args.checkpoint_paths is not None else getattr(config, "checkpoint_paths", None)
+    print_loss_query_settings(
+        config_path=config_path,
+        config=config,
+        device=device,
+        checkpoint_paths=checkpoint_paths,
+        noise_level=args.noise_level,
+    )
     run_loss_query(
         config=config,
         device=device,
-        checkpoint_paths_override=args.checkpoint_paths,
+        checkpoint_paths_override=checkpoint_paths,
         noise_level=args.noise_level,
     )
 
