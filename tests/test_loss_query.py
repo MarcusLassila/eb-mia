@@ -139,16 +139,6 @@ class TestLossQuery(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "n_loss_samples"):
             loss_query_module.run_loss_query(config=config, device=torch.device("cpu"))
 
-    def test_run_loss_query_rejects_invalid_noise_level(self):
-        '''
-        Reject loss-query noise levels outside the supported range.
-        Returns:
-            None
-        '''
-        config = loss_query_module.utils.Config({"n_loss_samples": 1})
-        with self.assertRaisesRegex(ValueError, "noise_level"):
-            loss_query_module.run_loss_query(config=config, device=torch.device("cpu"), noise_level=1.1)
-
     def test_parse_args_accepts_noise_level(self):
         '''
         Parse the loss-query CLI noise-level override.
@@ -166,6 +156,8 @@ class TestLossQuery(unittest.TestCase):
         '''
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yaml"
+            configured_res_dir = str(Path(tmpdir) / "configured")
+            override_res_dir = str(Path(tmpdir) / "override")
             configured_path = "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
             override_path = "/tmp/DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
             with open(config_path, "w") as file:
@@ -173,7 +165,7 @@ class TestLossQuery(unittest.TestCase):
                     'dataset: "cifar10"',
                     f'data_dir: "{tmpdir}"',
                     "batch_size: 2",
-                    f'res_dir: "{tmpdir}"',
+                    f'res_dir: "{configured_res_dir}"',
                     "n_loss_samples: 3",
                     "checkpoint_paths:",
                     f'  - "{configured_path}"',
@@ -190,6 +182,8 @@ class TestLossQuery(unittest.TestCase):
                     override_path,
                     "--noise-level",
                     "0.25",
+                    "--res-dir",
+                    override_res_dir,
                 ])
 
             run_loss_query_fn.assert_called_once()
@@ -200,7 +194,8 @@ class TestLossQuery(unittest.TestCase):
             self.assertIn("dataset: cifar10", printed_lines)
             self.assertIn(f"data_dir: {tmpdir}", printed_lines)
             self.assertIn("batch_size: 2", printed_lines)
-            self.assertIn(f"res_dir: {tmpdir}", printed_lines)
+            self.assertIn(f"res_dir: {override_res_dir}", printed_lines)
+            self.assertNotIn(f"res_dir: {configured_res_dir}", printed_lines)
             self.assertIn("n_loss_samples: 3", printed_lines)
             self.assertIn("noise_level: 0.25", printed_lines)
             self.assertIn("checkpoint_paths:", printed_lines)

@@ -194,6 +194,11 @@ def parse_args(argv=None):
         default=0.1,
         help="Loss-query noise level in [0.0, 1.0]. Defaults to 0.1.",
     )
+    parser.add_argument(
+        "--res-dir",
+        default=None,
+        help="Result directory for saved loss signals. Overrides config.",
+    )
     return parser.parse_args(argv)
 
 def main(argv=None):
@@ -211,6 +216,8 @@ def main(argv=None):
         config_dict = yaml.safe_load(file)
     config = utils.Config(config_dict)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.res_dir is not None:
+        config.res_dir = args.res_dir
     checkpoint_paths = args.checkpoint_paths if args.checkpoint_paths is not None else getattr(config, "checkpoint_paths", None)
     print_loss_query_settings(
         config_path=config_path,
