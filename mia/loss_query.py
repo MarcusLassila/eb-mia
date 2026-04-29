@@ -64,7 +64,8 @@ class LossQuery:
             case "FlowMatching":
                 loss_samples = []
                 for _ in range(self.n_loss_samples):
-                    t = torch.full(size=(batch_size,), fill_value=self.noise_level, device=samples.device, dtype=torch.float32)
+                    t = 1.0 - self.noise_level
+                    t = torch.full(size=(batch_size,), fill_value=t, device=samples.device, dtype=torch.float32)
                     loss = model.per_sample_loss(samples, t).cpu()
                     loss_samples.append(loss)
                 avg_loss = torch.stack(loss_samples).mean(dim=0)
