@@ -131,11 +131,11 @@ def select_entity_audit_indices(
 
 def load_loss_signals(loss_path):
     '''
-    Load one target checkpoint's loss signals and train mask.
+    Load one target checkpoint's audit loss signals and train mask.
     Args:
         loss_path (str | Path): Loss-signal pickle path.
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Loss signals and membership mask.
+        tuple[torch.Tensor, torch.Tensor]: Averaged 1D loss signals and membership mask.
     '''
     with open(loss_path, "rb") as file:
         payload = pickle.load(file)
@@ -145,8 +145,12 @@ def load_loss_signals(loss_path):
         raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
     loss_sigs = torch.tensor(payload["loss_sigs"], dtype=torch.float32)
     train_mask = torch.tensor(payload["train_mask"], dtype=torch.bool)
-    if loss_sigs.ndim != 1 or train_mask.ndim != 1:
-        raise ValueError(f"Loss-signal pickle must store 1D tensors: {loss_path}")
+    if train_mask.ndim != 1:
+        raise ValueError(f"Loss-signal pickle must store 1D train_mask tensor: {loss_path}")
+    if loss_sigs.ndim == 2:
+        loss_sigs = loss_sigs.mean(dim=1) # TODO: utilize full distribution rather than only empirical mean.
+    elif loss_sigs.ndim != 1:
+        raise ValueError(f"Unsupported format for loss signal tensor in pickle file: {loss_path}")
     if len(loss_sigs) != len(train_mask):
         raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")
     return loss_sigs, train_mask

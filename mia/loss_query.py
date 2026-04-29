@@ -28,27 +28,27 @@ class LossQuery:
             device=self.device,
         )
         if isinstance(model, VAE):
-            model.n_rsamples = self.n_loss_samples
+            model.n_rsamples = 1
         return model, train_indices
 
     def loss_signal(self, audit_loader, model):
-        sig = []
+        sigs = []
         for samples in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing loss signal"):
             samples = samples.to(self.device)
-            sig.append(self.compute_averaged_loss(model, samples))
-        sig = torch.concat(sig, dim=0)
-        assert sig.shape == (len(audit_loader.dataset),)
-        return sig
+            sigs.append(self.compute_loss_samples(model, samples))
+        sigs = torch.concat(sigs, dim=0)
+        assert sigs.shape == (len(audit_loader.dataset), self.n_loss_samples)
+        return sigs
 
     @torch.inference_mode()
-    def compute_averaged_loss(self, model: AbstractGenerativeModel, samples: torch.Tensor):
+    def compute_loss_samples(self, model: AbstractGenerativeModel, samples: torch.Tensor):
         '''
-        Compute averaged per-sample losses for one batch.
+        Compute sorted per-query loss samples for one batch.
         Args:
             model (AbstractGenerativeModel): Generative model used for querying.
             samples (torch.Tensor): Batch of samples on the evaluation device.
         Returns:
-            torch.Tensor: Averaged per-sample losses on CPU.
+            torch.Tensor: Sorted loss samples on CPU with shape (batch_size, n_loss_samples).
         '''
         batch_size = samples.shape[0]
         match model.__class__.__name__:
@@ -56,24 +56,29 @@ class LossQuery:
                 loss_samples = []
                 step_index = int(model.time_steps * self.noise_level)
                 step_index = min(step_index, model.time_steps - 1)
+                t = torch.full(size=(batch_size,), fill_value=step_index, device=samples.device, dtype=torch.long)
                 for _ in range(self.n_loss_samples):
-                    t = torch.full(size=(batch_size,), fill_value=step_index, device=samples.device, dtype=torch.long)
                     loss = model.per_sample_loss(samples, t).cpu()
                     loss_samples.append(loss)
-                avg_loss = torch.stack(loss_samples).mean(dim=0)
+                loss_samples = torch.stack(loss_samples, dim=1)
             case "FlowMatching":
                 loss_samples = []
+                t = 1.0 - self.noise_level
+                t = torch.full(size=(batch_size,), fill_value=t, device=samples.device, dtype=torch.float32)
                 for _ in range(self.n_loss_samples):
-                    t = 1.0 - self.noise_level
-                    t = torch.full(size=(batch_size,), fill_value=t, device=samples.device, dtype=torch.float32)
                     loss = model.per_sample_loss(samples, t).cpu()
                     loss_samples.append(loss)
-                avg_loss = torch.stack(loss_samples).mean(dim=0)
+                loss_samples = torch.stack(loss_samples, dim=1)
             case "VAE":
-                avg_loss = model.per_sample_loss(samples).cpu()
+                loss_samples = []
+                for _ in range(self.n_loss_samples):
+                    loss = model.per_sample_loss(samples).cpu()
+                    loss_samples.append(loss)
+                loss_samples = torch.stack(loss_samples, dim=1)
             case _:
                 raise ValueError("Unavailable class of generative model.")
-        return avg_loss
+        sorted_loss_samples = torch.sort(loss_samples, dim=1).values
+        return sorted_loss_samples
 
     def query_loss(self, dataset, model_path):
         audit_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)

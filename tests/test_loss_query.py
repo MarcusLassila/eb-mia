@@ -9,12 +9,13 @@ import torch
 from generative_models.flow_matching import FlowMatching
 from mia import loss_query as loss_query_module
 from mia import path_utils
+from mia import utils as mia_utils
 
 
 class TestLossQuery(unittest.TestCase):
-    def test_compute_averaged_loss_supports_flow_matching(self):
+    def test_compute_loss_samples_supports_flow_matching(self):
         '''
-        Average FlowMatching losses at the configured fixed query time.
+        Query and sort FlowMatching loss samples at the configured fixed query time.
         Returns:
             None
         '''
@@ -37,15 +38,15 @@ class TestLossQuery(unittest.TestCase):
             use_sdpa=True,
         )
         samples = torch.randn(3, 1, 4, 4)
-        first_loss = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
-        second_loss = torch.tensor([3.0, 4.0, 5.0], dtype=torch.float32)
+        first_loss = torch.tensor([3.0, 2.0, 5.0], dtype=torch.float32)
+        second_loss = torch.tensor([1.0, 4.0, 3.0], dtype=torch.float32)
 
         with patch.object(model, "per_sample_loss", side_effect=[first_loss, second_loss]) as per_sample_loss_fn:
-            avg_loss = loss_query.compute_averaged_loss(model, samples)
+            loss_samples = loss_query.compute_loss_samples(model, samples)
 
-        expected_loss = torch.tensor([2.0, 3.0, 4.0], dtype=torch.float32)
-        expected_t = torch.full(size=(3,), fill_value=0.25, dtype=torch.float32)
-        self.assertTrue(torch.allclose(avg_loss, expected_loss))
+        expected_loss_samples = torch.tensor([[1.0, 3.0], [2.0, 4.0], [3.0, 5.0]], dtype=torch.float32)
+        expected_t = torch.full(size=(3,), fill_value=0.75, dtype=torch.float32)
+        self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
         self.assertEqual(per_sample_loss_fn.call_count, 2)
         for call_args in per_sample_loss_fn.call_args_list:
             called_samples = call_args.args[0]
@@ -55,9 +56,9 @@ class TestLossQuery(unittest.TestCase):
             self.assertEqual(called_t.device, samples.device)
             self.assertEqual(called_t.dtype, torch.float32)
 
-    def test_compute_averaged_loss_supports_ddpm_noise_level(self):
+    def test_compute_loss_samples_supports_ddpm_noise_level(self):
         '''
-        Query DDPM losses at the configured noise-level-derived step.
+        Query and sort DDPM losses at the configured noise-level-derived step.
         Returns:
             None
         '''
@@ -70,19 +71,21 @@ class TestLossQuery(unittest.TestCase):
         loss_query = loss_query_module.LossQuery(
             batch_size=2,
             device=torch.device("cpu"),
-            n_loss_samples=1,
+            n_loss_samples=2,
             noise_level=0.25,
         )
         model = DDPM()
         samples = torch.randn(3, 1, 4, 4)
+        first_loss = torch.tensor([2.0, 1.0, 3.0], dtype=torch.float32)
+        second_loss = torch.tensor([1.0, 3.0, 2.0], dtype=torch.float32)
 
-        with patch.object(model, "per_sample_loss", wraps=model.per_sample_loss) as per_sample_loss_fn:
-            avg_loss = loss_query.compute_averaged_loss(model, samples)
+        with patch.object(model, "per_sample_loss", side_effect=[first_loss, second_loss]) as per_sample_loss_fn:
+            loss_samples = loss_query.compute_loss_samples(model, samples)
 
-        expected_loss = torch.ones(3, dtype=torch.float32)
+        expected_loss_samples = torch.tensor([[1.0, 2.0], [1.0, 3.0], [2.0, 3.0]], dtype=torch.float32)
         expected_t = torch.full(size=(3,), fill_value=250, dtype=torch.long)
         called_t = per_sample_loss_fn.call_args.args[1]
-        self.assertTrue(torch.allclose(avg_loss, expected_loss))
+        self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
         self.assertTrue(torch.equal(called_t, expected_t))
         self.assertEqual(called_t.device, samples.device)
         self.assertEqual(called_t.dtype, torch.long)
@@ -94,10 +97,46 @@ class TestLossQuery(unittest.TestCase):
             noise_level=1.0,
         )
         with patch.object(model, "per_sample_loss", wraps=model.per_sample_loss) as per_sample_loss_fn:
-            endpoint_query.compute_averaged_loss(model, samples)
+            endpoint_query.compute_loss_samples(model, samples)
         called_t = per_sample_loss_fn.call_args.args[1]
         endpoint_t = torch.full(size=(3,), fill_value=999, dtype=torch.long)
         self.assertTrue(torch.equal(called_t, endpoint_t))
+
+    def test_compute_loss_samples_supports_vae(self):
+        '''
+        Query VAE losses as individual samples without keeping VAE internal averaging.
+        Returns:
+            None
+        '''
+        class VAE:
+            def __init__(self):
+                self.n_rsamples = 5
+                self.n_rsamples_seen = []
+                self.losses = [
+                    torch.tensor([4.0, 1.0, 3.0], dtype=torch.float32),
+                    torch.tensor([2.0, 5.0, 2.0], dtype=torch.float32),
+                ]
+
+            def per_sample_loss(self, samples):
+                self.n_rsamples_seen.append(self.n_rsamples)
+                return self.losses.pop(0)
+
+        loss_query = loss_query_module.LossQuery(
+            batch_size=2,
+            device=torch.device("cpu"),
+            n_loss_samples=2,
+            noise_level=0.25,
+        )
+        model = VAE()
+        model.n_rsamples = 1
+        samples = torch.randn(3, 1, 4, 4)
+
+        loss_samples = loss_query.compute_loss_samples(model, samples)
+
+        expected_loss_samples = torch.tensor([[2.0, 4.0], [1.0, 5.0], [2.0, 3.0]], dtype=torch.float32)
+        self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
+        self.assertEqual(model.n_rsamples_seen, [1, 1])
+        self.assertEqual(model.n_rsamples, 1)
 
     def test_run_loss_query_saves_loss_signals_for_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -118,7 +157,7 @@ class TestLossQuery(unittest.TestCase):
                     loss_query_module.LossQuery,
                     "query_loss",
                     return_value=(
-                        torch.tensor([0.1, 0.2, 0.3, 0.4], dtype=torch.float32),
+                        torch.tensor([[0.1, 0.3], [0.2, 0.4], [0.3, 0.5], [0.4, 0.6]], dtype=torch.float32),
                         torch.tensor([0, 1, 0, 1], dtype=torch.bool),
                     ),
                 ) as query_loss_fn,
@@ -131,8 +170,31 @@ class TestLossQuery(unittest.TestCase):
             self.assertEqual(saved_paths, [saved_path])
             with open(saved_path, "rb") as file:
                 payload = pickle.load(file)
-            self.assertTrue(torch.allclose(torch.tensor(payload["loss_sigs"]), torch.tensor([0.1, 0.2, 0.3, 0.4])))
+            expected_loss_sigs = torch.tensor([[0.1, 0.3], [0.2, 0.4], [0.3, 0.5], [0.4, 0.6]])
+            self.assertTrue(torch.allclose(torch.tensor(payload["loss_sigs"]), expected_loss_sigs))
             self.assertEqual(payload["train_mask"], [False, True, False, True])
+
+    def test_load_loss_signals_averages_saved_loss_samples(self):
+        '''
+        Average 2D saved loss samples when loading signals for existing audits.
+        Returns:
+            None
+        '''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loss_path = Path(tmpdir) / "loss_signals.pkl"
+            with open(loss_path, "wb") as file:
+                pickle.dump(
+                    {
+                        "loss_sigs": [[1.0, 3.0], [2.0, 4.0], [5.0, 7.0]],
+                        "train_mask": [True, False, True],
+                    },
+                    file,
+                )
+
+            loss_sigs, train_mask = mia_utils.load_loss_signals(loss_path)
+
+            self.assertTrue(torch.allclose(loss_sigs, torch.tensor([2.0, 3.0, 6.0])))
+            self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
 
     def test_run_loss_query_requires_n_loss_samples(self):
         config = loss_query_module.utils.Config({"checkpoint_paths": ["/tmp/model.pth"]})
