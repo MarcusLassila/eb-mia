@@ -1,4 +1,4 @@
-from data.utils import load_dataset
+from data.utils import infer_dataset_name, load_dataset
 from generative_models import AbstractGenerativeModel, VAE
 from generative_models.utils import load_model
 from . import path_utils
@@ -12,7 +12,6 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-import yaml
 
 class LossQuery:
 
@@ -112,66 +111,67 @@ def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples
         }, file)
     return output_path
 
-def run_loss_query(config, device, checkpoint_paths_override=None, noise_level=0.1):
+def run_loss_query(checkpoint_paths, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level):
     '''
     Compute loss-signal pickles for model checkpoints.
     Args:
-        config (Config): Loss-query configuration.
+        checkpoint_paths (list[str | Path]): Checkpoint paths to query.
+        dataset (str): Dataset name.
+        data_dir (str | Path): Dataset directory.
+        batch_size (int): Loss-query batch size.
+        res_dir (str | Path): Directory used for saved loss signals.
+        n_loss_samples (int): Number of loss samples used per point.
         device (torch.device): Device used for model evaluation.
-        checkpoint_paths_override (list[str] | None): Optional checkpoint overrides.
         noise_level (float): Query noise level used for loss signals.
     Returns:
         list[Path]: Saved loss-signal pickle paths.
     '''
-    if not hasattr(config, "n_loss_samples"):
-        raise ValueError("Config must define n_loss_samples.")
-    n_loss_samples = int(config.n_loss_samples)
-    saved_paths = []
-    checkpoint_paths = checkpoint_paths_override if checkpoint_paths_override is not None else getattr(config, "checkpoint_paths", None)
-    if checkpoint_paths:
-        image_size = utils.parse_properties_from_checkpoint_path(checkpoint_paths[0])["size"]
-        dataset = load_dataset(config.dataset, data_dir=config.data_dir, size=image_size)
-        loss_query = LossQuery(
-            batch_size=config.batch_size,
-            device=device,
-            n_loss_samples=n_loss_samples,
-            noise_level=noise_level,
-        )
-        for checkpoint_path in map(Path, checkpoint_paths):
-            loss_sig, train_mask = loss_query.query_loss(dataset, checkpoint_path)
-            saved_paths.append(save_loss_signals(config.res_dir, checkpoint_path, loss_sig, train_mask, n_loss_samples, noise_level))
-
-    if not saved_paths:
+    if not checkpoint_paths:
         raise ValueError("No checkpoint_paths specified.")
+    checkpoint_paths = [Path(checkpoint_path) for checkpoint_path in checkpoint_paths]
+    checkpoint_properties = utils.parse_properties_from_checkpoint_path(checkpoint_paths[0])
+    dataset_name = infer_dataset_name(dataset)
+    image_size = checkpoint_properties["size"]
+    loaded_dataset = load_dataset(dataset_name, data_dir=data_dir, size=image_size)
+    loss_query = LossQuery(
+        batch_size=batch_size,
+        device=device,
+        n_loss_samples=n_loss_samples,
+        noise_level=noise_level,
+    )
+    saved_paths = []
+    for checkpoint_path in checkpoint_paths:
+        loss_sig, train_mask = loss_query.query_loss(loaded_dataset, checkpoint_path)
+        saved_path = save_loss_signals(res_dir, checkpoint_path, loss_sig, train_mask, n_loss_samples, noise_level)
+        saved_paths.append(saved_path)
     return saved_paths
 
-def print_loss_query_settings(config_path, config, device, checkpoint_paths, noise_level):
+def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_loss_samples, checkpoint_paths, noise_level):
     '''
-    Print effective loss-query settings after CLI overrides.
+    Print effective loss-query settings.
     Args:
-        config_path (str | Path): Resolved config file path.
-        config (Config): Loss-query configuration.
         device (torch.device): Device used for model evaluation.
+        dataset (str): Dataset name.
+        data_dir (str | Path): Dataset directory.
+        batch_size (int): Loss-query batch size.
+        res_dir (str | Path): Directory used for saved loss signals.
+        n_loss_samples (int): Number of loss samples used per point.
         checkpoint_paths (list[str] | None): Effective checkpoint paths.
         noise_level (float): Effective query noise level.
     Returns:
         None
     '''
     print("Loss query settings")
-    print(f"config_path: {config_path}")
     print(f"device: {device}")
-    print(f"dataset: {config.dataset}")
-    print(f"data_dir: {config.data_dir}")
-    print(f"batch_size: {config.batch_size}")
-    print(f"res_dir: {config.res_dir}")
-    print(f"n_loss_samples: {config.n_loss_samples}")
+    print(f"dataset: {dataset}")
+    print(f"data_dir: {data_dir}")
+    print(f"batch_size: {batch_size}")
+    print(f"res_dir: {res_dir}")
+    print(f"n_loss_samples: {n_loss_samples}")
     print(f"noise_level: {noise_level}")
     print("checkpoint_paths:")
-    if checkpoint_paths:
-        for checkpoint_path in checkpoint_paths:
-            print(f"  - {checkpoint_path}")
-    else:
-        print("  - none")
+    for checkpoint_path in checkpoint_paths:
+        print(f"  - {checkpoint_path}")
 
 def parse_args(argv=None):
     '''
@@ -182,28 +182,49 @@ def parse_args(argv=None):
         argparse.Namespace: Parsed CLI arguments.
     '''
     parser = argparse.ArgumentParser(description="Compute and save loss signals for model checkpoints.")
-    default_config_path = str(utils.resolve_path(Path("mia") / "configs" / "config_loss_query.yaml", utils.get_root()))
-    parser.add_argument(
-        "--config",
-        default=default_config_path,
-        help="Path to loss query config yaml file.",
-    )
+    root = utils.get_root()
+    default_data_dir = utils.resolve_path("datasets", root)
+    default_res_dir = utils.resolve_path(Path("mia") / "results", root)
     parser.add_argument(
         "--checkpoint-paths",
         nargs="+",
-        default=None,
-        help="Checkpoint file paths. Overrides config.",
+        required=True,
+        help="Checkpoint file paths.",
+    )
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        help="Dataset name.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=default_data_dir,
+        help="Dataset directory. Defaults to root/datasets.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        required=True,
+        help="Loss-query batch size.",
+    )
+    parser.add_argument(
+        "--res-dir",
+        type=Path,
+        default=default_res_dir,
+        help="Result directory. Defaults to root/mia/results.",
+    )
+    parser.add_argument(
+        "--n-loss-samples",
+        type=int,
+        required=True,
+        help="Number of loss samples per point.",
     )
     parser.add_argument(
         "--noise-level",
         type=float,
-        default=0.1,
-        help="Loss-query noise level in [0.0, 1.0]. Defaults to 0.1.",
-    )
-    parser.add_argument(
-        "--res-dir",
-        default=None,
-        help="Result directory for saved loss signals. Overrides config.",
+        required=True,
+        help="Loss-query noise level in [0.0, 1.0].",
     )
     return parser.parse_args(argv)
 
@@ -217,25 +238,25 @@ def main(argv=None):
     '''
     args = parse_args(argv)
     assert 0.0 <= args.noise_level <= 1.0
-    config_path = utils.resolve_path(args.config, utils.get_root())
-    with open(config_path, "r") as file:
-        config_dict = yaml.safe_load(file)
-    config = utils.Config(config_dict)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if args.res_dir is not None:
-        config.res_dir = args.res_dir
-    checkpoint_paths = args.checkpoint_paths if args.checkpoint_paths is not None else getattr(config, "checkpoint_paths", None)
     print_loss_query_settings(
-        config_path=config_path,
-        config=config,
         device=device,
-        checkpoint_paths=checkpoint_paths,
+        dataset=args.dataset,
+        data_dir=args.data_dir,
+        batch_size=args.batch_size,
+        res_dir=args.res_dir,
+        n_loss_samples=args.n_loss_samples,
+        checkpoint_paths=args.checkpoint_paths,
         noise_level=args.noise_level,
     )
     run_loss_query(
-        config=config,
+        checkpoint_paths=args.checkpoint_paths,
+        dataset=args.dataset,
+        data_dir=args.data_dir,
+        batch_size=args.batch_size,
+        res_dir=args.res_dir,
+        n_loss_samples=args.n_loss_samples,
         device=device,
-        checkpoint_paths_override=checkpoint_paths,
         noise_level=args.noise_level,
     )
 

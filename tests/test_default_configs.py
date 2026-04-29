@@ -1,7 +1,10 @@
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import yaml
+
+from mia import loss_query as loss_query_module
 
 
 class TestDefaultConfigs(unittest.TestCase):
@@ -9,25 +12,24 @@ class TestDefaultConfigs(unittest.TestCase):
         with open(Path(relative_path), "r") as file:
             return yaml.safe_load(file)
 
-    def test_loss_query_default_config(self):
-        config = self._load("mia/configs/config_loss_query.yaml")
-        self.assertIsInstance(config, dict)
-        for key in (
-            "dataset",
-            "data_dir",
-            "res_dir",
-            "batch_size",
-            "n_loss_samples",
-            "checkpoint_paths",
-        ):
-            self.assertIn(key, config)
-        self.assertIsInstance(config["dataset"], str)
-        self.assertIsInstance(config["data_dir"], str)
-        self.assertIsInstance(config["res_dir"], str)
-        self.assertIsInstance(config["batch_size"], int)
-        self.assertIsInstance(config["n_loss_samples"], int)
-        self.assertIsInstance(config["checkpoint_paths"], list)
-        self.assertTrue(all(isinstance(path, str) for path in config["checkpoint_paths"]))
+    def test_loss_query_cli_directory_defaults(self):
+        root = Path("/tmp/repo")
+        with patch.object(loss_query_module.utils, "get_root", return_value=str(root)):
+            args = loss_query_module.parse_args([
+                "--checkpoint-paths",
+                "/tmp/DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4.pth",
+                "--dataset",
+                "CIFAR10",
+                "--batch-size",
+                "2",
+                "--n-loss-samples",
+                "3",
+                "--noise-level",
+                "0.25",
+            ])
+
+        self.assertEqual(args.data_dir, root / "datasets")
+        self.assertEqual(args.res_dir, root / "mia/results")
 
     def test_run_audit_sample_default_configs(self):
         for relative_path in ("mia/configs/config_audit_sample.yaml",):

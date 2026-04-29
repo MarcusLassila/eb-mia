@@ -39,6 +39,16 @@ class FakeFlowers(FakeDataset):
 
 
 class TestLoadDataset(unittest.TestCase):
+    def test_infer_dataset_name_from_lowercase(self):
+        self.assertEqual(utils_module.infer_dataset_name("cifar10"), "CIFAR10")
+        self.assertEqual(utils_module.infer_dataset_name("celeba"), "CelebA")
+        self.assertEqual(utils_module.infer_dataset_name("celebahq"), "CelebAHQ")
+        self.assertEqual(utils_module.infer_dataset_name("vggface2"), "VGGFace2")
+
+    def test_infer_dataset_name_rejects_unknown_name(self):
+        with self.assertRaisesRegex(ValueError, "Unknown dataset: unavailable"):
+            utils_module.infer_dataset_name("unavailable")
+
     def test_load_dataset_supported_names(self):
         with patch.multiple(
             utils_module,

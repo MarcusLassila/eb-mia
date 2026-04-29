@@ -1,5 +1,31 @@
 from .datasets import *
 
+_DATASET_NAMES = (
+    "MNIST",
+    "CIFAR10",
+    "CelebA",
+    "CelebA2",
+    "VGGFace2",
+    "MSMT17",
+    "CelebAHQ",
+    "Flowers",
+)
+
+def infer_dataset_name(dataset_name):
+    '''
+    Return the canonical dataset name for a case-insensitive input.
+    Args:
+        dataset_name (str): Dataset name or lowercase dataset token.
+    Returns:
+        str: Canonical dataset name accepted by load_dataset.
+    '''
+    normalized_name = dataset_name.lower()
+    for candidate_name in _DATASET_NAMES:
+        candidate_normalized_name = candidate_name.lower()
+        if candidate_normalized_name == normalized_name:
+            return candidate_name
+    raise ValueError(f"Unknown dataset: {dataset_name}")
+
 def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
     '''
     Load a dataset by name.

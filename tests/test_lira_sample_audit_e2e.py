@@ -31,20 +31,20 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
                 assert loaded_dataset is dataset
                 return loss_sig_by_path[Path(model_path)]
 
-            query_config = loss_query_module.utils.Config({
-                "dataset": "cifar10",
-                "data_dir": tmpdir,
-                "batch_size": 2,
-                "res_dir": tmpdir,
-                "n_loss_samples": 5,
-                "checkpoint_paths": [str(target_path), str(shadow_path_a), str(shadow_path_b)],
-            })
-
             with (
                 patch.object(loss_query_module, "load_dataset", return_value=dataset),
                 patch.object(loss_query_module.LossQuery, "query_loss", new=fake_query_loss),
             ):
-                loss_query_module.run_loss_query(query_config, device=torch.device("cpu"))
+                loss_query_module.run_loss_query(
+                    checkpoint_paths=[str(target_path), str(shadow_path_a), str(shadow_path_b)],
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_loss_samples=5,
+                    device=torch.device("cpu"),
+                    noise_level=0.1,
+                )
 
             target_loss_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 5)
             shadow_loss_path_a = path_utils.loss_signals_dir(tmpdir, shadow_path_a) / path_utils.loss_signals_pickle_name(shadow_path_a, 5)

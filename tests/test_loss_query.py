@@ -1,3 +1,4 @@
+import io
 import pickle
 import tempfile
 import unittest
@@ -141,14 +142,6 @@ class TestLossQuery(unittest.TestCase):
     def test_run_loss_query_saves_loss_signals_for_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
-            config = loss_query_module.utils.Config({
-                "dataset": "cifar10",
-                "data_dir": tmpdir,
-                "batch_size": 2,
-                "res_dir": tmpdir,
-                "n_loss_samples": 10,
-                "checkpoint_paths": [target_path],
-            })
             dataset = list(range(4))
 
             with (
@@ -162,9 +155,18 @@ class TestLossQuery(unittest.TestCase):
                     ),
                 ) as query_loss_fn,
             ):
-                saved_paths = loss_query_module.run_loss_query(config=config, device=torch.device("cpu"), noise_level=0.25)
+                saved_paths = loss_query_module.run_loss_query(
+                    checkpoint_paths=[target_path],
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_loss_samples=10,
+                    device=torch.device("cpu"),
+                    noise_level=0.25,
+                )
 
-            load_dataset_fn.assert_called_once_with("cifar10", data_dir=tmpdir, size=32)
+            load_dataset_fn.assert_called_once_with("CIFAR10", data_dir=tmpdir, size=32)
             query_loss_fn.assert_called_once()
             saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 10, 0.25)
             self.assertEqual(saved_paths, [saved_path])
@@ -196,10 +198,31 @@ class TestLossQuery(unittest.TestCase):
             self.assertTrue(torch.allclose(loss_sigs, torch.tensor([2.0, 3.0, 6.0])))
             self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
 
-    def test_run_loss_query_requires_n_loss_samples(self):
-        config = loss_query_module.utils.Config({"checkpoint_paths": ["/tmp/model.pth"]})
-        with self.assertRaisesRegex(ValueError, "n_loss_samples"):
-            loss_query_module.run_loss_query(config=config, device=torch.device("cpu"))
+    def test_run_loss_query_requires_checkpoint_paths(self):
+        with self.assertRaisesRegex(ValueError, "checkpoint_paths"):
+            loss_query_module.run_loss_query(
+                checkpoint_paths=[],
+                dataset="CIFAR10",
+                data_dir="/tmp/data",
+                batch_size=2,
+                res_dir="/tmp/results",
+                n_loss_samples=2,
+                device=torch.device("cpu"),
+                noise_level=0.1,
+            )
+
+    def test_parse_args_requires_n_loss_samples(self):
+        with patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
+            loss_query_module.parse_args([
+                "--checkpoint-paths",
+                "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
+                "--dataset",
+                "CIFAR10",
+                "--batch-size",
+                "2",
+                "--noise-level",
+                "0.25",
+            ])
 
     def test_parse_args_accepts_noise_level(self):
         '''
@@ -207,41 +230,45 @@ class TestLossQuery(unittest.TestCase):
         Returns:
             None
         '''
-        args = loss_query_module.parse_args(["--noise-level", "0.25"])
+        args = loss_query_module.parse_args([
+            "--checkpoint-paths",
+            "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
+            "--dataset",
+            "CIFAR10",
+            "--batch-size",
+            "2",
+            "--n-loss-samples",
+            "3",
+            "--noise-level",
+            "0.25",
+        ])
         self.assertEqual(args.noise_level, 0.25)
 
-    def test_main_prints_effective_settings_after_overrides(self):
+    def test_main_prints_effective_settings(self):
         '''
-        Print only effective loss-query settings after CLI overrides.
+        Print effective loss-query settings from CLI arguments.
         Returns:
             None
         '''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / "config.yaml"
-            configured_res_dir = str(Path(tmpdir) / "configured")
             override_res_dir = str(Path(tmpdir) / "override")
-            configured_path = "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
             override_path = "/tmp/DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
-            with open(config_path, "w") as file:
-                file.write("\n".join([
-                    'dataset: "cifar10"',
-                    f'data_dir: "{tmpdir}"',
-                    "batch_size: 2",
-                    f'res_dir: "{configured_res_dir}"',
-                    "n_loss_samples: 3",
-                    "checkpoint_paths:",
-                    f'  - "{configured_path}"',
-                ]))
 
             with (
                 patch.object(loss_query_module, "run_loss_query", return_value=[]) as run_loss_query_fn,
                 patch("builtins.print") as print_fn,
             ):
                 loss_query_module.main([
-                    "--config",
-                    str(config_path),
                     "--checkpoint-paths",
                     override_path,
+                    "--dataset",
+                    "cifar10",
+                    "--data-dir",
+                    tmpdir,
+                    "--batch-size",
+                    "2",
+                    "--n-loss-samples",
+                    "3",
                     "--noise-level",
                     "0.25",
                     "--res-dir",
@@ -251,18 +278,23 @@ class TestLossQuery(unittest.TestCase):
             run_loss_query_fn.assert_called_once()
             printed_lines = [args.args[0] for args in print_fn.call_args_list]
             self.assertIn("Loss query settings", printed_lines)
-            self.assertIn(f"config_path: {config_path}", printed_lines)
             self.assertIn("device: cpu", printed_lines)
             self.assertIn("dataset: cifar10", printed_lines)
             self.assertIn(f"data_dir: {tmpdir}", printed_lines)
             self.assertIn("batch_size: 2", printed_lines)
             self.assertIn(f"res_dir: {override_res_dir}", printed_lines)
-            self.assertNotIn(f"res_dir: {configured_res_dir}", printed_lines)
             self.assertIn("n_loss_samples: 3", printed_lines)
             self.assertIn("noise_level: 0.25", printed_lines)
             self.assertIn("checkpoint_paths:", printed_lines)
             self.assertIn(f"  - {override_path}", printed_lines)
-            self.assertNotIn(f"  - {configured_path}", printed_lines)
+            kwargs = run_loss_query_fn.call_args.kwargs
+            self.assertEqual(kwargs["checkpoint_paths"], [override_path])
+            self.assertEqual(kwargs["dataset"], "cifar10")
+            self.assertEqual(kwargs["data_dir"], Path(tmpdir))
+            self.assertEqual(kwargs["batch_size"], 2)
+            self.assertEqual(kwargs["res_dir"], Path(override_res_dir))
+            self.assertEqual(kwargs["n_loss_samples"], 3)
+            self.assertEqual(kwargs["noise_level"], 0.25)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,0 @@
-dataset: "CelebA"
-data_dir: ""
-batch_size: 512
-res_dir: ""
-n_loss_samples: 1
-checkpoint_paths:
-  - ""
