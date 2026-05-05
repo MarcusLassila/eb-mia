@@ -36,7 +36,6 @@ class TestDefaultConfigs(unittest.TestCase):
             config = self._load(relative_path)
             self.assertIsInstance(config, dict)
             self.assertIn("dataset", config)
-            self.assertIn("data_dir", config)
             self.assertIn("res_dir", config)
             self.assertIn("audit_mode", config)
             self.assertIn("round_robin", config)

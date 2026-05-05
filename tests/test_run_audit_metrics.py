@@ -468,7 +468,7 @@ class TestRunAuditMetrics(unittest.TestCase):
             )
             self.assertTrue(metrics_path.exists())
 
-    def test_run_entity_audit_passes_hold_out_frac_to_composite_lira(self):
+    def test_run_entity_audit_passes_current_kwargs_to_composite_lira(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-h0p25-s0-sz64-epoch10.pth"
             shadow_path_a = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-h0p25-s1-sz64-epoch10.pth"
@@ -533,7 +533,12 @@ class TestRunAuditMetrics(unittest.TestCase):
             ):
                 run_audit_module.run_entity_audit(config=config)
 
-            self.assertEqual(captured["kwargs"]["hold_out_frac"], 0.25)
+            self.assertEqual(captured["kwargs"]["audit_table"], {0: [3], 1: [7]})
+            self.assertIn("shadow_loss_sigs", captured["kwargs"])
+            self.assertIn("shadow_entity_mask", captured["kwargs"])
+            self.assertFalse(captured["kwargs"]["offline"])
+            self.assertNotIn("hold_out_frac", captured["kwargs"])
+            self.assertNotIn("entity_index_table", captured["kwargs"])
 
     def test_run_entity_audit_rejects_hold_out_indices_used_by_any_model(self):
         with tempfile.TemporaryDirectory() as tmpdir:

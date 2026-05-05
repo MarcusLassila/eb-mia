@@ -111,12 +111,25 @@ def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples
         }, file)
     return output_path
 
-def run_loss_query(checkpoint_paths, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level):
+def resolve_loss_query_dataset(dataset, checkpoint_properties):
+    '''
+    Resolve the canonical dataset name used for loss querying.
+    Args:
+        dataset (str | None): Optional dataset name override.
+        checkpoint_properties (dict): Metadata parsed from a checkpoint path.
+    Returns:
+        str: Canonical dataset name accepted by load_dataset.
+    '''
+    dataset_name = checkpoint_properties["dataset"] if dataset is None else dataset
+    return infer_dataset_name(dataset_name)
+
+def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level):
     '''
     Compute loss-signal pickles for model checkpoints.
     Args:
-        checkpoint_paths (list[str | Path]): Checkpoint paths to query.
-        dataset (str): Dataset name.
+        checkpoint_paths (list[Path]): Checkpoint paths to query.
+        checkpoint_properties (dict): Metadata parsed from the first checkpoint path.
+        dataset (str | None): Optional dataset name. Defaults to the first checkpoint's parsed dataset.
         data_dir (str | Path): Dataset directory.
         batch_size (int): Loss-query batch size.
         res_dir (str | Path): Directory used for saved loss signals.
@@ -126,11 +139,7 @@ def run_loss_query(checkpoint_paths, dataset, data_dir, batch_size, res_dir, n_l
     Returns:
         list[Path]: Saved loss-signal pickle paths.
     '''
-    if not checkpoint_paths:
-        raise ValueError("No checkpoint_paths specified.")
-    checkpoint_paths = [Path(checkpoint_path) for checkpoint_path in checkpoint_paths]
-    checkpoint_properties = utils.parse_properties_from_checkpoint_path(checkpoint_paths[0])
-    dataset_name = infer_dataset_name(dataset)
+    dataset_name = resolve_loss_query_dataset(dataset, checkpoint_properties)
     image_size = checkpoint_properties["size"]
     loaded_dataset = load_dataset(dataset_name, data_dir=data_dir, size=image_size)
     loss_query = LossQuery(
@@ -193,8 +202,8 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--dataset",
-        required=True,
-        help="Dataset name.",
+        default=None,
+        help="Dataset name. Defaults to the dataset parsed from the first checkpoint path.",
     )
     parser.add_argument(
         "--data-dir",
@@ -239,19 +248,25 @@ def main(argv=None):
     args = parse_args(argv)
     assert 0.0 <= args.noise_level <= 1.0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not args.checkpoint_paths:
+        raise ValueError("No checkpoint_paths specified.")
+    checkpoint_paths = [Path(checkpoint_path) for checkpoint_path in args.checkpoint_paths]
+    checkpoint_properties = utils.parse_properties_from_checkpoint_path(checkpoint_paths[0])
+    dataset_name = resolve_loss_query_dataset(args.dataset, checkpoint_properties)
     print_loss_query_settings(
         device=device,
-        dataset=args.dataset,
+        dataset=dataset_name,
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         res_dir=args.res_dir,
         n_loss_samples=args.n_loss_samples,
-        checkpoint_paths=args.checkpoint_paths,
+        checkpoint_paths=checkpoint_paths,
         noise_level=args.noise_level,
     )
     run_loss_query(
-        checkpoint_paths=args.checkpoint_paths,
-        dataset=args.dataset,
+        checkpoint_paths=checkpoint_paths,
+        checkpoint_properties=checkpoint_properties,
+        dataset=dataset_name,
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         res_dir=args.res_dir,

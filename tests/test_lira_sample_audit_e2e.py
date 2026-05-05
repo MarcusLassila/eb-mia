@@ -37,6 +37,7 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
             ):
                 loss_query_module.run_loss_query(
                     checkpoint_paths=[str(target_path), str(shadow_path_a), str(shadow_path_b)],
+                    checkpoint_properties=loss_query_module.utils.parse_properties_from_checkpoint_path(target_path),
                     dataset="cifar10",
                     data_dir=tmpdir,
                     batch_size=2,

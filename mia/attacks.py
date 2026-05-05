@@ -223,11 +223,18 @@ class CompositeLiRA:
                 cov_in = np.eye(len(indices), dtype=np.float32) * float(self.var_in)
                 cov_out = np.eye(len(indices), dtype=np.float32) * float(self.var_out)
             if self.offline:
-                log_p = multivariate_normal.logcdf(
-                    phi_target[indices].cpu().numpy(),
-                    mean=self.mean_out[entity_id].cpu().numpy(),
-                    cov=cov_out,
-                )
+                if self.use_full_cov:
+                    log_p = multivariate_normal.logcdf(
+                        phi_target[indices].cpu().numpy(),
+                        mean=self.mean_out[entity_id].cpu().numpy(),
+                        cov=cov_out,
+                    )
+                else:
+                    log_p = -norm.logsf(
+                        phi_target[indices].cpu().numpy(),
+                        loc=self.mean_out[entity_id].cpu().numpy(),
+                        scale=np.sqrt(float(self.var_out)),
+                    ).sum()
                 score[entity_id] = torch.tensor(log_p, dtype=torch.float32)
             else:
                 log_p_in = multivariate_normal.logpdf(
