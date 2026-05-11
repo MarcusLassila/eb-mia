@@ -2,7 +2,7 @@ from data.dataset_metadata import entity_index_table_from_entity_ids, load_datas
 from . import attacks
 from . import evaluation
 from . import path_utils
-from .utils import indices_of_shadow_models, select_sample_audit_indices, select_entity_audit_indices, load_loss_signals
+from .utils import indices_of_shadow_models, select_sample_audit_indices, select_entity_audit_indices, load_loss_signals, load_loss_signal_samples
 import utils
 
 import argparse

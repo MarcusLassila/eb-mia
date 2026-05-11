@@ -4,7 +4,7 @@ import re
 import utils
 
 _SCORES_FILENAME_RE = re.compile(r"^scores_attack-(?P<attack>.+)_target-(?P<target>.+)\.pkl$")
-_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+)-ls(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)\.pkl$")
+_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+)-ls(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)(?:-dp(?P<n_data_points>\d+))?\.pkl$")
 _METRICS_FILENAME_RE = re.compile(r"^metrics_attack-(?P<attack>.+)_target-(?P<target>.+)_mode-(?P<mode>.+)\.pkl$")
 
 def audit_result_name(target_path):
@@ -98,18 +98,20 @@ def format_float_filename_token(value):
         token = "0"
     return token.replace(".", "p")
 
-def loss_signals_pickle_name(target_path, n_loss_samples, noise_level=0.1):
+def loss_signals_pickle_name(target_path, n_loss_samples, noise_level=0.1, n_data_points=None):
     '''
     Return the normalized loss-signal pickle filename.
     Args:
         target_path (str | Path): Target checkpoint path.
         n_loss_samples (int): Number of loss samples used per point.
         noise_level (float): Query noise level used for loss signals.
+        n_data_points (int | None): Optional number of queried data points.
     Returns:
         str: Loss-signal pickle filename.
     '''
     noise_level_token = format_float_filename_token(noise_level)
-    return f"loss_signals-{Path(target_path).stem}-ls{n_loss_samples}-nl{noise_level_token}.pkl"
+    data_points_token = "" if n_data_points is None else f"-dp{n_data_points}"
+    return f"loss_signals-{Path(target_path).stem}-ls{n_loss_samples}-nl{noise_level_token}{data_points_token}.pkl"
 
 def _parse_scores_filename(path):
     '''
@@ -142,6 +144,7 @@ def _parse_loss_signals_filename(path):
         "target_stem": match.group("target"),
         "n_loss_samples": int(match.group("n_loss_samples")),
         "noise_level": float(match.group("noise_level").replace("p", ".")),
+        "n_data_points": None if match.group("n_data_points") is None else int(match.group("n_data_points")),
     }
 
 def infer_attack_from_score_paths(score_paths):

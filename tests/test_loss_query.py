@@ -177,6 +177,88 @@ class TestLossQuery(unittest.TestCase):
             self.assertTrue(torch.allclose(torch.tensor(payload["loss_sigs"]), expected_loss_sigs))
             self.assertEqual(payload["train_mask"], [False, True, False, True])
 
+    def test_query_loss_can_use_first_n_data_points(self):
+        '''
+        Query only the first n dataset rows and slice the membership mask.
+        Returns:
+            None
+        '''
+        class DummyModel:
+            pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
+            dataset = list(range(5))
+            loss_query = loss_query_module.LossQuery(
+                batch_size=2,
+                device=torch.device("cpu"),
+                n_loss_samples=2,
+                noise_level=0.25,
+            )
+
+            with (
+                patch.object(loss_query, "load_model", return_value=(DummyModel(), torch.tensor([0, 2, 4]))),
+                patch.object(
+                    loss_query,
+                    "compute_loss_samples",
+                    side_effect=[
+                        torch.tensor([[0.0, 1.0], [2.0, 3.0]], dtype=torch.float32),
+                        torch.tensor([[4.0, 5.0]], dtype=torch.float32),
+                    ],
+                ) as compute_loss_samples_fn,
+            ):
+                loss_sig, train_mask = loss_query.query_loss(dataset, target_path, n_data_points=3)
+
+            self.assertTrue(torch.allclose(loss_sig, torch.tensor([[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]])))
+            self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
+            called_batches = [call_args.args[1] for call_args in compute_loss_samples_fn.call_args_list]
+            self.assertTrue(torch.equal(called_batches[0], torch.tensor([0, 1])))
+            self.assertTrue(torch.equal(called_batches[1], torch.tensor([2])))
+
+    def test_run_loss_query_saves_first_n_loss_signals(self):
+        '''
+        Save compact first-n loss signals with a subset-aware filename.
+        Returns:
+            None
+        '''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
+            dataset = list(range(4))
+
+            with (
+                patch.object(loss_query_module, "load_dataset", return_value=dataset),
+                patch.object(
+                    loss_query_module.LossQuery,
+                    "query_loss",
+                    return_value=(
+                        torch.tensor([[0.1, 0.3], [0.2, 0.4]], dtype=torch.float32),
+                        torch.tensor([0, 1], dtype=torch.bool),
+                    ),
+                ) as query_loss_fn,
+            ):
+                saved_paths = loss_query_module.run_loss_query(
+                    checkpoint_paths=[target_path],
+                    checkpoint_properties=loss_query_module.utils.parse_properties_from_checkpoint_path(target_path),
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_loss_samples=10,
+                    device=torch.device("cpu"),
+                    noise_level=0.25,
+                    n_data_points=2,
+                )
+
+            query_loss_fn.assert_called_once()
+            self.assertEqual(query_loss_fn.call_args.args[2], 2)
+            saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 10, 0.25, 2)
+            self.assertEqual(saved_paths, [saved_path])
+            with open(saved_path, "rb") as file:
+                payload = pickle.load(file)
+            self.assertEqual(sorted(payload.keys()), ["loss_sigs", "train_mask"])
+            self.assertTrue(torch.allclose(torch.tensor(payload["loss_sigs"]), torch.tensor([[0.1, 0.3], [0.2, 0.4]])))
+            self.assertEqual(payload["train_mask"], [False, True])
+
     def test_run_loss_query_infers_dataset_from_checkpoint_path(self):
         '''
         Use the checkpoint dataset token when no explicit dataset is provided.
@@ -234,6 +316,29 @@ class TestLossQuery(unittest.TestCase):
             self.assertTrue(torch.allclose(loss_sigs, torch.tensor([2.0, 3.0, 6.0])))
             self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
 
+    def test_load_loss_signal_samples_preserves_saved_loss_samples(self):
+        '''
+        Preserve 2D saved loss samples when loading signals for sample-aware audits.
+        Returns:
+            None
+        '''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loss_path = Path(tmpdir) / "loss_signals.pkl"
+            with open(loss_path, "wb") as file:
+                pickle.dump(
+                    {
+                        "loss_sigs": [[1.0, 3.0], [2.0, 4.0], [5.0, 7.0]],
+                        "train_mask": [True, False, True],
+                    },
+                    file,
+                )
+
+            loss_sigs, train_mask = mia_utils.load_loss_signal_samples(loss_path)
+
+            expected_loss_sigs = torch.tensor([[1.0, 3.0], [2.0, 4.0], [5.0, 7.0]])
+            self.assertTrue(torch.allclose(loss_sigs, expected_loss_sigs))
+            self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
+
     def test_run_loss_query_returns_no_paths_for_empty_checkpoint_paths(self):
         checkpoint_properties = {
             "dataset": "cifar10",
@@ -283,8 +388,11 @@ class TestLossQuery(unittest.TestCase):
             "3",
             "--noise-level",
             "0.25",
+            "--n-data-points",
+            "100",
         ])
         self.assertEqual(args.noise_level, 0.25)
+        self.assertEqual(args.n_data_points, 100)
 
     def test_main_prints_effective_settings(self):
         '''
@@ -327,6 +435,7 @@ class TestLossQuery(unittest.TestCase):
             self.assertIn(f"res_dir: {override_res_dir}", printed_lines)
             self.assertIn("n_loss_samples: 3", printed_lines)
             self.assertIn("noise_level: 0.25", printed_lines)
+            self.assertIn("n_data_points: None", printed_lines)
             self.assertIn("checkpoint_paths:", printed_lines)
             self.assertIn(f"  - {override_path}", printed_lines)
             kwargs = run_loss_query_fn.call_args.kwargs
@@ -337,6 +446,37 @@ class TestLossQuery(unittest.TestCase):
             self.assertEqual(kwargs["res_dir"], Path(override_res_dir))
             self.assertEqual(kwargs["n_loss_samples"], 3)
             self.assertEqual(kwargs["noise_level"], 0.25)
+            self.assertIsNone(kwargs["n_data_points"])
+
+    def test_main_forwards_n_data_points(self):
+        '''
+        Forward the first-n data point option from the CLI.
+        Returns:
+            None
+        '''
+        override_path = "/tmp/DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+
+        with (
+            patch.object(loss_query_module, "run_loss_query", return_value=[]) as run_loss_query_fn,
+            patch("builtins.print") as print_fn,
+        ):
+            loss_query_module.main([
+                "--checkpoint-paths",
+                override_path,
+                "--batch-size",
+                "2",
+                "--n-loss-samples",
+                "3",
+                "--noise-level",
+                "0.25",
+                "--n-data-points",
+                "100",
+            ])
+
+        kwargs = run_loss_query_fn.call_args.kwargs
+        printed_lines = [args.args[0] for args in print_fn.call_args_list]
+        self.assertIn("n_data_points: 100", printed_lines)
+        self.assertEqual(kwargs["n_data_points"], 100)
 
     def test_main_allows_omitted_dataset(self):
         '''

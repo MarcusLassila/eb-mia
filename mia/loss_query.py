@@ -10,7 +10,7 @@ import pickle
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
 class LossQuery:
@@ -79,14 +79,17 @@ class LossQuery:
         sorted_loss_samples = torch.sort(loss_samples, dim=1).values
         return sorted_loss_samples
 
-    def query_loss(self, dataset, model_path):
-        audit_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+    def query_loss(self, dataset, model_path, n_data_points=None):
+        audit_dataset = dataset if n_data_points is None else Subset(dataset, range(n_data_points))
+        audit_loader = DataLoader(audit_dataset, batch_size=self.batch_size, shuffle=False)
         model, train_indices = self.load_model(model_path)
         mask = index_to_mask(train_indices, n_indices=len(dataset))
+        if n_data_points is not None:
+            mask = mask[:n_data_points]
         sig = self.loss_signal(audit_loader, model)
         return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
 
-def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples, noise_level=0.1):
+def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples, noise_level=0.1, n_data_points=None):
     '''
     Save one checkpoint's loss-signal payload.
     Args:
@@ -96,13 +99,14 @@ def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples
         train_mask (torch.Tensor): Training-membership mask.
         n_loss_samples (int): Number of loss samples used per point.
         noise_level (float): Query noise level used for loss signals.
+        n_data_points (int | None): Optional number of queried data points.
     Returns:
         Path: Saved pickle path.
     '''
     target_path = Path(target_path)
     output_dir = path_utils.loss_signals_dir(res_dir, target_path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_name = path_utils.loss_signals_pickle_name(target_path, n_loss_samples, noise_level)
+    output_name = path_utils.loss_signals_pickle_name(target_path, n_loss_samples, noise_level, n_data_points)
     output_path = output_dir / output_name
     with open(output_path, "wb") as file:
         pickle.dump({
@@ -123,7 +127,7 @@ def resolve_loss_query_dataset(dataset, checkpoint_properties):
     dataset_name = checkpoint_properties["dataset"] if dataset is None else dataset
     return infer_dataset_name(dataset_name)
 
-def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level):
+def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level, n_data_points=None):
     '''
     Compute loss-signal pickles for model checkpoints.
     Args:
@@ -136,6 +140,7 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
         n_loss_samples (int): Number of loss samples used per point.
         device (torch.device): Device used for model evaluation.
         noise_level (float): Query noise level used for loss signals.
+        n_data_points (int | None): Optional number of leading data points to query.
     Returns:
         list[Path]: Saved loss-signal pickle paths.
     '''
@@ -150,12 +155,12 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
     )
     saved_paths = []
     for checkpoint_path in checkpoint_paths:
-        loss_sig, train_mask = loss_query.query_loss(loaded_dataset, checkpoint_path)
-        saved_path = save_loss_signals(res_dir, checkpoint_path, loss_sig, train_mask, n_loss_samples, noise_level)
+        loss_sig, train_mask = loss_query.query_loss(loaded_dataset, checkpoint_path, n_data_points)
+        saved_path = save_loss_signals(res_dir, checkpoint_path, loss_sig, train_mask, n_loss_samples, noise_level, n_data_points)
         saved_paths.append(saved_path)
     return saved_paths
 
-def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_loss_samples, checkpoint_paths, noise_level):
+def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_loss_samples, checkpoint_paths, noise_level, n_data_points):
     '''
     Print effective loss-query settings.
     Args:
@@ -167,6 +172,7 @@ def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_
         n_loss_samples (int): Number of loss samples used per point.
         checkpoint_paths (list[str] | None): Effective checkpoint paths.
         noise_level (float): Effective query noise level.
+        n_data_points (int | None): Optional number of leading data points to query.
     Returns:
         None
     '''
@@ -178,6 +184,7 @@ def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_
     print(f"res_dir: {res_dir}")
     print(f"n_loss_samples: {n_loss_samples}")
     print(f"noise_level: {noise_level}")
+    print(f"n_data_points: {n_data_points}")
     print("checkpoint_paths:")
     for checkpoint_path in checkpoint_paths:
         print(f"  - {checkpoint_path}")
@@ -235,6 +242,12 @@ def parse_args(argv=None):
         required=True,
         help="Loss-query noise level in [0.0, 1.0].",
     )
+    parser.add_argument(
+        "--n-data-points",
+        type=int,
+        default=None,
+        help="Optionally compute loss signals for only the first N data points.",
+    )
     return parser.parse_args(argv)
 
 def main(argv=None):
@@ -262,6 +275,7 @@ def main(argv=None):
         n_loss_samples=args.n_loss_samples,
         checkpoint_paths=checkpoint_paths,
         noise_level=args.noise_level,
+        n_data_points=args.n_data_points,
     )
     run_loss_query(
         checkpoint_paths=checkpoint_paths,
@@ -273,6 +287,7 @@ def main(argv=None):
         n_loss_samples=args.n_loss_samples,
         device=device,
         noise_level=args.noise_level,
+        n_data_points=args.n_data_points,
     )
 
 if __name__ == "__main__":
