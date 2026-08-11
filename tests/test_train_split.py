@@ -77,28 +77,20 @@ class TestTrainSplit(unittest.TestCase):
                     "FakeDataset",
                     "--output-dir",
                     tmpdir,
-                    "--seed",
+                    "--seeds",
                     "5",
                     "--fraction",
                     "0.5",
                     "--mode",
                     "sample",
+                    "--make-complement-splits",
                 ])
-                sample_path = Path(tmpdir) / "FakeDataset-smpl-f0p5-s5.pkl"
+                split_dir = Path(tmpdir) / "FakeDataset" / "sample"
+                sample_path = split_dir / "FakeDataset-smpl-f0p5-s5.pkl"
                 sample_indices = train_split.load_indices(sample_path, len_dataset=10)
                 self.assertEqual(sample_indices, [1, 2, 3, 6, 7])
 
-                train_split.main([
-                    "--dataset",
-                    "FakeDataset",
-                    "--output-dir",
-                    tmpdir,
-                    "--mode",
-                    "complement",
-                    "--train-split-path",
-                    str(sample_path),
-                ])
-                complement_path = Path(tmpdir) / "FakeDataset-smpl-f0p5-s5-comp.pkl"
+                complement_path = split_dir / "FakeDataset-smpl-f0p5-s5-comp.pkl"
                 complement_indices = train_split.load_indices(complement_path, len_dataset=10)
                 self.assertEqual(complement_indices, [0, 4, 5, 8, 9])
                 self.assertEqual(set(sample_indices) | set(complement_indices), set(range(10)))
@@ -120,7 +112,7 @@ class TestTrainSplit(unittest.TestCase):
                     "CelebA",
                     "--output-dir",
                     tmpdir,
-                    "--seed",
+                    "--seeds",
                     "7",
                     "--mode",
                     "entity",
@@ -129,7 +121,7 @@ class TestTrainSplit(unittest.TestCase):
                     "--per-entity-fraction",
                     "0.5",
                 ])
-            path = Path(tmpdir) / "CelebA-ent-f0p5-p0p5-s7.pkl"
+            path = Path(tmpdir) / "CelebA" / "entity" / "CelebA-ent-f0p5-p0p5-s7.pkl"
             indices = train_split.load_indices(path, len_dataset=len(dataset))
         self.assertEqual(indices, [1, 3, 9, 10])
 
@@ -150,7 +142,7 @@ class TestTrainSplit(unittest.TestCase):
                     "CelebA",
                     "--output-dir",
                     tmpdir,
-                    "--seed",
+                    "--seeds",
                     "7",
                     "--mode",
                     "entity",
@@ -161,22 +153,20 @@ class TestTrainSplit(unittest.TestCase):
                     "--per-entity-hold-out",
                     "0.25",
                 ])
-            path = Path(tmpdir) / "CelebA-ent-f0p5-p0p5-h0p25-s7.pkl"
+            path = Path(tmpdir) / "CelebA" / "entity" / "CelebA-ent-f0p5-p0p5-h0p25-s7.pkl"
             indices = train_split.load_indices(path, len_dataset=len(dataset))
         self.assertEqual(indices, [1, 2, 9, 10])
 
-    def test_cli_entity_complement_mode_creates_expected_indices(self):
+    def test_cli_entity_mode_creates_complement_split(self):
         rng_factory = np.random.default_rng
         dataset = _FakeEntityDataset()
         with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir) / "CelebA-ent-f0p5-p0p5-s7.pkl"
-            train_split.save_indices([1, 3, 8, 11], len(dataset), tmpdir, base_path.name)
             with (
                 patch.object(train_split, "load_dataset", return_value=dataset),
                 patch.object(
                     train_split.np.random,
                     "default_rng",
-                    side_effect=lambda seed=None: rng_factory(11),
+                    side_effect=lambda seed=None: rng_factory(7),
                 ),
             ):
                 train_split.main([
@@ -185,13 +175,66 @@ class TestTrainSplit(unittest.TestCase):
                     "--output-dir",
                     tmpdir,
                     "--mode",
-                    "entity-complement",
-                    "--train-split-path",
-                    str(base_path),
+                    "entity",
+                    "--seeds",
+                    "7",
+                    "--entity-fraction",
+                    "0.5",
+                    "--per-entity-fraction",
+                    "0.5",
+                    "--make-complement-splits",
                 ])
-            complement_path = Path(tmpdir) / "CelebA-ent-f0p5-p0p5-s7-comp.pkl"
+            complement_path = Path(tmpdir) / "CelebA" / "entity" / "CelebA-ent-f0p5-p0p5-s7-comp.pkl"
             indices = train_split.load_indices(complement_path, len_dataset=len(dataset))
-        self.assertEqual(indices, [5, 7, 13, 15])
+        self.assertEqual(indices, [4, 7, 12, 14])
+
+    def test_cli_first_n_mode_creates_one_deterministic_split(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(train_split, "load_dataset", return_value=_FakeDataset()):
+                train_split.main([
+                    "--dataset",
+                    "FakeDataset",
+                    "--output-dir",
+                    tmpdir,
+                    "--mode",
+                    "first-n",
+                    "--first-n-samples",
+                    "4",
+                    "--seeds",
+                    "0,1,2",
+                    "--make-complement-splits",
+                ])
+            split_dir = Path(tmpdir) / "FakeDataset"
+            split_paths = sorted(split_dir.glob("*.pkl"))
+            split_path = split_dir / "FakeDataset-smpl-first4.pkl"
+            indices = train_split.load_indices(split_path, len_dataset=10)
+        self.assertEqual(indices, [0, 1, 2, 3])
+        self.assertEqual(split_paths, [split_path])
+
+    def test_cli_sample_mode_creates_multiple_seed_pairs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(train_split, "load_dataset", return_value=_FakeDataset()):
+                train_split.main([
+                    "--dataset",
+                    "FakeDataset",
+                    "--output-dir",
+                    tmpdir,
+                    "--seeds",
+                    "0,1,2,3,4",
+                    "--fraction",
+                    "0.5",
+                    "--mode",
+                    "sample",
+                    "--make-complement-splits",
+                ])
+            split_dir = Path(tmpdir) / "FakeDataset" / "sample"
+            split_paths = sorted(split_dir.glob("*.pkl"))
+        self.assertEqual(len(split_paths), 10)
+        for seed in range(5):
+            base_path = split_dir / f"FakeDataset-smpl-f0p5-s{seed}.pkl"
+            comp_path = split_dir / f"FakeDataset-smpl-f0p5-s{seed}-comp.pkl"
+            self.assertIn(base_path, split_paths)
+            self.assertIn(comp_path, split_paths)
 
 
 if __name__ == "__main__":

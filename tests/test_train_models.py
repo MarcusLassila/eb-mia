@@ -156,6 +156,50 @@ class TestTrainModels(unittest.TestCase):
                     self.assertTrue(torch.equal(train_dataset.indices, torch.tensor(indices, dtype=torch.long)))
                     self.assertTrue(torch.equal(val_dataset.indices, torch.tensor([1], dtype=torch.long)))
 
+    def test_train_model_from_scratch_passes_improved_vae_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "train_indices.pkl"
+            with open(path, "wb") as file:
+                pickle.dump({"indices": [0, 2, 4], "len_dataset": 6}, file)
+            config = types.SimpleNamespace(
+                dataset="Dummy",
+                val_frac=0.2,
+                model="ImprovedVAE",
+                image_resolution=2,
+                suffix="",
+                batch_size=2,
+                simul_batch_size=2,
+                epochs=1,
+                epochs_per_checkpoint=1,
+                lr=1e-3,
+                weight_decay=0.0,
+                ema_decay=0.0,
+                grad_clip=0.0,
+                autocast_dtype="float16",
+                lr_scheduler="none",
+                latent_ch=4,
+                base_channels=8,
+                channel_mult=[1],
+                n_res_blocks_per_level=1,
+                kl_weight=0.5,
+                free_bits=0.1,
+            )
+            with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
+                with mock.patch.object(train_model, "ImprovedVAE", return_value=_DummyModel()) as mock_vae:
+                    with mock.patch.object(train_model, "TrainLoop") as mock_loop:
+                        mock_loop.return_value.train.return_value = None
+                        train_model.train_model_from_scratch(
+                            accelerator=_DummyAccelerator(),
+                            config=config,
+                            data_dir=Path(tmpdir),
+                            savedir=Path(tmpdir),
+                            train_indices_path=path,
+                        )
+            self.assertEqual(mock_vae.call_args.kwargs["latent_ch"], 4)
+            self.assertEqual(mock_vae.call_args.kwargs["channel_mult"], (1,))
+            self.assertEqual(mock_vae.call_args.kwargs["kl_weight"], 0.5)
+            self.assertEqual(mock_vae.call_args.kwargs["free_bits"], 0.1)
+
     def test_train_model_from_scratch_passes_lr_scheduler_params_dict(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "train_indices.pkl"

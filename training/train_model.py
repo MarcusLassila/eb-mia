@@ -349,35 +349,12 @@ def build_arg_parser():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--suffix", type=str, default="")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--train-indices-path",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--checkpoint-path",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "--save-dir",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "--torch-compile",
-        action="store_true",
-    )
+    parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--train-indices-path", type=str, default=None)
+    parser.add_argument("--checkpoint-path", type=str, default=None)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--save-dir", type=str, required=True)
+    parser.add_argument("--torch-compile", action="store_true")
     return parser
 
 if __name__ == "__main__":

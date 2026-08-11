@@ -3,7 +3,6 @@ from data.utils import load_dataset
 from utils import index_to_mask, mask_to_index
 
 import argparse
-import re
 import pickle
 import numpy as np
 import torch
@@ -33,13 +32,19 @@ def select_fraction(indices: list, fraction: float, rng: np.random.Generator, ho
         selected_indices.append(shuffled_indices[k])
     return selected_indices
 
-def sample_split(dataset, rng, args):
+def sample_split(dataset, rng, args, seed):
     sample_indices = [*range(len(dataset))]
     selected_indices = sorted(select_fraction(sample_indices, args.fraction, rng))
-    file_name = f"{args.dataset}-smpl-f{str(args.fraction).replace('.', 'p')}-s{args.seed}.pkl"
-    save_indices(selected_indices, len(dataset), args.output_dir, file_name)
+    full_output_dir = f"{args.output_dir}/{args.dataset}/sample"
+    file_name = f"{args.dataset}-smpl-f{str(args.fraction).replace('.', 'p')}-s{seed}.pkl"
+    save_indices(selected_indices, len(dataset), full_output_dir, file_name)
+    if args.make_complement_splits:
+        mask = index_to_mask(torch.tensor(selected_indices), n_indices=len(dataset))
+        comp_indices = mask_to_index(~mask).tolist()
+        comp_file_name = f"{Path(file_name).stem}-comp.pkl"
+        save_indices(comp_indices, len(dataset), full_output_dir, comp_file_name)
 
-def entity_split(dataset: datasets.EntityDataset, rng, args):
+def entity_split(dataset: datasets.EntityDataset, rng, args, seed):
     entity_ids = list(range(dataset.n_entities))
     selected_entities = select_fraction(entity_ids, args.entity_fraction, rng)
     entity_index_table = dataset.get_entity_index_table()
@@ -60,63 +65,49 @@ def entity_split(dataset: datasets.EntityDataset, rng, args):
         f"-f{str(args.entity_fraction).replace('.', 'p')}"
         f"-p{str(args.per_entity_fraction).replace('.', 'p')}"
         f"{hold_out_tag}"
-        f"-s{args.seed}.pkl"
+        f"-s{seed}.pkl"
     )
-    save_indices(selected_indices, len(dataset), args.output_dir, file_name)
+    full_output_dir = f"{args.output_dir}/{args.dataset}/entity"
+    save_indices(selected_indices, len(dataset), full_output_dir, file_name)
+    if args.make_complement_splits:
+        entity_complement(dataset, indices=selected_indices,output_dir=full_output_dir, file_name_stem=Path(file_name).stem, rng=rng, args=args)
 
-def sample_complement(dataset, train_split_path, output_dir):
-    train_split_path = Path(train_split_path)
-    indices = load_indices(train_split_path, len_dataset=len(dataset))
-    mask = index_to_mask(torch.tensor(indices), n_indices=len(dataset))
-    complement_indices = mask_to_index(~mask).tolist()
-    file_name = f"{train_split_path.stem}-comp.pkl"
-    save_indices(complement_indices, len(dataset), output_dir, file_name)
-
-def entity_complement(dataset: datasets.EntityDataset, train_split_path, output_dir, rng):
-    train_split_path = Path(train_split_path)
-    indices = load_indices(train_split_path, len_dataset=len(dataset))
+def entity_complement(dataset: datasets.EntityDataset, indices, output_dir, file_name_stem, rng, args):
     entity_ids = torch.unique(dataset.entity_ids[indices], sorted=True)
     complement_entity_ids = mask_to_index(~index_to_mask(entity_ids, dataset.n_entities)).tolist()
     entity_index_table = dataset.get_entity_index_table()
-    match_obj = re.search(r"-p([01]p\d+)(?:-h([01]p\d+))?", train_split_path.stem)
-    assert match_obj is not None
-    match match_obj.groups():
-        case (per_entity_fraction, hold_out_fraction):
-            per_entity_fraction = float(per_entity_fraction.replace("p", "."))
-            hold_out_fraction = float(hold_out_fraction.replace("p", ".")) if hold_out_fraction is not None else 0.0
-        case _:
-            raise ValueError(f"Error while parsing train split path.")
     selected_indices = []
     for entity_id in complement_entity_ids:
         selected_indices.extend(select_fraction(
             entity_index_table[entity_id],
-            per_entity_fraction,
+            args.per_entity_fraction,
             rng,
-            hold_out_fraction=hold_out_fraction,
+            hold_out_fraction=args.per_entity_hold_out,
         ))
     selected_indices.sort()
-    file_name = f"{train_split_path.stem}-comp.pkl"
+    file_name = f"{file_name_stem}-comp.pkl"
     save_indices(selected_indices, len(dataset), output_dir, file_name)
 
 def first_n_train_split(dataset, args):
     assert args.first_n_samples <= len(dataset)
     selected_indices = list(range(args.first_n_samples))
+    full_output_dir = f"{args.output_dir}/{args.dataset}"
     file_name = f"{args.dataset}-smpl-first{args.first_n_samples}.pkl"
-    save_indices(selected_indices, len(dataset), args.output_dir, file_name)
+    save_indices(selected_indices, len(dataset), full_output_dir, file_name)
 
 def _build_parser():
-    parser = argparse.ArgumentParser(description="Create training split index files.")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--data-dir", default="./datasets")
     parser.add_argument("--output-dir", default="training/train_splits")
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--mode", choices=["sample", "entity", "complement", "entity-complement"], default="sample")
+    parser.add_argument("--seeds", type=str, default="0")
+    parser.add_argument("--mode", choices=["sample", "entity", "first-n"], default="sample")
     parser.add_argument("--fraction", type=float, default=0.5)
     parser.add_argument("--entity-fraction", type=float, default=0.5)
     parser.add_argument("--per-entity-fraction", type=float, default=0.5)
     parser.add_argument("--per-entity-hold-out", type=float, default=0.0)
     parser.add_argument("--first-n-samples", type=int)
-    parser.add_argument("--train-split-path", type=str)
+    parser.add_argument("--make-complement-splits", action="store_true")
     return parser
 
 def main(argv=None):
@@ -126,20 +117,20 @@ def main(argv=None):
         dataset_name=args.dataset,
         data_dir=args.data_dir,
     )
-    rng = np.random.default_rng(seed=args.seed)
-    match args.mode:
-        case "sample":
-            if args.first_n_samples is not None:
-                first_n_train_split(dataset, args)
+    if args.mode == "first-n":
+        assert args.first_n_samples >= 0
+        first_n_train_split(dataset, args)
+    else:
+        seeds = [int(seed) for seed in args.seeds.split(",")]
+        for seed in seeds:
+            rng = np.random.default_rng(seed=seed)
+            if args.mode == "sample":
+                sample_split(dataset, rng, args, seed)
+            elif args.mode == "entity":
+                assert isinstance(dataset, datasets.EntityDataset)
+                entity_split(dataset, rng, args, seed)
             else:
-                sample_split(dataset, rng, args)
-        case "entity":
-            assert isinstance(dataset, datasets.EntityDataset)
-            entity_split(dataset, rng, args)
-        case "complement":
-            sample_complement(dataset, args.train_split_path, args.output_dir)
-        case "entity-complement":
-            entity_complement(dataset, args.train_split_path, args.output_dir, rng)
+                raise ValueError("Unsupported mode.")
 
 if __name__ == "__main__":
     main()
