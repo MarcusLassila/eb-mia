@@ -1,6 +1,5 @@
 batch_size: 64
 simul_batch_size: 256
-torch_compile: true
 dataset: "CIFAR10"
 image_resolution: 32
 epochs: 1000

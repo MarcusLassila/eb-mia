@@ -1,6 +1,5 @@
 batch_size: 128
 simul_batch_size: 128
-torch_compile: false
 dataset: "CelebA2"
 epochs: 1000
 epochs_per_checkpoint: 100

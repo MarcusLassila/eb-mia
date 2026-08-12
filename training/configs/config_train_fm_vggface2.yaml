@@ -1,6 +1,5 @@
 batch_size: 32
 simul_batch_size: 1024
-torch_compile: true
 dataset: "VGGFace2"
 image_resolution: 128
 epochs: 1000

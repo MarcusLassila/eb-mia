@@ -307,7 +307,7 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
         if train_indices_path is None:
             raise ValueError("must provide a path to the train indices unless resuming from a checkpoint.")
         accelerator = AcceleratorLite(
-            torch_compile=bool(config.torch_compile or torch_compile),
+            torch_compile=torch_compile,
             base_seed=getattr(config, "seed", 0),
             dataloader_config=getattr(config, "dataloader_config", None),
         )
@@ -325,7 +325,7 @@ def main(config_file=None, suffix="", train_indices_path=None, checkpoint_path=N
             accelerator = AcceleratorLite(torch_compile=torch_compile, base_seed=0, dataloader_config=None)
         else:
             accelerator = AcceleratorLite(
-                torch_compile=bool(config.torch_compile or torch_compile),
+                torch_compile=torch_compile,
                 base_seed=getattr(config, "seed", 0),
                 dataloader_config=getattr(config, "dataloader_config", None),
             )
