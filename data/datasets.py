@@ -131,10 +131,19 @@ class ImageNet(Dataset):
             self.transform = T.Compose(transforms)
         else:
             self.transform = transform
-        self.dataset = ConcatDataset([
-            datasets.ImageNet(root=data_dir, split="train", transform=self.transform),
-            datasets.ImageNet(root=data_dir, split="val", transform=self.transform),
-        ])
+        train_split = load_dataset(
+            "ILSVRC/imagenet-1k",
+            split="train",
+            cache_dir=data_dir,
+            token=True,
+        )
+        val_split = load_dataset(
+            "ILSVRC/imagenet-1k",
+            split="validation",
+            cache_dir=data_dir,
+            token=True,
+        )
+        self.dataset = concatenate_datasets([train_split, val_split])
 
     def __getitem__(self, index):
         '''
@@ -144,8 +153,10 @@ class ImageNet(Dataset):
         Returns:
             torch.Tensor: Transformed image tensor.
         '''
-        item, _ = self.dataset[index]
-        return item
+        sample = self.dataset[int(index)]
+        image = sample["image"].convert("RGB")
+        transformed_image = self.transform(image)
+        return transformed_image
 
     def __len__(self):
         '''

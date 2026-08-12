@@ -236,41 +236,83 @@ class TestData(unittest.TestCase):
                 self.assertEqual(dataset.n_entities, 4)
 
     def test_imagenet_combines_train_and_val_and_discards_labels(self):
-        class FakeImageNet:
-            def __init__(self, root, split, transform):
-                self.root = root
+        class FakeSplit:
+            def __init__(self, split):
                 self.split = split
-                self.transform = transform
-                self.image = Image.new("RGB", (32, 32), color=(128, 128, 128))
+                self._data = [
+                    {
+                        "image": Image.new("RGB", (32, 32), color=(128, 128, 128)),
+                        "label": 123,
+                    }
+                ]
 
             def __getitem__(self, index):
-                return self.transform(self.image), 123
+                return self._data[index]
 
             def __len__(self):
-                return 2 if self.split == "train" else 1
+                return len(self._data)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.datasets.datasets.ImageNet", side_effect=FakeImageNet) as imagenet_fn:
-                dataset = data_module.ImageNet(data_dir=tmpdir, transform=lambda image: image)
-
-                self.assertEqual(len(dataset), 3)
-                self.assertIsInstance(dataset[0], Image.Image)
-                self.assertEqual(imagenet_fn.call_count, 2)
-
-    def test_imagenet_grayscale_transform(self):
-        class FakeImageNet:
-            def __init__(self, root, split, transform):
-                self.transform = transform
-                self.image = Image.new("RGB", (256, 256), color=(128, 128, 128))
+        class FakeConcatDataset:
+            def __init__(self, datasets):
+                self._data = []
+                for dataset in datasets:
+                    self._data.extend(dataset._data)
 
             def __getitem__(self, index):
-                return self.transform(self.image), 0
+                return self._data[index]
+
+            def __len__(self):
+                return len(self._data)
+
+        def fake_load_dataset(name, split, cache_dir, token):
+            self.assertEqual(name, "ILSVRC/imagenet-1k")
+            self.assertEqual(cache_dir, tmpdir)
+            self.assertTrue(token)
+            return FakeSplit(split)
+
+        def fake_concatenate_datasets(datasets):
+            return FakeConcatDataset(datasets=datasets)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset) as load_dataset_fn, patch(
+                "data.datasets.concatenate_datasets",
+                side_effect=fake_concatenate_datasets,
+            ):
+                dataset = data_module.ImageNet(data_dir=tmpdir, transform=lambda image: image)
+
+                self.assertEqual(len(dataset), 2)
+                self.assertIsInstance(dataset[0], Image.Image)
+                self.assertEqual(load_dataset_fn.call_count, 2)
+                self.assertEqual(load_dataset_fn.call_args_list[0].kwargs["split"], "train")
+                self.assertEqual(load_dataset_fn.call_args_list[1].kwargs["split"], "validation")
+
+    def test_imagenet_grayscale_transform(self):
+        class FakeSplit:
+            def __init__(self):
+                self._data = [
+                    {
+                        "image": Image.new("RGB", (256, 256), color=(128, 128, 128)),
+                        "label": 0,
+                    }
+                ]
+
+            def __getitem__(self, index):
+                return self._data[index]
 
             def __len__(self):
                 return 1
 
+        def fake_load_dataset(*args, **kwargs):
+            return FakeSplit()
+
+        def fake_concatenate_datasets(datasets):
+            return FakeSplit()
+
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("data.datasets.datasets.ImageNet", side_effect=FakeImageNet):
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
+                "data.datasets.concatenate_datasets",
+                side_effect=fake_concatenate_datasets,
+            ):
                 dataset = data_module.ImageNet(data_dir=tmpdir, transform=None, size=32, grayscale=True)
 
                 sample = dataset[0]
