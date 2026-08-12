@@ -18,6 +18,10 @@ class FakeCIFAR10(FakeDataset):
     pass
 
 
+class FakeImageNet(FakeDataset):
+    pass
+
+
 class FakeCelebA(FakeDataset):
     pass
 
@@ -41,6 +45,7 @@ class FakeFlowers(FakeDataset):
 class TestLoadDataset(unittest.TestCase):
     def test_infer_dataset_name_from_lowercase(self):
         self.assertEqual(utils_module.infer_dataset_name("cifar10"), "CIFAR10")
+        self.assertEqual(utils_module.infer_dataset_name("imagenet"), "ImageNet")
         self.assertEqual(utils_module.infer_dataset_name("celeba"), "CelebA")
         self.assertEqual(utils_module.infer_dataset_name("celebahq"), "CelebAHQ")
         self.assertEqual(utils_module.infer_dataset_name("vggface2"), "VGGFace2")
@@ -54,6 +59,7 @@ class TestLoadDataset(unittest.TestCase):
             utils_module,
             MNIST=FakeMNIST,
             CIFAR10=FakeCIFAR10,
+            ImageNet=FakeImageNet,
             CelebA=FakeCelebA,
             VGGFace2=FakeVGGFace2,
             MSMT17=FakeMSMT17,
@@ -71,6 +77,39 @@ class TestLoadDataset(unittest.TestCase):
                 {
                     "data_dir": "root",
                     "transform": None,
+                    "random_horizontal_flip": True,
+                },
+            )
+
+            dataset = utils_module.load_dataset(
+                "ImageNet",
+                data_dir="root",
+                transform="t",
+                size=64,
+                grayscale=True,
+                random_horizontal_flip=False,
+            )
+            self.assertIsInstance(dataset, FakeImageNet)
+            self.assertEqual(
+                dataset.kwargs,
+                {
+                    "data_dir": "root",
+                    "transform": "t",
+                    "size": 64,
+                    "grayscale": True,
+                    "random_horizontal_flip": False,
+                },
+            )
+
+            dataset = utils_module.load_dataset("ImageNet", data_dir="root", transform="t")
+            self.assertIsInstance(dataset, FakeImageNet)
+            self.assertEqual(
+                dataset.kwargs,
+                {
+                    "data_dir": "root",
+                    "transform": "t",
+                    "size": 128,
+                    "grayscale": False,
                     "random_horizontal_flip": True,
                 },
             )

@@ -3,6 +3,7 @@ from .datasets import *
 _DATASET_NAMES = (
     "MNIST",
     "CIFAR10",
+    "ImageNet",
     "CelebA",
     "CelebA2",
     "VGGFace2",
@@ -44,6 +45,14 @@ def load_dataset(dataset_name, data_dir="./datasets", transform=None, **kwargs):
             dataset = CIFAR10(
                 data_dir=data_dir,
                 transform=transform,
+                random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
+            )
+        case "ImageNet":
+            dataset = ImageNet(
+                data_dir=data_dir,
+                transform=transform,
+                size=kwargs.get("size", 128),
+                grayscale=kwargs.get("grayscale", False),
                 random_horizontal_flip=kwargs.get("random_horizontal_flip", True),
             )
         case "CelebA":

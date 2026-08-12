@@ -90,6 +90,71 @@ class CIFAR10(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+class ImageNet(Dataset):
+    '''
+    ImageNet dataset with optional preprocessing.
+    Args:
+        data_dir (str): Dataset root directory.
+        transform (callable | None): Optional transform applied to each image.
+        size (int): Output image size.
+        grayscale (bool): Whether to convert images to grayscale.
+        random_horizontal_flip (bool): Whether to apply random flips.
+    Returns:
+        None
+    '''
+
+    def __init__(self, data_dir="./datasets", transform=None, size=128, grayscale=False, random_horizontal_flip=True):
+        '''
+        Initialize the ImageNet dataset.
+        Args:
+            data_dir (str): Dataset root directory.
+            transform (callable | None): Optional transform applied to each image.
+            size (int): Output image size.
+            grayscale (bool): Whether to convert images to grayscale.
+            random_horizontal_flip (bool): Whether to apply random flips.
+        Returns:
+            None
+        '''
+        if transform is None:
+            transforms = [
+                T.Resize(
+                    (size, size),
+                    interpolation=T.InterpolationMode.BICUBIC,
+                    antialias=True,
+                ),
+            ]
+            if grayscale:
+                transforms.append(T.Grayscale(num_output_channels=1))
+            if random_horizontal_flip:
+                transforms.append(T.RandomHorizontalFlip(p=0.5))
+            transforms.append(TRANSFORM)
+            self.transform = T.Compose(transforms)
+        else:
+            self.transform = transform
+        self.dataset = ConcatDataset([
+            datasets.ImageNet(root=data_dir, split="train", transform=self.transform),
+            datasets.ImageNet(root=data_dir, split="val", transform=self.transform),
+        ])
+
+    def __getitem__(self, index):
+        '''
+        Return a transformed image.
+        Args:
+            index (int): Sample index.
+        Returns:
+            torch.Tensor: Transformed image tensor.
+        '''
+        item, _ = self.dataset[index]
+        return item
+
+    def __len__(self):
+        '''
+        Return the dataset size.
+        Returns:
+            int: Number of samples in the dataset.
+        '''
+        return len(self.dataset)
+
 class CelebA(EntityDataset):
     '''
     CelebA dataset with optional preprocessing.

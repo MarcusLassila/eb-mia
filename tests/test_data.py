@@ -235,6 +235,48 @@ class TestData(unittest.TestCase):
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 3])
                 self.assertEqual(dataset.n_entities, 4)
 
+    def test_imagenet_combines_train_and_val_and_discards_labels(self):
+        class FakeImageNet:
+            def __init__(self, root, split, transform):
+                self.root = root
+                self.split = split
+                self.transform = transform
+                self.image = Image.new("RGB", (32, 32), color=(128, 128, 128))
+
+            def __getitem__(self, index):
+                return self.transform(self.image), 123
+
+            def __len__(self):
+                return 2 if self.split == "train" else 1
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("data.datasets.datasets.ImageNet", side_effect=FakeImageNet) as imagenet_fn:
+                dataset = data_module.ImageNet(data_dir=tmpdir, transform=lambda image: image)
+
+                self.assertEqual(len(dataset), 3)
+                self.assertIsInstance(dataset[0], Image.Image)
+                self.assertEqual(imagenet_fn.call_count, 2)
+
+    def test_imagenet_grayscale_transform(self):
+        class FakeImageNet:
+            def __init__(self, root, split, transform):
+                self.transform = transform
+                self.image = Image.new("RGB", (256, 256), color=(128, 128, 128))
+
+            def __getitem__(self, index):
+                return self.transform(self.image), 0
+
+            def __len__(self):
+                return 1
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("data.datasets.datasets.ImageNet", side_effect=FakeImageNet):
+                dataset = data_module.ImageNet(data_dir=tmpdir, transform=None, size=32, grayscale=True)
+
+                sample = dataset[0]
+
+        self.assertEqual(tuple(sample.shape), (1, 32, 32))
+
     def test_vggface2_grayscale_transform(self):
         class FakeSplit:
             def __init__(self, class_ids, image):
