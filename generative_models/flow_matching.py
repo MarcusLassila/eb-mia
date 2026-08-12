@@ -1,4 +1,4 @@
-from generative_models.agm import AbstractGenerativeModel
+from generative_models.agm import AbstractDiffusionModel
 from unet.unet import UNet
 
 import torch
@@ -9,7 +9,7 @@ from torchdiffeq import odeint
 from contextlib import nullcontext
 
 
-class FlowMatching(AbstractGenerativeModel):
+class FlowMatching(AbstractDiffusionModel):
     '''
     Flow matching model with optimal transport conditional vector fields.
     '''
@@ -89,6 +89,12 @@ class FlowMatching(AbstractGenerativeModel):
     def loss(self, x, autocast_context=nullcontext(), network_override=None):
         t = torch.rand(size=(x.shape[0],), device=x.device)
         return self.per_sample_loss(x, t, autocast_context, network_override=network_override).mean()
+
+    def fixed_noise_level_per_sample_loss(self, x, noise_level, autocast_context=nullcontext(), network_override=None):
+        assert 0.0 <= noise_level <= 1.0
+        t = 1.0 - noise_level
+        t = torch.full(size=(x.shape[0],), fill_value=t, dtype=torch.float32, device=x.device)
+        return self.per_sample_loss(x, t, autocast_context=autocast_context, network_override=network_override)
 
     def _arg_swapped_network(self, t, x):
         if t.ndim == 0:

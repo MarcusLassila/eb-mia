@@ -294,29 +294,7 @@ class TestLossQuery(unittest.TestCase):
 
             load_dataset_fn.assert_called_once_with("CIFAR10", data_dir=tmpdir, size=32)
 
-    def test_load_loss_signals_averages_saved_loss_samples(self):
-        '''
-        Average 2D saved loss samples when loading signals for existing audits.
-        Returns:
-            None
-        '''
-        with tempfile.TemporaryDirectory() as tmpdir:
-            loss_path = Path(tmpdir) / "loss_signals.pkl"
-            with open(loss_path, "wb") as file:
-                pickle.dump(
-                    {
-                        "loss_sigs": [[1.0, 3.0], [2.0, 4.0], [5.0, 7.0]],
-                        "train_mask": [True, False, True],
-                    },
-                    file,
-                )
-
-            loss_sigs, train_mask = mia_utils.load_loss_signals(loss_path)
-
-            self.assertTrue(torch.allclose(loss_sigs, torch.tensor([2.0, 3.0, 6.0])))
-            self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
-
-    def test_load_loss_signal_samples_preserves_saved_loss_samples(self):
+    def test_load_loss_signals_preserves_saved_loss_samples(self):
         '''
         Preserve 2D saved loss samples when loading signals for sample-aware audits.
         Returns:
@@ -333,7 +311,7 @@ class TestLossQuery(unittest.TestCase):
                     file,
                 )
 
-            loss_sigs, train_mask = mia_utils.load_loss_signal_samples(loss_path)
+            loss_sigs, train_mask = mia_utils.load_loss_signals(loss_path)
 
             expected_loss_sigs = torch.tensor([[1.0, 3.0], [2.0, 4.0], [5.0, 7.0]])
             self.assertTrue(torch.allclose(loss_sigs, expected_loss_sigs))

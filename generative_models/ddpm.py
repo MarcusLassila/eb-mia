@@ -1,4 +1,4 @@
-from generative_models.agm import AbstractGenerativeModel
+from generative_models.agm import AbstractDiffusionModel
 from unet.unet import UNet
 
 import torch
@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 from contextlib import nullcontext
 
 
-class DDPM(AbstractGenerativeModel):
+class DDPM(AbstractDiffusionModel):
 
     def __init__(
         self,
@@ -98,6 +98,12 @@ class DDPM(AbstractGenerativeModel):
     def loss(self, x, autocast_context=nullcontext(), network_override=None):
         t = torch.randint(low=0, high=self.time_steps, size=(x.shape[0],), device=x.device)
         return self.per_sample_loss(x, t, autocast_context, network_override=network_override).mean()
+
+    def fixed_noise_level_per_sample_loss(self, x, noise_level, autocast_context=nullcontext(), network_override=None):
+        assert 0.0 <= noise_level <= 1.0
+        time_index = round((self.time_steps - 1) * noise_level)
+        t = torch.full(size=(x.shape[0],), fill_value=time_index, dtype=torch.long, device=x.device)
+        return self.per_sample_loss(x, t, autocast_context=autocast_context, network_override=network_override)
 
     @torch.inference_mode()
     def sample(self, batch_size, disable_tqdm=False):

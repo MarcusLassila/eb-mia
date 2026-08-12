@@ -1,4 +1,4 @@
-from generative_models.agm import AbstractGenerativeModel
+from generative_models.agm import AbstractGenerativeModel, AbstractDiffusionModel
 from accelerate.accelerate import AcceleratorLite
 from utils import unwrap_torch_compile_state_dict
 
@@ -29,6 +29,7 @@ class TrainConfig:
     autocast_dtype: str = "bfloat16"
     lr_scheduler: str = "none"
     lr_scheduler_params: dict = field(default_factory=dict)
+    fixed_noise_level_loss: float | None = None
 
 class TrainLoop:
     
@@ -45,7 +46,6 @@ class TrainLoop:
     ):
         self.train_config = train_config
         self.model_config = model_config
-
         self.accelerator = accelerator
         self.device = self.accelerator.device
         self.savepath = Path(savepath)
@@ -55,13 +55,20 @@ class TrainLoop:
 
         assert self.train_dataset[0].shape == self.val_dataset[0].shape
 
+        self.fixed_noise_level_loss = self.train_config.fixed_noise_level_loss
+        self.track_fixed_noise_eval = self.fixed_noise_level_loss is not None
+        if self.track_fixed_noise_eval:
+            assert 0.0 <= self.fixed_noise_level_loss <= 1.0
+            assert isinstance(model, AbstractDiffusionModel)
+
         self.model = model
         self.model.move_to(self.device)
-        self.network, self.train_dataloader, self.val_dataloader = accelerator.prepare(
+        self.network, self.train_dataloader, self.val_dataloader, self.train_eval_dataloader = accelerator.prepare(
             self.model.network,
             train_dataset,
             val_dataset,
             self.train_config.batch_size,
+            make_train_eval_dataloader=True,
         )
         self.model.network = self.network
 
@@ -99,7 +106,10 @@ class TrainLoop:
         self.scheduler = self._get_lr_scheduler(self.optimizer)
         self.start_epoch = 0
         self.train_losses = []
+        self.train_eval_losses = []
         self.val_losses = []
+        self.fixed_noise_train_losses = []
+        self.fixed_noise_val_losses = []
         if resume_checkpoint is not None:
             self._load_resume_checkpoint(resume_checkpoint)
     
@@ -169,21 +179,57 @@ class TrainLoop:
             eval_network = self.ema_network if self.train_config.use_ema else self.raw_network
             eval_network.eval()
             with torch.no_grad():
+
+                if self.track_fixed_noise_eval:
+                    fixed_noise_train_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
+                    fixed_noise_val_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
+
+                train_eval_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
+                n_train_eval_batches = torch.zeros((), dtype=torch.float32, device=self.device)
+                for x in self.train_eval_dataloader:
+                    train_eval_accum_loss += self.model.loss(x, autocast_context=self.autocast_context, network_override=eval_network)
+                    if self.track_fixed_noise_eval:
+                        fixed_noise_train_accum_loss += self.model.fixed_noise_level_per_sample_loss(
+                            x,
+                            noise_level=self.fixed_noise_level_loss,
+                            autocast_context=self.autocast_context,
+                            network_override=eval_network
+                        ).mean()
+                    n_train_eval_batches += 1
+
                 val_accum_loss = torch.zeros((), dtype=torch.float32, device=self.device)
                 n_val_batches = torch.zeros((), dtype=torch.float32, device=self.device)
                 for x in self.val_dataloader:
                     val_accum_loss += self.model.loss(x, autocast_context=self.autocast_context, network_override=eval_network)
+                    if self.track_fixed_noise_eval:
+                        fixed_noise_val_accum_loss += self.model.fixed_noise_level_per_sample_loss(
+                            x,
+                            noise_level=self.fixed_noise_level_loss,
+                            autocast_context=self.autocast_context,
+                            network_override=eval_network
+                        ).mean()
                     n_val_batches += 1
 
             assert n_val_batches.item() == len(self.val_dataloader), "All validation batches should be consumed"
 
             if accelerator.running_ddp:
-                for x in train_accum_loss, val_accum_loss, accum_grad_norm, n_simul_train_batches, n_val_batches:
+                for x in train_accum_loss, train_eval_accum_loss, val_accum_loss, accum_grad_norm, n_simul_train_batches, n_train_eval_batches, n_val_batches:
                     dist.all_reduce(x, op=dist.ReduceOp.SUM)
+                if self.track_fixed_noise_eval:
+                    for x in fixed_noise_train_accum_loss, fixed_noise_val_accum_loss:
+                        dist.all_reduce(x, op=dist.ReduceOp.SUM)
+
             mean_train_loss = (train_accum_loss / n_simul_train_batches).item()
+            mean_train_eval_loss = (train_eval_accum_loss / n_train_eval_batches).item()
             mean_val_loss = (val_accum_loss / n_val_batches).item()
             self.train_losses.append(mean_train_loss)
+            self.train_eval_losses.append(mean_train_eval_loss)
             self.val_losses.append(mean_val_loss)
+            if self.track_fixed_noise_eval:
+                mean_fixed_noise_train_loss = (fixed_noise_train_accum_loss / n_train_eval_batches).item()
+                mean_fixed_noise_val_loss = (fixed_noise_val_accum_loss / n_val_batches).item()
+                self.fixed_noise_train_losses.append(mean_fixed_noise_train_loss)
+                self.fixed_noise_val_losses.append(mean_fixed_noise_val_loss)
             if accelerator.device.type == "cuda":
                 torch.cuda.synchronize()
             t1 = time.time()
@@ -191,7 +237,10 @@ class TrainLoop:
                 f"epoch: {epoch} "
                 f"| step: {step} "
                 f"| train loss: {mean_train_loss:.6f} "
+                f"| train eval loss: {mean_train_eval_loss:.6f}"
                 f"| val loss: {mean_val_loss:.6f} "
+                + (f"| fix train loss: {mean_fixed_noise_train_loss:.6f}" if self.track_fixed_noise_eval else "")
+                + (f"| fix val loss: {mean_fixed_noise_val_loss:.6f}" if self.track_fixed_noise_eval else "")
                 + (f"| lr: {current_lr:.7f} " if self.train_config.lr_scheduler != "none" else "")
                 + f"| grad norm: {(accum_grad_norm / n_simul_train_batches).item():.3f} "
                 + f"| dt: {t1 - t0:.1f}"
@@ -217,16 +266,31 @@ class TrainLoop:
                     "model_config": self.model_config,
                     "train_config": self.train_config,
                     "train_losses": self.train_losses,
+                    "train_eval_losses": self.train_eval_losses,
                     "val_losses": self.val_losses,
                     "train_indices": self.train_dataset.indices,
                     "val_indices": self.val_dataset.indices,
                 }
+                if self.track_fixed_noise_eval:
+                    checkpoint |= {
+                        "fixed_noise_train_losses": self.fixed_noise_train_losses,
+                        "fixed_noise_val_losses": self.fixed_noise_val_losses,
+                        "fixed_noise_level_loss": self.fixed_noise_level_loss,
+                    }
                 torch.save(checkpoint, current_epoch_savepath)
 
     def _load_resume_checkpoint(self, checkpoint):
         self.start_epoch = int(checkpoint.get("epoch", 0))
         self.train_losses = [float(loss) for loss in checkpoint.get("train_losses", [])]
+        self.train_eval_losses = [float(loss) for loss in checkpoint.get("train_eval_losses", [])]
         self.val_losses = [float(loss) for loss in checkpoint.get("val_losses", [])]
+        self.fixed_noise_train_losses = [float(loss) for loss in checkpoint.get("fixed_noise_train_losses", [])]
+        self.fixed_noise_val_losses = [float(loss) for loss in checkpoint.get("fixed_noise_val_losses", [])]
+        if self.fixed_noise_level_loss != checkpoint.get("fixed_noise_level_loss", None):
+            msg = "The fixed noise level is not allowed to change when resuming from a checkpoint!\n"
+            msg += f"Checkpoint noise level: {checkpoint.get("fixed_noise_level_loss", None)}\n"
+            msg += f"Config noise level: {self.fixed_noise_level_loss}"
+            raise ValueError(msg)
         raw_state_dict = unwrap_torch_compile_state_dict(checkpoint["raw_network_state_dict"])
         getattr(self.raw_network, "_orig_mod", self.raw_network).load_state_dict(raw_state_dict)
         if self.train_config.use_ema:

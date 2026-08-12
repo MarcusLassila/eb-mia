@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
 
 @dataclass
@@ -60,7 +60,7 @@ class AcceleratorLite:
         if self.running_ddp:
             dist.broadcast(tensor, src=src)
 
-    def prepare(self, model, train_dataset, val_dataset, batch_size):
+    def prepare(self, model, train_dataset, val_dataset, batch_size, make_train_eval_dataloader=False):
         model.to(self.device)
         if torch.cuda.is_available() and self.torch_compile:
             self.print(f"torch compile model")
@@ -72,12 +72,25 @@ class AcceleratorLite:
             val_sampler = DistributedSampler(val_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False, drop_last=True)
             train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True, **dataloader_kwargs)
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True, **dataloader_kwargs)
+            if make_train_eval_dataloader:
+                sub_train_dataset = Subset(train_dataset, torch.arange(0, len(val_dataset)))
+                train_eval_sampler = DistributedSampler(sub_train_dataset, num_replicas=self.world_size, rank=self.rank, shuffle=False, drop_last=True)
+                train_eval_dataloader = DataLoader(sub_train_dataset, batch_size=batch_size, sampler=train_eval_sampler, drop_last=True, **dataloader_kwargs)
+                train_eval_dataloader = DataLoaderOnDevice(train_eval_dataloader, self.device)
+            else:
+                train_eval_dataloader = None
         else:
             train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, **dataloader_kwargs)
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=True, **dataloader_kwargs)
+            if make_train_eval_dataloader:
+                sub_train_dataset = Subset(train_dataset, torch.arange(0, len(val_dataset)))
+                train_eval_dataloader = DataLoader(sub_train_dataset, batch_size=batch_size, shuffle=False, drop_last=True, **dataloader_kwargs)
+                train_eval_dataloader = DataLoaderOnDevice(train_eval_dataloader, self.device)
+            else:
+                train_eval_dataloader = None
         train_dataloader = DataLoaderOnDevice(train_dataloader, self.device)
         val_dataloader = DataLoaderOnDevice(val_dataloader, self.device)
-        return model, train_dataloader, val_dataloader
+        return model, train_dataloader, val_dataloader, train_eval_dataloader
 
     def print(self, *args, **kwargs):
         if self.is_master_process:

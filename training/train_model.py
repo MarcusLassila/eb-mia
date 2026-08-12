@@ -34,6 +34,7 @@ def get_train_config(config):
         autocast_dtype=config.autocast_dtype,
         lr_scheduler=config.lr_scheduler,
         lr_scheduler_params=getattr(config, "lr_scheduler_params", {}),
+        fixed_noise_level_loss=getattr(config, "fixed_noise_level_loss", None),
     )
 
 def get_train_and_val_datasets(dataset_name, image_resolution, data_dir, val_frac=None, grayscale=False, train_indices_path=None, checkpoint=None):

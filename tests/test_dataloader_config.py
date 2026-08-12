@@ -25,12 +25,13 @@ class TestDataLoaderConfig(unittest.TestCase):
         dataset = _TensorImageDataset(data)
         model = torch.nn.Identity()
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0)
-        _, train_dataloader, _ = accelerator.prepare(model, dataset, dataset, batch_size=2)
+        _, train_dataloader, _, train_eval_dataloader = accelerator.prepare(model, dataset, dataset, batch_size=2)
         dataloader = train_dataloader.dataloader
         self.assertEqual(dataloader.num_workers, 0)
         self.assertFalse(dataloader.pin_memory)
         self.assertFalse(dataloader.persistent_workers)
         self.assertIsNone(dataloader.prefetch_factor)
+        self.assertIsNone(train_eval_dataloader)
 
     def test_custom_dataloader_config(self):
         data = torch.randn(4, 1, 2, 2)
@@ -43,12 +44,13 @@ class TestDataLoaderConfig(unittest.TestCase):
             "prefetch_factor": 4,
         }
         accelerator = AcceleratorLite(torch_compile=False, base_seed=0, dataloader_config=dataloader_config)
-        _, train_dataloader, _ = accelerator.prepare(model, dataset, dataset, batch_size=2)
+        _, train_dataloader, _, train_eval_dataloader = accelerator.prepare(model, dataset, dataset, batch_size=2)
         dataloader = train_dataloader.dataloader
         self.assertEqual(dataloader.num_workers, 2)
         self.assertTrue(dataloader.pin_memory)
         self.assertTrue(dataloader.persistent_workers)
         self.assertEqual(dataloader.prefetch_factor, 4)
+        self.assertIsNone(train_eval_dataloader)
 
     def test_training_configs_have_dataloader_config(self):
         root = Path(__file__).resolve().parents[1]

@@ -34,3 +34,9 @@ class AbstractGenerativeModel(ABC):
     @abstractmethod
     def sample(self, batch_size, **kwargs):
         raise NotImplementedError
+
+class AbstractDiffusionModel(AbstractGenerativeModel):
+
+    @abstractmethod
+    def fixed_noise_level_per_sample_loss(self, x, noise_level, autocast_context=nullcontext(), network_override=None, **kwargs):
+        raise NotImplementedError

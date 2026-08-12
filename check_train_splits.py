@@ -2,6 +2,7 @@ from itertools import combinations
 from pathlib import Path
 import argparse
 import math
+import re
 
 import numpy as np
 import torch
@@ -30,7 +31,7 @@ def parse_train_split_stem(stem):
     Returns:
         dict: Parsed split metadata.
     '''
-    sample_match = train_split.re.match(
+    sample_match = re.match(
         r"^(?P<dataset>.+)-smpl-f(?P<fraction>\d+p\d+)-s(?P<seed>\d+)(?P<complement>-comp)?$",
         stem,
     )
@@ -42,7 +43,7 @@ def parse_train_split_stem(stem):
             "seed": int(sample_match.group("seed")),
             "complement": sample_match.group("complement") is not None,
         }
-    entity_match = train_split.re.match(
+    entity_match = re.match(
         r"^(?P<dataset>.+)-ent-f(?P<entity_fraction>\d+p\d+)-p(?P<per_entity_fraction>\d+p\d+)(?:-h(?P<per_entity_hold_out>\d+p\d+))?-s(?P<seed>\d+)(?P<complement>-comp)?$",
         stem,
     )

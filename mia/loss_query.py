@@ -1,5 +1,5 @@
 from data.utils import infer_dataset_name, load_dataset
-from generative_models import AbstractGenerativeModel, VAE
+from generative_models import AbstractGenerativeModel, AbstractDiffusionModel, VAE
 from generative_models.utils import load_model
 from . import path_utils
 import utils
@@ -49,33 +49,18 @@ class LossQuery:
         Returns:
             torch.Tensor: Sorted loss samples on CPU with shape (batch_size, n_loss_samples).
         '''
-        batch_size = samples.shape[0]
-        match model.__class__.__name__:
-            case "DDPM":
-                loss_samples = []
-                step_index = int(model.time_steps * self.noise_level)
-                step_index = min(step_index, model.time_steps - 1)
-                t = torch.full(size=(batch_size,), fill_value=step_index, device=samples.device, dtype=torch.long)
-                for _ in range(self.n_loss_samples):
-                    loss = model.per_sample_loss(samples, t).cpu()
-                    loss_samples.append(loss)
-                loss_samples = torch.stack(loss_samples, dim=1)
-            case "FlowMatching":
-                loss_samples = []
-                t = 1.0 - self.noise_level
-                t = torch.full(size=(batch_size,), fill_value=t, device=samples.device, dtype=torch.float32)
-                for _ in range(self.n_loss_samples):
-                    loss = model.per_sample_loss(samples, t).cpu()
-                    loss_samples.append(loss)
-                loss_samples = torch.stack(loss_samples, dim=1)
-            case "VAE":
-                loss_samples = []
-                for _ in range(self.n_loss_samples):
+        loss_samples = []
+        for _ in range(self.n_loss_samples):
+            match model.__class__.__name__:
+                case "DDPM" | "FlowMatching":
+                    assert isinstance(model, AbstractDiffusionModel)
+                    loss = model.fixed_noise_level_per_sample_loss(samples, self.noise_level).cpu()
+                case "VAE":
                     loss = model.per_sample_loss(samples).cpu()
-                    loss_samples.append(loss)
-                loss_samples = torch.stack(loss_samples, dim=1)
-            case _:
-                raise ValueError("Unavailable class of generative model.")
+                case _:
+                    raise ValueError("Unavailable class of generative model.")
+            loss_samples.append(loss)
+        loss_samples = torch.stack(loss_samples, dim=1)
         sorted_loss_samples = torch.sort(loss_samples, dim=1).values
         return sorted_loss_samples
 
