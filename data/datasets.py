@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from io import BytesIO
 from pathlib import Path
+import json
 import zipfile
 
 import torch
@@ -15,6 +17,106 @@ TRANSFORM = T.Compose([
     T.ToTensor(),
     T.Lambda(lambda x: x * 2.0 - 1.0),
 ])
+
+def _imagenet_processed_dir(data_dir, size):
+    '''
+    Return the default processed ImageNet cache directory.
+    Args:
+        data_dir (str | Path): Dataset storage root.
+        size (int): Cached RGB image size.
+    Returns:
+        Path: Processed ImageNet cache directory.
+    '''
+    return Path(data_dir) / "processed" / "ImageNet" / f"rgb-sz{size}"
+
+class _ImageNetShardedCache(Dataset):
+    '''
+    Ordered ImageNet cache backed by deterministic ZIP shards.
+    '''
+
+    def __init__(self, processed_dir):
+        '''
+        Load a processed ImageNet shard manifest.
+        Args:
+            processed_dir (str | Path): Processed cache directory.
+        Returns:
+            None
+        '''
+        self.processed_dir = Path(processed_dir)
+        manifest_path = self.processed_dir / "manifest.json"
+        with manifest_path.open("r") as file:
+            self.manifest = json.load(file)
+        self.size = self.manifest["size"]
+        self.image_format = self.manifest["image_format"]
+        self.images_per_shard = self.manifest["images_per_shard"]
+        self.n_samples = sum(split["length"] for split in self.manifest["splits"])
+        self._zip_files = {}
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_zip_files"] = {}
+        return state
+
+    def _image_extension(self):
+        '''
+        Return the filename extension for cached images.
+        Returns:
+            str: Filename extension.
+        '''
+        if self.image_format == "JPEG":
+            return "jpg"
+        return self.image_format.lower()
+
+    def _shard_path(self, shard_index):
+        '''
+        Return the relative shard path for an index.
+        Args:
+            shard_index (int): Shard index.
+        Returns:
+            str: Relative shard path.
+        '''
+        file_name = f"imagenet-rgb-sz{self.size}-{shard_index:06d}.zip"
+        return str(Path("shards") / file_name)
+
+    def _get_zip_file(self, shard_path):
+        '''
+        Return a lazily opened shard ZIP file.
+        Args:
+            shard_path (str): Relative shard path from the manifest.
+        Returns:
+            zipfile.ZipFile: Open shard handle.
+        '''
+        if shard_path not in self._zip_files:
+            full_path = self.processed_dir / shard_path
+            self._zip_files[shard_path] = zipfile.ZipFile(full_path, "r")
+        return self._zip_files[shard_path]
+
+    def __getitem__(self, index):
+        '''
+        Return a clean RGB PIL image from the processed cache.
+        Args:
+            index (int): Sample index.
+        Returns:
+            PIL.Image.Image: RGB image.
+        '''
+        index = int(index)
+        shard_index = index // self.images_per_shard
+        shard_path = self._shard_path(shard_index)
+        member_name = f"{index:09d}.{self._image_extension()}"
+        zip_file = self._get_zip_file(shard_path)
+        with zip_file.open(member_name, "r") as image_file:
+            image_bytes = image_file.read()
+        with Image.open(BytesIO(image_bytes)) as image:
+            rgb_image = image.convert("RGB")
+        return rgb_image
+
+    def __len__(self):
+        '''
+        Return the processed cache size.
+        Returns:
+            int: Number of cached images.
+        '''
+        return self.n_samples
 
 def _normalize_entity_ids(entity_ids: torch.Tensor):
     '''
@@ -115,14 +217,17 @@ class ImageNet(Dataset):
         Returns:
             None
         '''
+        processed_dir = _imagenet_processed_dir(data_dir, size)
+        processed_manifest_exists = processed_dir.joinpath("manifest.json").exists()
+        self.use_processed = transform is None and not grayscale and processed_manifest_exists
         if transform is None:
-            transforms = [
-                T.Resize(
+            transforms = []
+            if not self.use_processed:
+                resize_transform = T.Resize(
                     (size, size),
                     interpolation=T.InterpolationMode.BICUBIC,
-                    antialias=True,
-                ),
-            ]
+                )
+                transforms.append(resize_transform)
             if grayscale:
                 transforms.append(T.Grayscale(num_output_channels=1))
             if random_horizontal_flip:
@@ -131,6 +236,9 @@ class ImageNet(Dataset):
             self.transform = T.Compose(transforms)
         else:
             self.transform = transform
+        if self.use_processed:
+            self.dataset = _ImageNetShardedCache(processed_dir)
+            return
         train_split = load_dataset(
             "ILSVRC/imagenet-1k",
             split="train",
@@ -153,6 +261,10 @@ class ImageNet(Dataset):
         Returns:
             torch.Tensor: Transformed image tensor.
         '''
+        if self.use_processed:
+            image = self.dataset[int(index)]
+            transformed_image = self.transform(image)
+            return transformed_image
         sample = self.dataset[int(index)]
         image = sample["image"].convert("RGB")
         transformed_image = self.transform(image)
