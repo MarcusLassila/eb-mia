@@ -41,7 +41,7 @@ class TestPreprocessImageNet(unittest.TestCase):
     def test_main_saves_ordered_rgb_images_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir) / "processed"
-            train_split = _FakeImageNetSplit([(255, 0, 0), (0, 255, 0)])
+            train_split = _FakeImageNetSplit([(255, 0, 0), (0, 255, 0), (255, 255, 0)])
             validation_split = _FakeImageNetSplit([(0, 0, 255)])
 
             def fake_load_dataset(name, split, cache_dir, token):
@@ -78,7 +78,7 @@ class TestPreprocessImageNet(unittest.TestCase):
             self.assertEqual(
                 manifest["splits"],
                 [
-                    {"name": "train", "length": 2},
+                    {"name": "train", "length": 3},
                     {"name": "validation", "length": 1},
                 ],
             )
@@ -91,7 +91,7 @@ class TestPreprocessImageNet(unittest.TestCase):
             self.assertEqual(actual_shards, expected_shards)
             expected_members = {
                 expected_shards[0]: ["000000000.jpg", "000000001.jpg"],
-                expected_shards[1]: ["000000002.jpg"],
+                expected_shards[1]: ["000000002.jpg", "000000003.jpg"],
             }
             for shard_name, member_names in expected_members.items():
                 shard_path = output_dir / shard_name

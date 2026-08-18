@@ -104,7 +104,7 @@ def shard_relative_path(args, shard_index):
     file_name = f"imagenet-rgb-sz{args.size}-{shard_index:06d}.zip"
     return str(Path("shards") / file_name)
 
-def preprocess_split(split_name, data_dir, output_dir, start_index, args):
+def preprocess_split(split_name, data_dir, output_dir, start_index, args, written_shards):
     '''
     Preprocess one ImageNet split in deterministic dataset order.
     Args:
@@ -113,6 +113,7 @@ def preprocess_split(split_name, data_dir, output_dir, start_index, args):
         output_dir (Path): Processed cache directory.
         start_index (int): Global start index for deterministic ordering.
         args (argparse.Namespace): CLI arguments.
+        written_shards (set[str]): Shards already opened in this preprocessing run.
     Returns:
         tuple[int, int]: Number of processed images and next global index.
     '''
@@ -139,7 +140,9 @@ def preprocess_split(split_name, data_dir, output_dir, start_index, args):
                     zip_file.close()
                 full_shard_path = output_dir / shard_path
                 full_shard_path.parent.mkdir(parents=True, exist_ok=True)
-                zip_file = zipfile.ZipFile(full_shard_path, "w", compression=zipfile.ZIP_STORED)
+                zip_mode = "a" if shard_path in written_shards else "w"
+                zip_file = zipfile.ZipFile(full_shard_path, zip_mode, compression=zipfile.ZIP_STORED)
+                written_shards.add(shard_path)
                 current_shard = shard_path
             member_name = f"{global_index:09d}.{extension}"
             image = preprocess_image(sample["image"], args.size)
@@ -255,9 +258,10 @@ def main(argv=None):
     prepare_output_dir(output_dir, args.overwrite)
     split_lengths = {}
     next_index = 0
-    n_train_images, next_index = preprocess_split("train", data_dir, output_dir, next_index, args)
+    written_shards = set()
+    n_train_images, next_index = preprocess_split("train", data_dir, output_dir, next_index, args, written_shards)
     split_lengths["train"] = n_train_images
-    n_validation_images, next_index = preprocess_split("validation", data_dir, output_dir, next_index, args)
+    n_validation_images, next_index = preprocess_split("validation", data_dir, output_dir, next_index, args, written_shards)
     split_lengths["validation"] = n_validation_images
     return write_manifest(output_dir, args, split_lengths)
 
