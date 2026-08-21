@@ -4,7 +4,7 @@ import unittest
 import torch
 from torch.utils.data import Dataset, Subset
 
-from accelerate.accelerate import AcceleratorLite
+from accelerate_lite.accelerate import AcceleratorLite
 from training.train_loop import TrainConfig, TrainLoop
 from generative_models.vae import VAE
 from pathlib import Path

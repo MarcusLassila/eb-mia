@@ -1,5 +1,5 @@
 from generative_models.agm import AbstractGenerativeModel, AbstractDiffusionModel
-from accelerate.accelerate import AcceleratorLite
+from accelerate_lite.accelerate import AcceleratorLite
 from utils import unwrap_torch_compile_state_dict
 
 from contextlib import nullcontext

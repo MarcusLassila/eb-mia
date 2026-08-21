@@ -1,4 +1,4 @@
-from accelerate.accelerate import AcceleratorLite
+from accelerate_lite.accelerate import AcceleratorLite
 from data.utils import load_dataset
 from generative_models.ddpm import DDPM
 from generative_models.flow_matching import FlowMatching

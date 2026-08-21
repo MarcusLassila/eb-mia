@@ -5,7 +5,7 @@ from unittest.mock import patch
 import torch
 from torch.utils.data import Dataset, Subset
 
-from accelerate.accelerate import AcceleratorLite
+from accelerate_lite.accelerate import AcceleratorLite
 from generative_models.flow_matching import FlowMatching
 from training.train_loop import TrainConfig, TrainLoop
 from pathlib import Path

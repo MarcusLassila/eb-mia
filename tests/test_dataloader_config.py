@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 import yaml
 
-from accelerate.accelerate import AcceleratorLite
+from accelerate_lite.accelerate import AcceleratorLite
 
 
 class _TensorImageDataset(Dataset):
