@@ -104,7 +104,12 @@ def save_metric_result(metric_name, checkpoint_path, metric_value, output_dir=No
     output_path.write_text(format_metric_result(metric_name, checkpoint_path, metric_value) + "\n")
     return output_path
 
-if __name__ == "__main__":
+def build_parser():
+    '''
+    Build the quality-metrics CLI parser.
+    Returns:
+        argparse.ArgumentParser: Command-line parser.
+    '''
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--metric",
@@ -133,7 +138,24 @@ if __name__ == "__main__":
         help="Number of samples to evaluate (must be <= len(dataset) in case of FID)."
     )
     parser.add_argument("--batch-size", type=int, required=True)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Where metric result files are saved."
+    )
+    return parser
+
+def main(argv=None):
+    '''
+    Compute and save one quality metric for a checkpoint.
+    Args:
+        argv (list[str] | None): Optional command-line arguments.
+    Returns:
+        None
+    '''
+    parser = build_parser()
+    args = parser.parse_args(argv)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -162,5 +184,8 @@ if __name__ == "__main__":
         score = fid_score(model, data_loader, device)
         metric_value = f"{score.item():g}"
     result_text = format_metric_result(args.metric, args.checkpoint, metric_value)
-    save_metric_result(args.metric, args.checkpoint, metric_value)
+    save_metric_result(args.metric, args.checkpoint, metric_value, output_dir=args.output_dir)
     print(result_text)
+
+if __name__ == "__main__":
+    main()

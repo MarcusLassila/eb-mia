@@ -100,6 +100,21 @@ class TestQualityMetrics(unittest.TestCase):
                 "DDPM-CelebA-ent-f0p5-p0p5-sz64-s0-epoch500\nIS: 1.5 +- 0.1\n",
             )
 
+    def test_build_parser_accepts_output_dir(self):
+        parser = qm.build_parser()
+        args = parser.parse_args([
+            "--metric",
+            "fid",
+            "--checkpoint",
+            "model.pth",
+            "--batch-size",
+            "32",
+            "--output-dir",
+            "fid-results",
+        ])
+
+        self.assertEqual(args.output_dir, "fid-results")
+
     def test_fid_score_normalizes_real_samples_and_checks_first_batch_only(self):
         dataset = [
             torch.full((1, 1, 1), -1.0),
