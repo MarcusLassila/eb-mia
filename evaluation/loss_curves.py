@@ -8,7 +8,61 @@ import utils
 
 
 def _to_float_list(values):
-    return [*map(float(values))]
+    return [*map(float, values)]
+
+def _latex_escape(text):
+    escaped_text = str(text)
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+    }
+    for source, target in replacements.items():
+        escaped_text = escaped_text.replace(source, target)
+    return escaped_text
+
+def _tikz_coordinates(x_values, y_values):
+    coordinate_rows = []
+    for x_value, y_value in zip(x_values, y_values):
+        coordinate_rows.append(f"({float(x_value):.8e},{float(y_value):.8e})")
+    return " ".join(coordinate_rows)
+
+def _save_tikz_loss_pair(epochs, left_losses, right_losses, left_label, right_label, title, output_path):
+    tikz_lines = [
+        r"\documentclass[tikz]{standalone}",
+        r"\usepackage{pgfplots}",
+        r"\pgfplotsset{compat=1.18}",
+        r"\begin{document}",
+        r"\begin{tikzpicture}",
+        r"\begin{axis}[",
+        r"width=12cm,",
+        r"height=9cm,",
+        r"xlabel={Epoch},",
+        r"ylabel={Loss},",
+        f"title={{{_latex_escape(title)}}},",
+        r"grid=both,",
+        r"legend pos=north east,",
+        r"]",
+        r"\addplot+[mark=none] coordinates {",
+        _tikz_coordinates(epochs, left_losses),
+        r"};",
+        f"\\addlegendentry{{{_latex_escape(left_label)}}}",
+        r"\addplot+[mark=none] coordinates {",
+        _tikz_coordinates(epochs, right_losses),
+        r"};",
+        f"\\addlegendentry{{{_latex_escape(right_label)}}}",
+        r"\end{axis}",
+        r"\end{tikzpicture}",
+        r"\end{document}",
+    ]
+    output_path.write_text("\n".join(tikz_lines) + "\n")
+    print(f"Saved loss curves to {output_path}")
+    return output_path
 
 def load_loss_history(checkpoint):
     '''
@@ -41,6 +95,7 @@ def _plot_loss_pair(epochs, left_losses, right_losses, left_label, right_label, 
     Returns:
         Path: Saved image path.
     '''
+    tikz_output_path = output_path.with_suffix(".tex")
     plt.figure()
     plt.plot(epochs, left_losses, label=left_label)
     plt.plot(epochs, right_losses, label=right_label)
@@ -53,6 +108,7 @@ def _plot_loss_pair(epochs, left_losses, right_losses, left_label, right_label, 
     plt.savefig(output_path)
     plt.close()
     print(f"Saved loss curves to {output_path}")
+    _save_tikz_loss_pair(epochs, left_losses, right_losses, left_label, right_label, title, tikz_output_path)
     return output_path
 
 def plot_loss_curves(checkpoint_path, output_dir=None):

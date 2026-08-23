@@ -38,6 +38,9 @@ class TestLossCurves(unittest.TestCase):
             for output_path in expected_paths:
                 self.assertTrue(output_path.exists())
                 self.assertGreater(output_path.stat().st_size, 0)
+                tikz_path = output_path.with_suffix(".tex")
+                self.assertTrue(tikz_path.exists())
+                self.assertIn(r"\begin{axis}[", tikz_path.read_text())
 
     def test_plot_loss_curves_skips_missing_optional_histories(self):
         checkpoint = {
