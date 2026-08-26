@@ -73,14 +73,14 @@ def scores_pickle_name(target_path, attack):
 
 def loss_signals_dir(res_dir, target_path):
     '''
-    Return the loss-signal directory for one checkpoint.
+    Return the audit result directory containing loss-signal files.
     Args:
         res_dir (str | Path): Root results directory.
         target_path (str | Path): Target checkpoint path.
     Returns:
-        Path: Loss-signal directory.
+        Path: Directory containing loss-signal files.
     '''
-    return audit_result_dir(res_dir, target_path) / "loss_signals"
+    return audit_result_dir(res_dir, target_path)
 
 def format_float_filename_token(value):
     '''
@@ -386,11 +386,11 @@ def metrics_pickle_name_from_target(target_path, attack, audit_mode, min_samples
         metrics_stem += f"_min-{min_value}_max-{max_value}"
     return metrics_stem + ".pkl"
 
-def _resolve_pickle_paths(res_dir, input_paths, pattern, missing_message, empty_message):
+def _resolve_pickle_paths(base_dir, input_paths, pattern, missing_message, empty_message):
     '''
     Resolve file and directory inputs to a sorted list of pickle files.
     Args:
-        res_dir (str | Path): Root results directory.
+        base_dir (str | Path | None): Base directory for relative input paths.
         input_paths (list[str] | None): Input file or directory paths.
         pattern (str): Glob pattern used for directory expansion.
         missing_message (str): Error message used when no inputs are given.
@@ -400,7 +400,7 @@ def _resolve_pickle_paths(res_dir, input_paths, pattern, missing_message, empty_
     '''
     if not input_paths:
         raise ValueError(missing_message)
-    input_paths = [utils.resolve_path(path, res_dir) for path in input_paths]
+    input_paths = [utils.resolve_path(path, base_dir) for path in input_paths]
     resolved_files = []
     seen_files = set()
     for input_path in input_paths:
@@ -440,6 +440,7 @@ def resolve_audit_score_paths(config):
 def resolve_audit_loss_signal_paths(config, key):
     '''
     Resolve audit loss-signal pickle files from configured files or folders.
+    Relative loss-signal paths are resolved from the repository root.
     Args:
         config (Config): Audit configuration.
         key (str): Config attribute holding the input paths.
@@ -447,9 +448,8 @@ def resolve_audit_loss_signal_paths(config, key):
         list[Path]: Resolved loss-signal pickle paths.
     '''
     root = utils.get_root()
-    res_dir = utils.resolve_path(config.res_dir, root)
     return _resolve_pickle_paths(
-        res_dir,
+        root,
         getattr(config, key, None),
         "loss_signals-*.pkl",
         f"No {key} specified in config or CLI.",
