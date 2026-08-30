@@ -6,7 +6,7 @@ import argparse
 import pickle
 import numpy as np
 import torch
-from math import modf
+from math import ceil, modf
 from pathlib import Path
 
 def load_indices(path, len_dataset=None):
@@ -23,7 +23,7 @@ def save_indices(indices, len_dataset, output_dir, file_name):
 def select_fraction(indices: list, fraction: float, rng: np.random.Generator, hold_out_fraction: float = 0.0):
     n = len(indices)
     if hold_out_fraction > 0.0:
-        n = int(n * (1.0 - hold_out_fraction))
+        n = int(ceil(n * (1.0 - hold_out_fraction)))
     f, k = modf(n * fraction)
     k = int(k)
     shuffled_indices = rng.permutation(indices[:n])

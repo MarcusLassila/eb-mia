@@ -100,6 +100,67 @@ def expected_count_options(total_count, fraction):
     upper_count = int(math.ceil(expected_count))
     return {lower_count, upper_count}
 
+def get_entity_hold_out_count(entity_count, hold_out_fraction):
+    '''
+    Return the number of hold-out samples reserved for one entity.
+    Args:
+        entity_count (int): Number of samples for one entity.
+        hold_out_fraction (float): Fraction of entity samples to hold out.
+    Returns:
+        int: Number of held-out samples.
+    '''
+    raw_hold_out_count = entity_count * hold_out_fraction
+    hold_out_count = int(math.floor(raw_hold_out_count + 1e-12))
+    return hold_out_count
+
+def get_effective_entity_count(entity_count, hold_out_fraction):
+    '''
+    Return per-entity samples eligible for training after hold-out.
+    Args:
+        entity_count (int): Number of samples for one entity.
+        hold_out_fraction (float): Fraction of entity samples to hold out.
+    Returns:
+        int: Number of train-eligible samples.
+    '''
+    hold_out_count = get_entity_hold_out_count(entity_count, hold_out_fraction)
+    effective_count = entity_count - hold_out_count
+    return effective_count
+
+def get_optional_zero_entities(dataset, parsed):
+    '''
+    Return entity ids that may validly select zero training samples.
+    Args:
+        dataset (data_datasets.EntityDataset): Dataset used by the split.
+        parsed (dict): Parsed split metadata.
+    Returns:
+        set[int]: Entity ids whose per-entity stochastic rounding allows zero samples.
+    '''
+    optional_entity_ids = set()
+    entity_index_table = dataset.get_entity_index_table()
+    hold_out_fraction = parsed["per_entity_hold_out"]
+    per_entity_fraction = parsed["per_entity_fraction"]
+    for entity_id, entity_indices in entity_index_table.items():
+        effective_count = get_effective_entity_count(len(entity_indices), hold_out_fraction)
+        allowed_counts = expected_count_options(effective_count, per_entity_fraction)
+        if 0 in allowed_counts:
+            optional_entity_ids.add(entity_id)
+    return optional_entity_ids
+
+def expected_entity_count_options(dataset, parsed):
+    '''
+    Return allowed represented entity counts for a split.
+    Args:
+        dataset (data_datasets.EntityDataset): Dataset used by the split.
+        parsed (dict): Parsed split metadata.
+    Returns:
+        set[int]: Allowed counts after optional zero-sample entities are considered.
+    '''
+    assigned_count_options = expected_count_options(dataset.n_entities, parsed["entity_fraction"])
+    optional_entity_count = len(get_optional_zero_entities(dataset, parsed))
+    lower_count = max(0, min(assigned_count_options) - optional_entity_count)
+    upper_count = min(dataset.n_entities, max(assigned_count_options) + optional_entity_count)
+    return set(range(lower_count, upper_count + 1))
+
 
 def load_split_records(train_splits_dir):
     '''
@@ -159,6 +220,20 @@ def get_split_entities(dataset, indices):
     return set(entity_ids.tolist())
 
 
+def get_split_entities_or_none(dataset, indices):
+    '''
+    Return split entity ids when the dataset has entities.
+    Args:
+        dataset (Dataset): Dataset used by the split.
+        indices (list[int]): Training indices.
+    Returns:
+        set[int] | None: Entity ids present in the split, or None for sample datasets.
+    '''
+    if not isinstance(dataset, data_datasets.EntityDataset):
+        return None
+    return get_split_entities(dataset, indices)
+
+
 def validate_index_properties(split_record, dataset):
     '''
     Validate basic index properties for one split file.
@@ -196,18 +271,18 @@ def validate_split_matches_spec(split_record, dataset):
             if len(indices) not in allowed_counts:
                 raise ValueError(f"Unexpected sample count in {split_record['path']}")
         return
+    if not isinstance(dataset, data_datasets.EntityDataset):
+        raise TypeError(f"{parsed['dataset']} is not an EntityDataset.")
     split_entities = get_split_entities(dataset, indices)
-    allowed_entity_counts = expected_count_options(dataset.n_entities, parsed["entity_fraction"])
+    allowed_entity_counts = expected_entity_count_options(dataset, parsed)
     if len(split_entities) not in allowed_entity_counts:
         raise ValueError(f"Unexpected entity count in {split_record['path']}")
     entity_index_table = dataset.get_entity_index_table()
     index_set = set(indices)
     for entity_id in split_entities:
         entity_indices = entity_index_table[entity_id]
-        effective_count = len(entity_indices)
         hold_out_fraction = parsed["per_entity_hold_out"]
-        if hold_out_fraction > 0.0:
-            effective_count = int(effective_count * (1.0 - hold_out_fraction))
+        effective_count = get_effective_entity_count(len(entity_indices), hold_out_fraction)
         allowed_indices = set(entity_indices[:effective_count])
         selected_indices = index_set & set(entity_indices)
         if not selected_indices <= allowed_indices:
@@ -261,15 +336,21 @@ def validate_complement_pairs(complement_pairs, dataset):
     Returns:
         None
     '''
-    all_entity_ids = set(range(dataset.n_entities))
+    if isinstance(dataset, data_datasets.EntityDataset):
+        all_entity_ids = set(range(dataset.n_entities))
     for base_record, comp_record in complement_pairs:
         base_indices = set(base_record["indices"])
         comp_indices = set(comp_record["indices"])
         if base_indices & comp_indices:
             raise ValueError(f"Overlapping datapoints in {base_record['path']} and {comp_record['path']}")
-        base_entities = get_split_entities(dataset, base_record["indices"])
-        comp_entities = get_split_entities(dataset, comp_record["indices"])
-        if base_entities & comp_entities:
+        base_entities = get_split_entities_or_none(dataset, base_record["indices"])
+        comp_entities = get_split_entities_or_none(dataset, comp_record["indices"])
+        has_entity_overlap = (
+            base_entities is not None
+            and comp_entities is not None
+            and bool(base_entities & comp_entities)
+        )
+        if has_entity_overlap:
             raise ValueError(f"Overlapping entities in {base_record['path']} and {comp_record['path']}")
         if base_record["parsed"]["split_mode"] == "sample":
             union_indices = base_indices | comp_indices
@@ -277,8 +358,11 @@ def validate_complement_pairs(complement_pairs, dataset):
                 raise ValueError(f"Sample complement pair does not cover the full dataset for seed {pair_seed_key(base_record)}")
         if base_record["parsed"]["split_mode"] == "entity":
             union_entities = base_entities | comp_entities
-            if union_entities != all_entity_ids:
-                raise ValueError(f"Entity complement pair does not cover all entities for seed {pair_seed_key(base_record)}")
+            optional_entity_ids = get_optional_zero_entities(dataset, base_record["parsed"])
+            missing_entities = all_entity_ids - union_entities
+            missing_required_entities = missing_entities - optional_entity_ids
+            if missing_required_entities:
+                raise ValueError(f"Entity complement pair does not cover all non-optional entities for seed {pair_seed_key(base_record)}")
 
 
 def compute_other_pair_overlaps(split_records, complement_pairs, dataset):
@@ -304,10 +388,11 @@ def compute_other_pair_overlaps(split_records, complement_pairs, dataset):
         second_indices = set(second_record["indices"])
         datapoint_overlap = len(first_indices & second_indices) / len(dataset)
         datapoint_overlaps.append(100.0 * datapoint_overlap)
-        first_entities = get_split_entities(dataset, first_record["indices"])
-        second_entities = get_split_entities(dataset, second_record["indices"])
-        entity_overlap = len(first_entities & second_entities) / dataset.n_entities
-        entity_overlaps.append(100.0 * entity_overlap)
+        first_entities = get_split_entities_or_none(dataset, first_record["indices"])
+        second_entities = get_split_entities_or_none(dataset, second_record["indices"])
+        if first_entities is not None and second_entities is not None:
+            entity_overlap = len(first_entities & second_entities) / dataset.n_entities
+            entity_overlaps.append(100.0 * entity_overlap)
     return datapoint_overlaps, entity_overlaps
 
 
@@ -325,6 +410,38 @@ def summarize_percentages(values):
     value_mean = float(values_array.mean())
     value_std = float(values_array.std())
     return value_mean, value_std
+
+def summarize_training_samples(split_records, dataset):
+    '''
+    Return mean training sample count and dataset fraction.
+    Args:
+        split_records (list[dict]): Loaded split records.
+        dataset (Dataset): Dataset used by the splits.
+    Returns:
+        tuple[float, float]: Mean sample count and mean fraction of the dataset.
+    '''
+    sample_counts = [len(record["indices"]) for record in split_records]
+    mean_sample_count = float(np.mean(sample_counts))
+    mean_sample_fraction = mean_sample_count / len(dataset)
+    return mean_sample_count, mean_sample_fraction
+
+def count_nonempty_hold_out_entities(dataset, parsed):
+    '''
+    Return the number of entities with at least one held-out sample.
+    Args:
+        dataset (data_datasets.EntityDataset): Dataset used by the split.
+        parsed (dict): Parsed split metadata.
+    Returns:
+        int: Number of entities with non-empty hold-out sets.
+    '''
+    entity_index_table = dataset.get_entity_index_table()
+    hold_out_fraction = parsed["per_entity_hold_out"]
+    hold_out_counts = [
+        get_entity_hold_out_count(len(entity_indices), hold_out_fraction)
+        for entity_indices in entity_index_table.values()
+    ]
+    nonempty_count = sum(hold_out_count > 0 for hold_out_count in hold_out_counts)
+    return nonempty_count
 
 
 def parse_args(argv=None):
@@ -353,7 +470,7 @@ def main(argv=None):
     split_records = load_split_records(args.train_splits_dir)
     shared_spec = validate_shared_spec(split_records)
     dataset = load_dataset(shared_spec["dataset"], data_dir=args.data_dir)
-    if not isinstance(dataset, data_datasets.EntityDataset):
+    if shared_spec["split_mode"] == "entity" and not isinstance(dataset, data_datasets.EntityDataset):
         raise TypeError(f"{shared_spec['dataset']} is not an EntityDataset.")
     for split_record in split_records:
         len_dataset = train_split.load_indices(split_record["path"], len_dataset=len(dataset))
@@ -364,15 +481,21 @@ def main(argv=None):
     datapoint_overlaps, entity_overlaps = compute_other_pair_overlaps(split_records, complement_pairs, dataset)
     datapoint_mean, datapoint_std = summarize_percentages(datapoint_overlaps)
     entity_mean, entity_std = summarize_percentages(entity_overlaps)
+    mean_sample_count, mean_sample_fraction = summarize_training_samples(split_records, dataset)
     print(f"Dataset: {shared_spec['dataset']}")
     print(f"Split mode: {shared_spec['split_mode']}")
     print(f"Number of split files: {len(split_records)}")
     print(f"Complement pairs checked: {len(complement_pairs)}")
     print(f"Other pairs checked: {len(datapoint_overlaps)}")
+    print(f"Mean training samples: {mean_sample_count:.6f}")
+    print(f"Mean training fraction (% of dataset): {100.0 * mean_sample_fraction:.6f}")
     print(f"Mean datapoint overlap (% of dataset): {datapoint_mean:.6f}")
     print(f"Std datapoint overlap (% of dataset): {datapoint_std:.6f}")
-    print(f"Mean entity overlap (% of entities): {entity_mean:.6f}")
-    print(f"Std entity overlap (% of entities): {entity_std:.6f}")
+    if isinstance(dataset, data_datasets.EntityDataset):
+        nonempty_hold_out_entities = count_nonempty_hold_out_entities(dataset, shared_spec)
+        print(f"Entities with non-empty holdout: {nonempty_hold_out_entities}")
+        print(f"Mean entity overlap (% of entities): {entity_mean:.6f}")
+        print(f"Std entity overlap (% of entities): {entity_std:.6f}")
 
 
 if __name__ == "__main__":
