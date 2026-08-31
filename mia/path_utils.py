@@ -4,7 +4,8 @@ import re
 import utils
 
 _SCORES_FILENAME_RE = re.compile(r"^scores_attack-(?P<attack>.+)_target-(?P<target>.+)\.pkl$")
-_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+)-ls(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)(?:-dp(?P<n_data_points>\d+))?\.pkl$")
+_SIGNALS_FILENAME_RE = re.compile(r"^(?P<signal_type>[A-Za-z0-9-]+)-signals-(?P<target>.+)-n(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)(?:-dp(?P<n_data_points>\d+))?\.pkl$")
+_LOSS_SIGNALS_FILENAME_RE = re.compile(r"^loss_signals-(?P<target>.+?)(?:-signal-(?P<signal_type>[A-Za-z0-9_]+))?-ls(?P<n_loss_samples>\d+)-nl(?P<noise_level>\d+(?:p\d+)?)(?:-dp(?P<n_data_points>\d+))?\.pkl$")
 _METRICS_FILENAME_RE = re.compile(r"^metrics_attack-(?P<attack>.+)_target-(?P<target>.+)_mode-(?P<mode>.+)\.pkl$")
 
 def audit_result_name(target_path):
@@ -98,20 +99,22 @@ def format_float_filename_token(value):
         token = "0"
     return token.replace(".", "p")
 
-def loss_signals_pickle_name(target_path, n_loss_samples, noise_level=0.1, n_data_points=None):
+def loss_signals_pickle_name(target_path, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss"):
     '''
     Return the normalized loss-signal pickle filename.
     Args:
         target_path (str | Path): Target checkpoint path.
-        n_loss_samples (int): Number of loss samples used per point.
+        n_samples (int): Number of signal samples used per point.
         noise_level (float): Query noise level used for loss signals.
         n_data_points (int | None): Optional number of queried data points.
+        signal_type (str): Signal kind used for filename disambiguation.
     Returns:
         str: Loss-signal pickle filename.
     '''
     noise_level_token = format_float_filename_token(noise_level)
     data_points_token = "" if n_data_points is None else f"-dp{n_data_points}"
-    return f"loss_signals-{Path(target_path).stem}-ls{n_loss_samples}-nl{noise_level_token}{data_points_token}.pkl"
+    filename_signal_type = str(signal_type).replace("_", "-")
+    return f"{filename_signal_type}-signals-{Path(target_path).stem}-n{n_samples}-nl{noise_level_token}{data_points_token}.pkl"
 
 def _parse_scores_filename(path):
     '''
@@ -137,14 +140,22 @@ def _parse_loss_signals_filename(path):
     Returns:
         dict: Parsed loss-signal filename fields.
     '''
-    match = _LOSS_SIGNALS_FILENAME_RE.match(Path(path).name)
+    filename = Path(path).name
+    match = _SIGNALS_FILENAME_RE.match(filename)
+    if match is None:
+        match = _LOSS_SIGNALS_FILENAME_RE.match(filename)
     if match is None:
         raise ValueError(f"Could not parse loss-signal filename: {path}")
+    signal_type = match.group("signal_type")
+    if signal_type is None:
+        signal_type = "loss"
+    signal_type = signal_type.replace("-", "_")
     return {
         "target_stem": match.group("target"),
         "n_loss_samples": int(match.group("n_loss_samples")),
         "noise_level": float(match.group("noise_level").replace("p", ".")),
         "n_data_points": None if match.group("n_data_points") is None else int(match.group("n_data_points")),
+        "signal_type": signal_type,
     }
 
 def infer_attack_from_score_paths(score_paths):
@@ -392,7 +403,7 @@ def _resolve_pickle_paths(base_dir, input_paths, pattern, missing_message, empty
     Args:
         base_dir (str | Path | None): Base directory for relative input paths.
         input_paths (list[str] | None): Input file or directory paths.
-        pattern (str): Glob pattern used for directory expansion.
+        pattern (str | tuple[str]): Glob pattern used for directory expansion.
         missing_message (str): Error message used when no inputs are given.
         empty_message (str): Error message used when no files are found.
     Returns:
@@ -401,6 +412,7 @@ def _resolve_pickle_paths(base_dir, input_paths, pattern, missing_message, empty
     if not input_paths:
         raise ValueError(missing_message)
     input_paths = [utils.resolve_path(path, base_dir) for path in input_paths]
+    patterns = (pattern,) if isinstance(pattern, str) else pattern
     resolved_files = []
     seen_files = set()
     for input_path in input_paths:
@@ -408,7 +420,9 @@ def _resolve_pickle_paths(base_dir, input_paths, pattern, missing_message, empty
         if input_path.is_file():
             candidate_paths = [input_path.resolve()]
         elif input_path.is_dir():
-            candidate_paths = [path.resolve() for path in sorted(input_path.rglob(pattern))]
+            candidate_paths = []
+            for current_pattern in patterns:
+                candidate_paths.extend(path.resolve() for path in sorted(input_path.rglob(current_pattern)))
         else:
             raise ValueError(f"Path does not exist: {input_path}")
         for candidate_path in candidate_paths:
@@ -451,7 +465,7 @@ def resolve_audit_loss_signal_paths(config, key):
     return _resolve_pickle_paths(
         root,
         getattr(config, key, None),
-        "loss_signals-*.pkl",
+        ("*-signals-*-n*-nl*.pkl", "loss_signals-*.pkl"),
         f"No {key} specified in config or CLI.",
         "No loss-signal pickle files found.",
     )

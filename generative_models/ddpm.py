@@ -105,6 +105,20 @@ class DDPM(AbstractDiffusionModel):
         t = torch.full(size=(x.shape[0],), fill_value=time_index, dtype=torch.long, device=x.device)
         return self.per_sample_loss(x, t, autocast_context=autocast_context, network_override=network_override)
 
+    def denoiser_norm(self, x, noise_level, lp_norm=4, autocast_context=nullcontext()):
+        '''
+        MIA score signal from "Score-based Membership Inference on Diffusion Models"
+        '''
+        assert 0.0 <= noise_level <= 1.0
+        time_index = round((self.time_steps - 1) * noise_level)
+        t = torch.full(size=(x.shape[0],), fill_value=time_index, dtype=torch.long, device=x.device)
+        eps = torch.randn_like(x)
+        alpha_bar_t = self.alpha_bar[t].view(x.shape[0], 1, 1, 1)
+        z = torch.sqrt(alpha_bar_t) * x + torch.sqrt(1 - alpha_bar_t) * eps
+        with autocast_context:
+            noise_pred = self.network(z, t)
+        return torch.linalg.vector_norm(noise_pred, ord=lp_norm, dim=(1, 2, 3))
+
     @torch.inference_mode()
     def sample(self, batch_size, disable_tqdm=False):
         '''

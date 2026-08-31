@@ -1,5 +1,5 @@
 from data.utils import infer_dataset_name, load_dataset
-from generative_models import AbstractGenerativeModel, AbstractDiffusionModel, VAE
+from generative_models import AbstractGenerativeModel, AbstractDiffusionModel, DDPM, VAE
 from generative_models.utils import load_model
 from . import path_utils
 import utils
@@ -15,10 +15,10 @@ from tqdm.auto import tqdm
 
 class LossQuery:
 
-    def __init__(self, batch_size, device, n_loss_samples, noise_level=0.1):
+    def __init__(self, batch_size, device, n_samples, noise_level):
         self.batch_size = batch_size
         self.device = device
-        self.n_loss_samples = n_loss_samples
+        self.n_samples = n_samples
         self.noise_level = noise_level
 
     def load_model(self, path):
@@ -36,7 +36,7 @@ class LossQuery:
             samples = samples.to(self.device)
             sigs.append(self.compute_loss_samples(model, samples))
         sigs = torch.concat(sigs, dim=0)
-        assert sigs.shape == (len(audit_loader.dataset), self.n_loss_samples)
+        assert sigs.shape == (len(audit_loader.dataset), self.n_samples)
         return sigs
 
     @torch.inference_mode()
@@ -47,10 +47,10 @@ class LossQuery:
             model (AbstractGenerativeModel): Generative model used for querying.
             samples (torch.Tensor): Batch of samples on the evaluation device.
         Returns:
-            torch.Tensor: Sorted loss samples on CPU with shape (batch_size, n_loss_samples).
+            torch.Tensor: Sorted loss samples on CPU with shape (batch_size, n_samples).
         '''
         loss_samples = []
-        for _ in range(self.n_loss_samples):
+        for _ in range(self.n_samples):
             match model.__class__.__name__:
                 case "DDPM" | "FlowMatching":
                     assert isinstance(model, AbstractDiffusionModel)
@@ -74,28 +74,89 @@ class LossQuery:
         sig = self.loss_signal(audit_loader, model)
         return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
 
-def save_loss_signals(res_dir, target_path, loss_sig, train_mask, n_loss_samples, noise_level=0.1, n_data_points=None):
+class L4NormQuery:
+    '''
+    MIA score signal from "Score-based Membership Inference on Diffusion Models"
+    '''
+
+    def __init__(self, batch_size, device, n_samples, noise_level):
+        self.batch_size = batch_size
+        self.device = device
+        self.n_samples = n_samples
+        self.noise_level = noise_level
+
+    def load_model(self, path):
+        model, train_indices = load_model(
+            path=path,
+            device=self.device,
+        )
+        if not isinstance(model, DDPM):
+            raise ValueError("L4 norm denoiser signal only defined for DDPM.")
+        return model, train_indices
+
+    def l4_norm_signal(self, audit_loader, model):
+        sigs = []
+        for x in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing l4 denoiser norm signal"):
+            x = x.to(self.device)
+            sigs.append(self.compute_l4_norm_samples(model, x))
+        sigs = torch.concat(sigs, dim=0)
+        assert sigs.shape == (len(audit_loader.dataset), self.n_samples)
+        return sigs
+
+    @torch.inference_mode()
+    def compute_l4_norm_samples(self, model: DDPM, x: torch.Tensor):
+        '''
+        Compute per-query l4 denoiser samples for one batch.
+        Args:
+            model (DDPM): Only supported for DDPM.
+            x (torch.Tensor): Batch of data samples on the evaluation device.
+        Returns:
+            torch.Tensor: L4 norm samples on CPU with shape (batch_size, n_samples).
+        '''
+        samples = []
+        for _ in range(self.n_samples):
+            match model.__class__.__name__:
+                case "DDPM":
+                    l4_norm_sample = model.denoiser_norm(x, self.noise_level, lp_norm=4).cpu()
+                case _:
+                    raise ValueError("Unavailable class of generative model.")
+            samples.append(l4_norm_sample)
+        samples = torch.stack(samples, dim=1)
+        return samples
+
+    def query_l4_norm(self, dataset, model_path, n_data_points=None):
+        audit_dataset = dataset if n_data_points is None else Subset(dataset, range(n_data_points))
+        audit_loader = DataLoader(audit_dataset, batch_size=self.batch_size, shuffle=False)
+        model, train_indices = self.load_model(model_path)
+        mask = index_to_mask(train_indices, n_indices=len(dataset))
+        if n_data_points is not None:
+            mask = mask[:n_data_points]
+        sig = self.l4_norm_signal(audit_loader, model)
+        return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
+
+def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss"):
     '''
     Save one checkpoint's loss-signal payload.
     Args:
         res_dir (str | Path): Audit results directory.
         target_path (str | Path): Target checkpoint path.
-        loss_sig (torch.Tensor): Loss signal values to save.
+        signal (torch.Tensor): Signal values to save under the current loss_sigs payload key.
         train_mask (torch.Tensor): Training-membership mask.
-        n_loss_samples (int): Number of loss samples used per point.
+        n_samples (int): Number of signal samples used per point.
         noise_level (float): Query noise level used for loss signals.
         n_data_points (int | None): Optional number of queried data points.
+        signal_type (str): Signal kind used for filename disambiguation.
     Returns:
         Path: Saved pickle path.
     '''
     target_path = Path(target_path)
     output_dir = path_utils.loss_signals_dir(res_dir, target_path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_name = path_utils.loss_signals_pickle_name(target_path, n_loss_samples, noise_level, n_data_points)
+    output_name = path_utils.loss_signals_pickle_name(target_path, n_samples, noise_level, n_data_points, signal_type)
     output_path = output_dir / output_name
     with open(output_path, "wb") as file:
         pickle.dump({
-            "loss_sigs": loss_sig.tolist(),
+            "loss_sigs": signal.tolist(),
             "train_mask": train_mask.tolist(),
         }, file)
     return output_path
@@ -112,7 +173,7 @@ def resolve_loss_query_dataset(dataset, checkpoint_properties):
     dataset_name = checkpoint_properties["dataset"] if dataset is None else dataset
     return infer_dataset_name(dataset_name)
 
-def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_loss_samples, device, noise_level, n_data_points=None):
+def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_samples, device, noise_level, n_data_points=None, signal_type="loss"):
     '''
     Compute loss-signal pickles for model checkpoints.
     Args:
@@ -122,30 +183,34 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
         data_dir (str | Path): Dataset directory.
         batch_size (int): Loss-query batch size.
         res_dir (str | Path): Directory used for saved loss signals.
-        n_loss_samples (int): Number of loss samples used per point.
+        n_samples (int): Number of signal samples used per point.
         device (torch.device): Device used for model evaluation.
         noise_level (float): Query noise level used for loss signals.
         n_data_points (int | None): Optional number of leading data points to query.
+        signal_type (str): Signal to compute, either loss or l4_norm.
     Returns:
         list[Path]: Saved loss-signal pickle paths.
     '''
     dataset_name = resolve_loss_query_dataset(dataset, checkpoint_properties)
     image_size = checkpoint_properties["size"]
     loaded_dataset = load_dataset(dataset_name, data_dir=data_dir, size=image_size)
-    loss_query = LossQuery(
-        batch_size=batch_size,
-        device=device,
-        n_loss_samples=n_loss_samples,
-        noise_level=noise_level,
-    )
+    match signal_type:
+        case "loss":
+            signal_query = LossQuery(batch_size, device, n_samples, noise_level)
+            query_method = signal_query.query_loss
+        case "l4_norm":
+            signal_query = L4NormQuery(batch_size, device, n_samples, noise_level)
+            query_method = signal_query.query_l4_norm
+        case _:
+            raise ValueError(f"Unsupported signal type: {signal_type}")
     saved_paths = []
     for checkpoint_path in checkpoint_paths:
-        loss_sig, train_mask = loss_query.query_loss(loaded_dataset, checkpoint_path, n_data_points)
-        saved_path = save_loss_signals(res_dir, checkpoint_path, loss_sig, train_mask, n_loss_samples, noise_level, n_data_points)
+        signal, train_mask = query_method(loaded_dataset, checkpoint_path, n_data_points)
+        saved_path = save_loss_signals(res_dir, checkpoint_path, signal, train_mask, n_samples, noise_level, n_data_points, signal_type)
         saved_paths.append(saved_path)
     return saved_paths
 
-def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_loss_samples, checkpoint_paths, noise_level, n_data_points):
+def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_samples, checkpoint_paths, noise_level, n_data_points, signal_type):
     '''
     Print effective loss-query settings.
     Args:
@@ -154,10 +219,11 @@ def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_
         data_dir (str | Path): Dataset directory.
         batch_size (int): Loss-query batch size.
         res_dir (str | Path): Directory used for saved loss signals.
-        n_loss_samples (int): Number of loss samples used per point.
+        n_samples (int): Number of signal samples used per point.
         checkpoint_paths (list[str] | None): Effective checkpoint paths.
         noise_level (float): Effective query noise level.
         n_data_points (int | None): Optional number of leading data points to query.
+        signal_type (str): Signal to compute.
     Returns:
         None
     '''
@@ -167,9 +233,10 @@ def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_
     print(f"data_dir: {data_dir}")
     print(f"batch_size: {batch_size}")
     print(f"res_dir: {res_dir}")
-    print(f"n_loss_samples: {n_loss_samples}")
+    print(f"n_samples: {n_samples}")
     print(f"noise_level: {noise_level}")
     print(f"n_data_points: {n_data_points}")
+    print(f"signal_type: {signal_type}")
     print("checkpoint_paths:")
     for checkpoint_path in checkpoint_paths:
         print(f"  - {checkpoint_path}")
@@ -216,16 +283,22 @@ def parse_args(argv=None):
         help="Result directory. Defaults to root/mia/results.",
     )
     parser.add_argument(
-        "--n-loss-samples",
+        "--n-samples",
         type=int,
         required=True,
-        help="Number of loss samples per point.",
+        help="Number of signal samples per point.",
     )
     parser.add_argument(
         "--noise-level",
         type=float,
         required=True,
         help="Loss-query noise level in [0.0, 1.0].",
+    )
+    parser.add_argument(
+        "--signal-type",
+        choices=("loss", "l4_norm"),
+        default="loss",
+        help="Signal to compute. Defaults to loss.",
     )
     parser.add_argument(
         "--n-data-points",
@@ -257,10 +330,11 @@ def main(argv=None):
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         res_dir=args.res_dir,
-        n_loss_samples=args.n_loss_samples,
+        n_samples=args.n_samples,
         checkpoint_paths=checkpoint_paths,
         noise_level=args.noise_level,
         n_data_points=args.n_data_points,
+        signal_type=args.signal_type,
     )
     run_loss_query(
         checkpoint_paths=checkpoint_paths,
@@ -269,10 +343,11 @@ def main(argv=None):
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         res_dir=args.res_dir,
-        n_loss_samples=args.n_loss_samples,
+        n_samples=args.n_samples,
         device=device,
         noise_level=args.noise_level,
         n_data_points=args.n_data_points,
+        signal_type=args.signal_type,
     )
 
 if __name__ == "__main__":

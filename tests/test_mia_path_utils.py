@@ -23,7 +23,7 @@ class TestMiaPathUtils(unittest.TestCase):
         loss_path = path_utils.loss_signals_dir("/results", target_path) / path_utils.loss_signals_pickle_name(target_path, 10)
         self.assertEqual(
             loss_path,
-            Path("/results/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000/loss_signals-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000-ls10-nl0p1.pkl"),
+            Path("/results/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch1000/loss-signals-DDPM-CelebA-ent-f0p5-p0p5-s0-sz64-epoch1000-n10-nl0p1.pkl"),
         )
         self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
         self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 10)
@@ -64,8 +64,51 @@ class TestMiaPathUtils(unittest.TestCase):
 
         self.assertEqual(
             loss_path,
-            "loss_signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-ls128-nl0p33-dp100.pkl",
+            "loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-n128-nl0p33-dp100.pkl",
         )
+        self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
+        self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 128)
+        self.assertEqual(path_utils.noise_level_from_loss_signals_pickle_path(loss_path), 0.33)
+
+    def test_loss_signal_pickle_name_accepts_signal_type(self):
+        '''
+        Prefix signal filenames with the filename-safe signal type.
+        Returns:
+            None
+        '''
+        target_path = Path("/tmp/DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4.pth")
+        loss_path = path_utils.loss_signals_pickle_name(target_path, 30, noise_level=0.03, signal_type="l4_norm")
+
+        self.assertEqual(
+            loss_path,
+            "l4-norm-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-n30-nl0p03.pkl",
+        )
+        self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
+        self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 30)
+        self.assertEqual(path_utils.noise_level_from_loss_signals_pickle_path(loss_path), 0.03)
+
+    def test_old_signal_typed_loss_signal_pickle_names_still_parse(self):
+        '''
+        Parse existing signal-typed loss-signal files created before prefix naming.
+        Returns:
+            None
+        '''
+        target_path = Path("/tmp/DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4.pth")
+        loss_path = "loss_signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-signal-l4_norm-ls30-nl0p03.pkl"
+
+        self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
+        self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 30)
+        self.assertEqual(path_utils.noise_level_from_loss_signals_pickle_path(loss_path), 0.03)
+
+    def test_old_loss_signal_pickle_names_parse_as_loss(self):
+        '''
+        Preserve parsing for existing loss-signal files without signal-type tokens.
+        Returns:
+            None
+        '''
+        target_path = Path("/tmp/DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4.pth")
+        loss_path = "loss_signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-ls128-nl0p33-dp100.pkl"
+
         self.assertEqual(path_utils.target_stem_from_loss_signals_pickle_path(loss_path), target_path.stem)
         self.assertEqual(path_utils.n_loss_samples_from_loss_signals_pickle_path(loss_path), 128)
         self.assertEqual(path_utils.noise_level_from_loss_signals_pickle_path(loss_path), 0.33)
@@ -74,6 +117,16 @@ class TestMiaPathUtils(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth"
             loss_file = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 5)
+            loss_file.parent.mkdir(parents=True, exist_ok=True)
+            loss_file.touch()
+            config = run_audit_module.utils.Config({"res_dir": tmpdir, "target_loss_paths": [str(loss_file.parent)]})
+            resolved = path_utils.resolve_audit_loss_signal_paths(config, "target_loss_paths")
+            self.assertEqual(resolved, [loss_file.resolve()])
+
+    def test_resolve_audit_loss_signal_paths_accepts_l4_norm_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth"
+            loss_file = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 5, signal_type="l4_norm")
             loss_file.parent.mkdir(parents=True, exist_ok=True)
             loss_file.touch()
             config = run_audit_module.utils.Config({"res_dir": tmpdir, "target_loss_paths": [str(loss_file.parent)]})
