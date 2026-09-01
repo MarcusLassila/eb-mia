@@ -154,7 +154,7 @@ class PIAQuery(SignalQuery):
 
     def signal(self, dataloader, model):
         sigs = []
-        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing l4 denoiser norm signal"):
+        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing pia{'n' if self.normalize else ''} signal"):
             x = x.to(self.device)
             sigs.append(self.pia_signal(model, x))
         sigs = torch.concat(sigs, dim=0)
