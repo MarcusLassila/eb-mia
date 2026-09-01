@@ -1,12 +1,23 @@
 import io
 import pickle
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import torch
 
+torchdiffeq_stub = types.ModuleType("torchdiffeq")
+
+def odeint_stub(func, y0, t, *args, **kwargs):
+    return torch.stack([y0 for _ in range(t.shape[0])], dim=0)
+
+torchdiffeq_stub.odeint = odeint_stub
+sys.modules.setdefault("torchdiffeq", torchdiffeq_stub)
+
+from generative_models.ddpm import DDPM as DDPMModel
 from generative_models.flow_matching import FlowMatching
 from mia import loss_query as loss_query_module
 from mia import path_utils
@@ -14,9 +25,9 @@ from mia import utils as mia_utils
 
 
 class TestLossQuery(unittest.TestCase):
-    def test_compute_loss_samples_supports_flow_matching(self):
+    def test_loss_signal_supports_flow_matching(self):
         '''
-        Query and sort FlowMatching loss samples at the configured fixed query time.
+        Query FlowMatching loss samples at the configured fixed query time.
         Returns:
             None
         '''
@@ -43,9 +54,9 @@ class TestLossQuery(unittest.TestCase):
         second_loss = torch.tensor([1.0, 4.0, 3.0], dtype=torch.float32)
 
         with patch.object(model, "per_sample_loss", side_effect=[first_loss, second_loss]) as per_sample_loss_fn:
-            loss_samples = loss_query.compute_loss_samples(model, samples)
+            loss_samples = loss_query.loss_signal(model, samples)
 
-        expected_loss_samples = torch.tensor([[1.0, 3.0], [2.0, 4.0], [3.0, 5.0]], dtype=torch.float32)
+        expected_loss_samples = torch.tensor([[3.0, 1.0], [2.0, 4.0], [5.0, 3.0]], dtype=torch.float32)
         expected_t = torch.full(size=(3,), fill_value=0.75, dtype=torch.float32)
         self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
         self.assertEqual(per_sample_loss_fn.call_count, 2)
@@ -57,9 +68,9 @@ class TestLossQuery(unittest.TestCase):
             self.assertEqual(called_t.device, samples.device)
             self.assertEqual(called_t.dtype, torch.float32)
 
-    def test_compute_loss_samples_supports_ddpm_noise_level(self):
+    def test_loss_signal_supports_ddpm_noise_level(self):
         '''
-        Query and sort DDPM losses at the configured noise-level-derived step.
+        Query DDPM losses at the configured noise-level-derived step.
         Returns:
             None
         '''
@@ -101,9 +112,9 @@ class TestLossQuery(unittest.TestCase):
         model = DDPM()
         samples = torch.randn(3, 1, 4, 4)
 
-        loss_samples = loss_query.compute_loss_samples(model, samples)
+        loss_samples = loss_query.loss_signal(model, samples)
 
-        expected_loss_samples = torch.tensor([[1.0, 2.0], [1.0, 3.0], [2.0, 3.0]], dtype=torch.float32)
+        expected_loss_samples = torch.tensor([[2.0, 1.0], [1.0, 3.0], [3.0, 2.0]], dtype=torch.float32)
         self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
         self.assertEqual(len(model.calls), 2)
         for called_samples, noise_level in model.calls:
@@ -117,10 +128,10 @@ class TestLossQuery(unittest.TestCase):
             noise_level=1.0,
         )
         endpoint_model = DDPM()
-        endpoint_query.compute_loss_samples(endpoint_model, samples)
+        endpoint_query.loss_signal(endpoint_model, samples)
         self.assertEqual(endpoint_model.calls[0][1], 1.0)
 
-    def test_compute_loss_samples_supports_vae(self):
+    def test_loss_signal_supports_vae(self):
         '''
         Query VAE losses as individual samples without keeping VAE internal averaging.
         Returns:
@@ -149,14 +160,14 @@ class TestLossQuery(unittest.TestCase):
         model.n_rsamples = 1
         samples = torch.randn(3, 1, 4, 4)
 
-        loss_samples = loss_query.compute_loss_samples(model, samples)
+        loss_samples = loss_query.loss_signal(model, samples)
 
-        expected_loss_samples = torch.tensor([[2.0, 4.0], [1.0, 5.0], [2.0, 3.0]], dtype=torch.float32)
+        expected_loss_samples = torch.tensor([[4.0, 2.0], [1.0, 5.0], [3.0, 2.0]], dtype=torch.float32)
         self.assertTrue(torch.allclose(loss_samples, expected_loss_samples))
         self.assertEqual(model.n_rsamples_seen, [1, 1])
         self.assertEqual(model.n_rsamples, 1)
 
-    def test_compute_l4_norm_samples_supports_ddpm(self):
+    def test_l4_norm_signal_supports_ddpm(self):
         '''
         Query DDPM denoiser L4 norm samples without sorting Monte Carlo draws.
         Returns:
@@ -183,7 +194,7 @@ class TestLossQuery(unittest.TestCase):
         model = DDPM()
         samples = torch.randn(3, 1, 4, 4)
 
-        l4_samples = l4_query.compute_l4_norm_samples(model, samples)
+        l4_samples = l4_query.l4_norm_signal(model, samples)
 
         expected_l4_samples = torch.tensor([[2.0, 5.0], [1.0, 4.0], [3.0, 6.0]])
         self.assertTrue(torch.allclose(l4_samples, expected_l4_samples))
@@ -202,12 +213,12 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(loss_query_module, "load_dataset", return_value=dataset) as load_dataset_fn,
                 patch.object(
                     loss_query_module.LossQuery,
-                    "query_loss",
+                    "query",
                     return_value=(
                         torch.tensor([[0.1, 0.3], [0.2, 0.4], [0.3, 0.5], [0.4, 0.6]], dtype=torch.float32),
                         torch.tensor([0, 1, 0, 1], dtype=torch.bool),
                     ),
-                ) as query_loss_fn,
+                ) as query_fn,
             ):
                 saved_paths = loss_query_module.run_loss_query(
                     checkpoint_paths=[target_path],
@@ -222,7 +233,7 @@ class TestLossQuery(unittest.TestCase):
                 )
 
             load_dataset_fn.assert_called_once_with("CIFAR10", data_dir=tmpdir, size=32)
-            query_loss_fn.assert_called_once()
+            query_fn.assert_called_once()
             saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 10, 0.25)
             self.assertEqual(saved_paths, [saved_path])
             with open(saved_path, "rb") as file:
@@ -254,18 +265,18 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(loss_query, "load_model", return_value=(DummyModel(), torch.tensor([0, 2, 4]))),
                 patch.object(
                     loss_query,
-                    "compute_loss_samples",
+                    "loss_signal",
                     side_effect=[
                         torch.tensor([[0.0, 1.0], [2.0, 3.0]], dtype=torch.float32),
                         torch.tensor([[4.0, 5.0]], dtype=torch.float32),
                     ],
-                ) as compute_loss_samples_fn,
+                ) as loss_signal_fn,
             ):
-                loss_sig, train_mask = loss_query.query_loss(dataset, target_path, n_data_points=3)
+                loss_sig, train_mask = loss_query.query(dataset, target_path, n_data_points=3)
 
             self.assertTrue(torch.allclose(loss_sig, torch.tensor([[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]])))
             self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
-            called_batches = [call_args.args[1] for call_args in compute_loss_samples_fn.call_args_list]
+            called_batches = [call_args.args[1] for call_args in loss_signal_fn.call_args_list]
             self.assertTrue(torch.equal(called_batches[0], torch.tensor([0, 1])))
             self.assertTrue(torch.equal(called_batches[1], torch.tensor([2])))
 
@@ -292,20 +303,89 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(l4_query, "load_model", return_value=(DummyModel(), torch.tensor([0, 2, 4]))),
                 patch.object(
                     l4_query,
-                    "compute_l4_norm_samples",
+                    "l4_norm_signal",
                     side_effect=[
                         torch.tensor([[0.0, 1.0], [2.0, 3.0]], dtype=torch.float32),
                         torch.tensor([[4.0, 5.0]], dtype=torch.float32),
                     ],
-                ) as compute_l4_norm_samples_fn,
+                ) as l4_norm_signal_fn,
             ):
-                signal, train_mask = l4_query.query_l4_norm(dataset, target_path, n_data_points=3)
+                signal, train_mask = l4_query.query(dataset, target_path, n_data_points=3)
 
             self.assertTrue(torch.allclose(signal, torch.tensor([[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]])))
             self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
-            called_batches = [call_args.args[1] for call_args in compute_l4_norm_samples_fn.call_args_list]
+            called_batches = [call_args.args[1] for call_args in l4_norm_signal_fn.call_args_list]
             self.assertTrue(torch.equal(called_batches[0], torch.tensor([0, 1])))
             self.assertTrue(torch.equal(called_batches[1], torch.tensor([2])))
+
+    def test_pia_signal_passes_normalization_choice(self):
+        '''
+        Forward the PIA normalization flag into the DDPM query.
+        Returns:
+            None
+        '''
+        class DDPM:
+            def __init__(self):
+                self.calls = []
+
+            def pia_score(self, x, noise_level, lp_norm=4, normalize=True):
+                self.calls.append((x, noise_level, lp_norm, normalize))
+                return torch.tensor([1.0, 2.0], dtype=torch.float32)
+
+        x = torch.randn(2, 1, 4, 4)
+        model = DDPM()
+        pia_query = loss_query_module.PIAQuery(
+            batch_size=2,
+            device=torch.device("cpu"),
+            noise_level=0.2,
+            normalize=False,
+        )
+
+        signal = pia_query.pia_signal(model, x)
+
+        self.assertTrue(torch.allclose(signal, torch.tensor([[1.0], [2.0]])))
+        self.assertEqual(model.calls, [(x, 0.2, 4, False)])
+
+    def test_ddpm_pian_normalization_is_batchwise_and_finite_for_zero_norm(self):
+        '''
+        Normalize PIAN epsilon per batch item without broadcasting over image axes.
+        Returns:
+            None
+        '''
+        class RecordingNetwork:
+            def __init__(self):
+                self.calls = []
+                self.eps_0 = torch.tensor(
+                    [
+                        [[[1.0, 1.0], [1.0, 1.0]]],
+                        [[[0.0, 0.0], [0.0, 0.0]]],
+                    ],
+                    dtype=torch.float32,
+                )
+                self.eps_t = torch.zeros_like(self.eps_0)
+
+            def __call__(self, x, t):
+                self.calls.append((x.clone(), t.clone()))
+                if len(self.calls) == 1:
+                    return self.eps_0
+                return self.eps_t
+
+        model = DDPMModel.__new__(DDPMModel)
+        model.time_steps = 3
+        model.alpha_bar = torch.tensor([1.0, 0.25, 0.0], dtype=torch.float32)
+        model.network = RecordingNetwork()
+        x = torch.zeros(2, 1, 2, 2, dtype=torch.float32)
+
+        score = model.pia_score(x, noise_level=0.5, lp_norm=2, normalize=True)
+
+        expected_scale = torch.sqrt(torch.tensor(torch.pi * 0.5, dtype=torch.float32))
+        expected_score = torch.tensor([2.0 * expected_scale, 0.0], dtype=torch.float32)
+        self.assertTrue(torch.all(torch.isfinite(score)))
+        self.assertTrue(torch.allclose(score, expected_score))
+        first_t = model.network.calls[0][1]
+        second_t = model.network.calls[1][1]
+        self.assertTrue(torch.equal(first_t, torch.tensor([0, 0], dtype=torch.long)))
+        self.assertTrue(torch.equal(second_t, torch.tensor([1, 1], dtype=torch.long)))
 
     def test_run_loss_query_saves_first_n_loss_signals(self):
         '''
@@ -321,12 +401,12 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(loss_query_module, "load_dataset", return_value=dataset),
                 patch.object(
                     loss_query_module.LossQuery,
-                    "query_loss",
+                    "query",
                     return_value=(
                         torch.tensor([[0.1, 0.3], [0.2, 0.4]], dtype=torch.float32),
                         torch.tensor([0, 1], dtype=torch.bool),
                     ),
-                ) as query_loss_fn,
+                ) as query_fn,
             ):
                 saved_paths = loss_query_module.run_loss_query(
                     checkpoint_paths=[target_path],
@@ -341,8 +421,8 @@ class TestLossQuery(unittest.TestCase):
                     n_data_points=2,
                 )
 
-            query_loss_fn.assert_called_once()
-            self.assertEqual(query_loss_fn.call_args.args[2], 2)
+            query_fn.assert_called_once()
+            self.assertEqual(query_fn.call_args.args[2], 2)
             saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 10, 0.25, 2)
             self.assertEqual(saved_paths, [saved_path])
             with open(saved_path, "rb") as file:
@@ -365,12 +445,12 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(loss_query_module, "load_dataset", return_value=dataset),
                 patch.object(
                     loss_query_module.L4NormQuery,
-                    "query_l4_norm",
+                    "query",
                     return_value=(
                         torch.tensor([[1.0, 3.0], [2.0, 4.0]], dtype=torch.float32),
                         torch.tensor([0, 1], dtype=torch.bool),
                     ),
-                ) as query_l4_norm_fn,
+                ) as query_fn,
             ):
                 saved_paths = loss_query_module.run_loss_query(
                     checkpoint_paths=[target_path],
@@ -386,7 +466,7 @@ class TestLossQuery(unittest.TestCase):
                     signal_type="l4_norm",
                 )
 
-            query_l4_norm_fn.assert_called_once()
+            query_fn.assert_called_once()
             saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 2, 0.25, 2, "l4_norm")
             self.assertEqual(saved_paths, [saved_path])
             with open(saved_path, "rb") as file:
@@ -410,7 +490,7 @@ class TestLossQuery(unittest.TestCase):
                 patch.object(loss_query_module, "load_dataset", return_value=dataset) as load_dataset_fn,
                 patch.object(
                     loss_query_module.LossQuery,
-                    "query_loss",
+                    "query",
                     return_value=(
                         torch.tensor([[0.1, 0.3], [0.2, 0.4], [0.3, 0.5], [0.4, 0.6]], dtype=torch.float32),
                         torch.tensor([0, 1, 0, 1], dtype=torch.bool),
@@ -430,6 +510,83 @@ class TestLossQuery(unittest.TestCase):
                 )
 
             load_dataset_fn.assert_called_once_with("CIFAR10", data_dir=tmpdir, size=32)
+
+    def test_run_loss_query_routes_pia_and_pian_signals(self):
+        '''
+        Route PIA and PIAN signal types with the expected normalization flag.
+        Returns:
+            None
+        '''
+        class FakePIAQuery:
+            instances = []
+
+            def __init__(self, batch_size, device, noise_level, normalize=True):
+                self.batch_size = batch_size
+                self.device = device
+                self.noise_level = noise_level
+                self.normalize = normalize
+                self.instances.append(self)
+
+            def query(self, loaded_dataset, model_path, n_data_points=None):
+                return (
+                    torch.tensor([[0.3], [0.4]], dtype=torch.float32),
+                    torch.tensor([True, False], dtype=torch.bool),
+                )
+
+        checkpoint_properties = {
+            "dataset": "cifar10",
+            "size": 32,
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
+            with (
+                patch.object(loss_query_module, "load_dataset", return_value=[0, 1]),
+                patch.object(loss_query_module, "PIAQuery", new=FakePIAQuery),
+            ):
+                for signal_type in ("pia_score", "pian_score"):
+                    loss_query_module.run_loss_query(
+                        checkpoint_paths=[target_path],
+                        checkpoint_properties=checkpoint_properties,
+                        dataset="cifar10",
+                        data_dir=tmpdir,
+                        batch_size=2,
+                        res_dir=tmpdir,
+                        n_samples=1,
+                        device=torch.device("cpu"),
+                        noise_level=0.25,
+                        signal_type=signal_type,
+                    )
+
+        self.assertFalse(FakePIAQuery.instances[0].normalize)
+        self.assertTrue(FakePIAQuery.instances[1].normalize)
+
+    def test_run_loss_query_rejects_multiple_pia_samples(self):
+        '''
+        Reject repeated PIA queries because the signal is deterministic.
+        Returns:
+            None
+        '''
+        checkpoint_properties = {
+            "dataset": "cifar10",
+            "size": 32,
+        }
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.object(loss_query_module, "load_dataset", return_value=[0, 1]),
+        ):
+            with self.assertRaises(AssertionError):
+                loss_query_module.run_loss_query(
+                    checkpoint_paths=[],
+                    checkpoint_properties=checkpoint_properties,
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_samples=2,
+                    device=torch.device("cpu"),
+                    noise_level=0.25,
+                    signal_type="pia_score",
+                )
 
     def test_load_loss_signals_preserves_saved_loss_samples(self):
         '''
@@ -475,16 +632,16 @@ class TestLossQuery(unittest.TestCase):
 
         self.assertEqual(saved_paths, [])
 
-    def test_parse_args_requires_n_samples(self):
-        with patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
-            loss_query_module.parse_args([
-                "--checkpoint-paths",
-                "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
-                "--batch-size",
-                "2",
-                "--noise-level",
-                "0.25",
-            ])
+    def test_parse_args_defaults_n_samples(self):
+        args = loss_query_module.parse_args([
+            "--checkpoint-paths",
+            "/tmp/DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth",
+            "--batch-size",
+            "2",
+            "--noise-level",
+            "0.25",
+        ])
+        self.assertEqual(args.n_samples, 1)
 
     def test_parse_args_accepts_noise_level(self):
         '''

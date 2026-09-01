@@ -3,6 +3,15 @@ from utils import mask_to_index
 import torch
 import pickle
 
+def entitiy_train_mask(entity_ids, n_entities, sample_train_mask):
+    return torch.stack([
+        torch.bincount(
+            entity_ids[sample_mask],
+            minlength=n_entities,
+        ) > 0
+        for sample_mask in sample_train_mask
+    ])
+
 def indices_of_shadow_models(index_target, train_mask):
     '''
     Return shadow indices excluding the target and its complement.
@@ -25,22 +34,17 @@ def indices_of_shadow_models(index_target, train_mask):
     return indices
 
 def select_sample_audit_indices(n_audit_samples, train_mask):
-    assert n_audit_samples <= train_mask.shape[0]
+    n_in = train_mask.sum().item()
+    n_out = (~train_mask).sum().item()
+    n_audit_samples = min(n_audit_samples, 2 * n_in, 2 * n_out)
+    n_audit_per_class, res = divmod(n_audit_samples, 2)
+    assert res == 0, "Require an even number of audit samples"
     member_indices = mask_to_index(train_mask)
     non_member_indices = mask_to_index(~train_mask)
-    if 2 * member_indices.shape[0] < n_audit_samples:
-        n_in_samples = member_indices.shape[0]
-        n_out_samples = n_audit_samples - n_in_samples
-    elif 2 * non_member_indices.shape[0] < n_audit_samples:
-        n_out_samples = non_member_indices.shape[0]
-        n_in_samples = n_audit_samples - n_out_samples
-    else:
-        n_in_samples = n_audit_samples // 2
-        n_out_samples = n_audit_samples // 2 + n_audit_samples % 2
     rand_mask = torch.randperm(member_indices.shape[0])
-    selected_members = member_indices[rand_mask][:n_in_samples]
+    selected_members = member_indices[rand_mask][:n_audit_per_class]
     rand_mask = torch.randperm(non_member_indices.shape[0])
-    selected_non_members = non_member_indices[rand_mask][:n_out_samples]
+    selected_non_members = non_member_indices[rand_mask][:n_audit_per_class]
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
 
@@ -131,25 +135,23 @@ def select_entity_audit_indices(
 
 def load_loss_signals(loss_path):
     '''
-    Load one target checkpoint's audit loss signals and train mask.
+    Load one target checkpoint's audit loss samples and train mask.
     Args:
         loss_path (str | Path): Loss-signal pickle path.
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Averaged 1D loss signals and membership mask.
+        tuple[torch.Tensor, torch.Tensor]: 2D loss samples and membership mask.
     '''
     with open(loss_path, "rb") as file:
         payload = pickle.load(file)
-    if not isinstance(payload, dict):
-        raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
-    if "loss_sigs" not in payload or "train_mask" not in payload:
+    if not isinstance(payload, dict) or "loss_sigs" not in payload or "train_mask" not in payload:
         raise ValueError("Loss-signal pickle must contain keys 'loss_sigs' and 'train_mask'.")
     loss_sigs = torch.tensor(payload["loss_sigs"], dtype=torch.float32)
     train_mask = torch.tensor(payload["train_mask"], dtype=torch.bool)
     if train_mask.ndim != 1:
         raise ValueError(f"Loss-signal pickle must store 1D train_mask tensor: {loss_path}")
-    if loss_sigs.ndim == 2:
-        loss_sigs = loss_sigs.mean(dim=1) # TODO: utilize full distribution rather than only empirical mean.
-    elif loss_sigs.ndim != 1:
+    if loss_sigs.ndim == 1:
+        loss_sigs = loss_sigs[:, None]
+    elif loss_sigs.ndim != 2:
         raise ValueError(f"Unsupported format for loss signal tensor in pickle file: {loss_path}")
     if len(loss_sigs) != len(train_mask):
         raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")

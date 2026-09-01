@@ -5,6 +5,7 @@ from . import path_utils
 import utils
 from utils import index_to_mask
 
+from abc import ABC, abstractmethod
 import argparse
 import pickle
 from pathlib import Path
@@ -13,7 +14,27 @@ import torch
 from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
-class LossQuery:
+class SignalQuery(ABC):
+
+    @abstractmethod
+    def load_model(self, path):
+        raise NotImplementedError
+
+    @abstractmethod
+    def signal(self, dataloader, model):
+        raise NotImplementedError
+
+    def query(self, dataset, model_path, n_data_points=None):
+        audit_dataset = dataset if n_data_points is None else Subset(dataset, range(n_data_points))
+        dataloader = DataLoader(audit_dataset, batch_size=self.batch_size, shuffle=False)
+        model, train_indices = self.load_model(model_path)
+        mask = index_to_mask(train_indices, n_indices=len(dataset))
+        if n_data_points is not None:
+            mask = mask[:n_data_points]
+        sig = self.signal(dataloader, model)
+        return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
+
+class LossQuery(SignalQuery):
 
     def __init__(self, batch_size, device, n_samples, noise_level):
         self.batch_size = batch_size
@@ -30,51 +51,39 @@ class LossQuery:
             model.n_rsamples = 1
         return model, train_indices
 
-    def loss_signal(self, audit_loader, model):
+    def signal(self, dataloader, model):
         sigs = []
-        for samples in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing loss signal"):
-            samples = samples.to(self.device)
-            sigs.append(self.compute_loss_samples(model, samples))
+        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing loss signal"):
+            x = x.to(self.device)
+            sigs.append(self.loss_signal(model, x))
         sigs = torch.concat(sigs, dim=0)
-        assert sigs.shape == (len(audit_loader.dataset), self.n_samples)
+        assert sigs.shape == (len(dataloader.dataset), self.n_samples)
         return sigs
 
     @torch.inference_mode()
-    def compute_loss_samples(self, model: AbstractGenerativeModel, samples: torch.Tensor):
+    def loss_signal(self, model: AbstractGenerativeModel, x: torch.Tensor):
         '''
-        Compute sorted per-query loss samples for one batch.
+        Compute per-query loss samples for one batch.
         Args:
             model (AbstractGenerativeModel): Generative model used for querying.
-            samples (torch.Tensor): Batch of samples on the evaluation device.
+            x (torch.Tensor): Batch of samples on the evaluation device.
         Returns:
-            torch.Tensor: Sorted loss samples on CPU with shape (batch_size, n_samples).
+            torch.Tensor: Loss samples on CPU with shape (batch_size, n_samples).
         '''
-        loss_samples = []
+        samples = []
         for _ in range(self.n_samples):
             match model.__class__.__name__:
                 case "DDPM" | "FlowMatching":
                     assert isinstance(model, AbstractDiffusionModel)
-                    loss = model.fixed_noise_level_per_sample_loss(samples, self.noise_level).cpu()
+                    loss = model.fixed_noise_level_per_sample_loss(x, self.noise_level).cpu()
                 case "VAE":
-                    loss = model.per_sample_loss(samples).cpu()
+                    loss = model.per_sample_loss(x).cpu()
                 case _:
                     raise ValueError("Unavailable class of generative model.")
-            loss_samples.append(loss)
-        loss_samples = torch.stack(loss_samples, dim=1)
-        sorted_loss_samples = torch.sort(loss_samples, dim=1).values
-        return sorted_loss_samples
+            samples.append(loss)
+        return torch.stack(samples, dim=1)
 
-    def query_loss(self, dataset, model_path, n_data_points=None):
-        audit_dataset = dataset if n_data_points is None else Subset(dataset, range(n_data_points))
-        audit_loader = DataLoader(audit_dataset, batch_size=self.batch_size, shuffle=False)
-        model, train_indices = self.load_model(model_path)
-        mask = index_to_mask(train_indices, n_indices=len(dataset))
-        if n_data_points is not None:
-            mask = mask[:n_data_points]
-        sig = self.loss_signal(audit_loader, model)
-        return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
-
-class L4NormQuery:
+class L4NormQuery(SignalQuery):
     '''
     MIA score signal from "Score-based Membership Inference on Diffusion Models"
     '''
@@ -94,17 +103,17 @@ class L4NormQuery:
             raise ValueError("L4 norm denoiser signal only defined for DDPM.")
         return model, train_indices
 
-    def l4_norm_signal(self, audit_loader, model):
+    def signal(self, dataloader, model):
         sigs = []
-        for x in tqdm(audit_loader, total=len(audit_loader), desc=f"Computing l4 denoiser norm signal"):
+        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing l4 denoiser norm signal"):
             x = x.to(self.device)
-            sigs.append(self.compute_l4_norm_samples(model, x))
+            sigs.append(self.l4_norm_signal(model, x))
         sigs = torch.concat(sigs, dim=0)
-        assert sigs.shape == (len(audit_loader.dataset), self.n_samples)
+        assert sigs.shape == (len(dataloader.dataset), self.n_samples)
         return sigs
 
     @torch.inference_mode()
-    def compute_l4_norm_samples(self, model: DDPM, x: torch.Tensor):
+    def l4_norm_signal(self, model: DDPM, x: torch.Tensor):
         '''
         Compute per-query l4 denoiser samples for one batch.
         Args:
@@ -124,15 +133,50 @@ class L4NormQuery:
         samples = torch.stack(samples, dim=1)
         return samples
 
-    def query_l4_norm(self, dataset, model_path, n_data_points=None):
-        audit_dataset = dataset if n_data_points is None else Subset(dataset, range(n_data_points))
-        audit_loader = DataLoader(audit_dataset, batch_size=self.batch_size, shuffle=False)
-        model, train_indices = self.load_model(model_path)
-        mask = index_to_mask(train_indices, n_indices=len(dataset))
-        if n_data_points is not None:
-            mask = mask[:n_data_points]
-        sig = self.l4_norm_signal(audit_loader, model)
-        return sig.to(dtype=torch.float32), mask.to(dtype=torch.bool)
+class PIAQuery(SignalQuery):
+    '''
+    MIA score signal from "An Efficient Membership Inference Attack for the Diffusion Model by Proximal Initialization"
+    '''
+    def __init__(self, batch_size, device, noise_level, normalize=True):
+        self.batch_size = batch_size
+        self.device = device
+        self.noise_level = noise_level
+        self.normalize = normalize  # Normalize means using PIAN
+
+    def load_model(self, path):
+        model, train_indices = load_model(
+            path=path,
+            device=self.device,
+        )
+        if not isinstance(model, DDPM):
+            raise ValueError("L4 norm denoiser signal only defined for DDPM.")
+        return model, train_indices
+
+    def signal(self, dataloader, model):
+        sigs = []
+        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing l4 denoiser norm signal"):
+            x = x.to(self.device)
+            sigs.append(self.pia_signal(model, x))
+        sigs = torch.concat(sigs, dim=0)
+        assert sigs.shape == (len(dataloader.dataset), 1)
+        return sigs
+
+    @torch.inference_mode()
+    def pia_signal(self, model: DDPM, x: torch.Tensor):
+        '''
+        Compute per-query pia signal for one batch.
+        Args:
+            model (DDPM): Only supported for DDPM.
+            x (torch.Tensor): Batch of data samples on the evaluation device.
+        Returns:
+            torch.Tensor: pia signal on CPU with shape (batch_size, n_samples).
+        '''
+        match model.__class__.__name__:
+            case "DDPM":
+                pia_score = model.pia_score(x, self.noise_level, lp_norm=4, normalize=self.normalize).cpu()
+            case _:
+                raise ValueError("Unavailable class of generative model.")
+        return torch.stack([pia_score], dim=1)
 
 def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss"):
     '''
@@ -197,15 +241,17 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
     match signal_type:
         case "loss":
             signal_query = LossQuery(batch_size, device, n_samples, noise_level)
-            query_method = signal_query.query_loss
         case "l4_norm":
             signal_query = L4NormQuery(batch_size, device, n_samples, noise_level)
-            query_method = signal_query.query_l4_norm
+        case "pia_score" | "pian_score":
+            assert n_samples == 1, "PIA is deterministic"
+            normalize = signal_type == "pian_score"
+            signal_query = PIAQuery(batch_size, device, noise_level, normalize=normalize)
         case _:
             raise ValueError(f"Unsupported signal type: {signal_type}")
     saved_paths = []
     for checkpoint_path in checkpoint_paths:
-        signal, train_mask = query_method(loaded_dataset, checkpoint_path, n_data_points)
+        signal, train_mask = signal_query.query(loaded_dataset, checkpoint_path, n_data_points)
         saved_path = save_loss_signals(res_dir, checkpoint_path, signal, train_mask, n_samples, noise_level, n_data_points, signal_type)
         saved_paths.append(saved_path)
     return saved_paths
@@ -285,7 +331,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--n-samples",
         type=int,
-        required=True,
+        default=1,
         help="Number of signal samples per point.",
     )
     parser.add_argument(
@@ -296,7 +342,7 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--signal-type",
-        choices=("loss", "l4_norm"),
+        choices=("loss", "l4_norm", "pia_score", "pian_score"),
         default="loss",
         help="Signal to compute. Defaults to loss.",
     )
