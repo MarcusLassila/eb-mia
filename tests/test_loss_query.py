@@ -346,6 +346,70 @@ class TestLossQuery(unittest.TestCase):
         self.assertTrue(torch.allclose(signal, torch.tensor([[1.0], [2.0]])))
         self.assertEqual(model.calls, [(x, 0.2, 4, False)])
 
+    def test_t_error_signal_supports_ddpm(self):
+        '''
+        Query deterministic t-error scores for a DDPM batch.
+        Returns:
+            None
+        '''
+        class DDPM:
+            def __init__(self):
+                self.calls = []
+
+            def t_error(self, x, noise_level):
+                self.calls.append((x, noise_level))
+                return torch.tensor([1.5, 2.5], dtype=torch.float32)
+
+        x = torch.randn(2, 1, 4, 4)
+        model = DDPM()
+        t_error_query = loss_query_module.TErrorQuery(
+            batch_size=2,
+            device=torch.device("cpu"),
+            noise_level=0.2,
+        )
+
+        signal = t_error_query.t_error(model, x)
+
+        self.assertTrue(torch.allclose(signal, torch.tensor([[1.5], [2.5]])))
+        self.assertEqual(model.calls, [(x, 0.2)])
+
+    def test_query_t_error_can_use_first_n_data_points(self):
+        '''
+        Query only the first n dataset rows and slice the membership mask for t-error.
+        Returns:
+            None
+        '''
+        class DummyModel:
+            pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
+            dataset = list(range(5))
+            t_error_query = loss_query_module.TErrorQuery(
+                batch_size=2,
+                device=torch.device("cpu"),
+                noise_level=0.25,
+            )
+
+            with (
+                patch.object(t_error_query, "load_model", return_value=(DummyModel(), torch.tensor([0, 2, 4]))),
+                patch.object(
+                    t_error_query,
+                    "t_error",
+                    side_effect=[
+                        torch.tensor([[0.0], [2.0]], dtype=torch.float32),
+                        torch.tensor([[4.0]], dtype=torch.float32),
+                    ],
+                ) as t_error_fn,
+            ):
+                signal, train_mask = t_error_query.query(dataset, target_path, n_data_points=3)
+
+            self.assertTrue(torch.allclose(signal, torch.tensor([[0.0], [2.0], [4.0]])))
+            self.assertTrue(torch.equal(train_mask, torch.tensor([True, False, True])))
+            called_batches = [call_args.args[1] for call_args in t_error_fn.call_args_list]
+            self.assertTrue(torch.equal(called_batches[0], torch.tensor([0, 1])))
+            self.assertTrue(torch.equal(called_batches[1], torch.tensor([2])))
+
     def test_ddpm_pian_normalization_is_batchwise_and_finite_for_zero_norm(self):
         '''
         Normalize PIAN epsilon per batch item without broadcasting over image axes.
@@ -588,6 +652,87 @@ class TestLossQuery(unittest.TestCase):
                     signal_type="pia_score",
                 )
 
+    def test_run_loss_query_routes_t_error_signal(self):
+        '''
+        Route run_loss_query through TErrorQuery and save signal-typed files.
+        Returns:
+            None
+        '''
+        class FakeTErrorQuery:
+            instances = []
+
+            def __init__(self, batch_size, device, noise_level):
+                self.batch_size = batch_size
+                self.device = device
+                self.noise_level = noise_level
+                self.instances.append(self)
+
+            def query(self, loaded_dataset, model_path, n_data_points=None):
+                return (
+                    torch.tensor([[0.3], [0.4]], dtype=torch.float32),
+                    torch.tensor([True, False], dtype=torch.bool),
+                )
+
+        checkpoint_properties = {
+            "dataset": "cifar10",
+            "size": 32,
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = str(Path(tmpdir) / "DDPM-cifar10-smpl-f0p5-s3-sz32-epoch4.pth")
+            with (
+                patch.object(loss_query_module, "load_dataset", return_value=[0, 1]),
+                patch.object(loss_query_module, "TErrorQuery", new=FakeTErrorQuery),
+            ):
+                saved_paths = loss_query_module.run_loss_query(
+                    checkpoint_paths=[target_path],
+                    checkpoint_properties=checkpoint_properties,
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_samples=1,
+                    device=torch.device("cpu"),
+                    noise_level=0.25,
+                    signal_type="t_error",
+                )
+
+            self.assertEqual(len(FakeTErrorQuery.instances), 1)
+            self.assertEqual(FakeTErrorQuery.instances[0].noise_level, 0.25)
+            saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 1, 0.25, None, "t_error")
+            self.assertEqual(saved_paths, [saved_path])
+            with open(saved_path, "rb") as file:
+                payload = pickle.load(file)
+            self.assertEqual(payload["loss_sigs"], [[0.30000001192092896], [0.4000000059604645]])
+            self.assertEqual(payload["train_mask"], [True, False])
+
+    def test_run_loss_query_rejects_multiple_t_error_samples(self):
+        '''
+        Reject repeated t-error queries because the signal is deterministic.
+        Returns:
+            None
+        '''
+        checkpoint_properties = {
+            "dataset": "cifar10",
+            "size": 32,
+        }
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.object(loss_query_module, "load_dataset", return_value=[0, 1]),
+        ):
+            with self.assertRaises(AssertionError):
+                loss_query_module.run_loss_query(
+                    checkpoint_paths=[],
+                    checkpoint_properties=checkpoint_properties,
+                    dataset="cifar10",
+                    data_dir=tmpdir,
+                    batch_size=2,
+                    res_dir=tmpdir,
+                    n_samples=2,
+                    device=torch.device("cpu"),
+                    noise_level=0.25,
+                    signal_type="t_error",
+                )
+
     def test_load_loss_signals_preserves_saved_loss_samples(self):
         '''
         Preserve 2D saved loss samples when loading signals for sample-aware audits.
@@ -784,6 +929,36 @@ class TestLossQuery(unittest.TestCase):
         printed_lines = [args.args[0] for args in print_fn.call_args_list]
         self.assertIn("signal_type: l4_norm", printed_lines)
         self.assertEqual(kwargs["signal_type"], "l4_norm")
+
+    def test_main_forwards_t_error_signal_type(self):
+        '''
+        Forward the selected t-error signal type from the CLI.
+        Returns:
+            None
+        '''
+        override_path = "/tmp/DDPM-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+
+        with (
+            patch.object(loss_query_module, "run_loss_query", return_value=[]) as run_loss_query_fn,
+            patch("builtins.print") as print_fn,
+        ):
+            loss_query_module.main([
+                "--checkpoint-paths",
+                override_path,
+                "--batch-size",
+                "2",
+                "--n-samples",
+                "1",
+                "--noise-level",
+                "0.25",
+                "--signal-type",
+                "t_error",
+            ])
+
+        kwargs = run_loss_query_fn.call_args.kwargs
+        printed_lines = [args.args[0] for args in print_fn.call_args_list]
+        self.assertIn("signal_type: t_error", printed_lines)
+        self.assertEqual(kwargs["signal_type"], "t_error")
 
     def test_main_allows_omitted_dataset(self):
         '''

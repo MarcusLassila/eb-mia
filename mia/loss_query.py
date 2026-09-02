@@ -149,7 +149,7 @@ class PIAQuery(SignalQuery):
             device=self.device,
         )
         if not isinstance(model, DDPM):
-            raise ValueError("L4 norm denoiser signal only defined for DDPM.")
+            raise ValueError("PIA(N) score signal only defined for DDPM.")
         return model, train_indices
 
     def signal(self, dataloader, model):
@@ -169,7 +169,7 @@ class PIAQuery(SignalQuery):
             model (DDPM): Only supported for DDPM.
             x (torch.Tensor): Batch of data samples on the evaluation device.
         Returns:
-            torch.Tensor: pia signal on CPU with shape (batch_size, n_samples).
+            torch.Tensor: pia signal on CPU with shape (batch_size, 1).
         '''
         match model.__class__.__name__:
             case "DDPM":
@@ -177,6 +177,50 @@ class PIAQuery(SignalQuery):
             case _:
                 raise ValueError("Unavailable class of generative model.")
         return torch.stack([pia_score], dim=1)
+
+class TErrorQuery(SignalQuery):
+    '''
+    MIA score signal from "Are Diffusion Models Vulnerable to Membership Inference Attacks?"
+    '''
+    def __init__(self, batch_size, device, noise_level):
+        self.batch_size = batch_size
+        self.device = device
+        self.noise_level = noise_level
+
+    def load_model(self, path):
+        model, train_indices = load_model(
+            path=path,
+            device=self.device,
+        )
+        if not isinstance(model, DDPM):
+            raise ValueError("T-error only defined for DDPM.")
+        return model, train_indices
+
+    def signal(self, dataloader, model):
+        sigs = []
+        for x in tqdm(dataloader, total=len(dataloader), desc=f"Computing t-error"):
+            x = x.to(self.device)
+            sigs.append(self.t_error(model, x))
+        sigs = torch.concat(sigs, dim=0)
+        assert sigs.shape == (len(dataloader.dataset), 1)
+        return sigs
+
+    @torch.inference_mode()
+    def t_error(self, model: DDPM, x: torch.Tensor):
+        '''
+        Compute per-query t-error for one batch.
+        Args:
+            model (DDPM): Only supported for DDPM.
+            x (torch.Tensor): Batch of data samples on the evaluation device.
+        Returns:
+            torch.Tensor: t-error on CPU with shape (batch_size, 1).
+        '''
+        match model.__class__.__name__:
+            case "DDPM":
+                t_error = model.t_error(x, self.noise_level).cpu()
+            case _:
+                raise ValueError("Unavailable class of generative model.")
+        return torch.stack([t_error], dim=1)
 
 def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss"):
     '''
@@ -247,6 +291,9 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
             assert n_samples == 1, "PIA is deterministic"
             normalize = signal_type == "pian_score"
             signal_query = PIAQuery(batch_size, device, noise_level, normalize=normalize)
+        case "t_error":
+            assert n_samples == 1, "t-error is deterministic"
+            signal_query = TErrorQuery(batch_size, device, noise_level)
         case _:
             raise ValueError(f"Unsupported signal type: {signal_type}")
     saved_paths = []
@@ -342,7 +389,7 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--signal-type",
-        choices=("loss", "l4_norm", "pia_score", "pian_score"),
+        choices=("loss", "l4_norm", "pia_score", "pian_score", "t_error"),
         default="loss",
         help="Signal to compute. Defaults to loss.",
     )

@@ -116,7 +116,7 @@ class TestTrainLoopResume(unittest.TestCase):
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
-            checkpoint = torch.load(Path(tmpdir) / "loss_history_test-epoch2.pth", map_location="cpu")
+            checkpoint = torch.load(Path(tmpdir) / "loss_history_test-epoch2.pth", map_location="cpu", weights_only=False)
         self.assertIn("train_losses", checkpoint)
         self.assertIn("val_losses", checkpoint)
         self.assertEqual(len(checkpoint["train_losses"]), 2)
@@ -187,7 +187,7 @@ class TestTrainLoopResume(unittest.TestCase):
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
-            checkpoint = torch.load(Path(tmpdir) / "poly_scheduler_steps_test-epoch1.pth", map_location="cpu")
+            checkpoint = torch.load(Path(tmpdir) / "poly_scheduler_steps_test-epoch1.pth", map_location="cpu", weights_only=False)
 
         self.assertEqual(checkpoint["scheduler_state_dict"]["last_epoch"], 2)
 
@@ -353,7 +353,7 @@ class TestTrainLoopResume(unittest.TestCase):
                 savepath=savepath,
             )
             first_loop.train()
-            checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch1.pth", map_location="cpu")
+            checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch1.pth", map_location="cpu", weights_only=False)
             resumed_loop = TrainLoop(
                 model=_SimpleModel(),
                 train_dataset=train_dataset,
@@ -365,7 +365,7 @@ class TestTrainLoopResume(unittest.TestCase):
                 resume_checkpoint=checkpoint,
             )
             resumed_loop.train()
-            resumed_checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch2.pth", map_location="cpu")
+            resumed_checkpoint = torch.load(Path(tmpdir) / "resume_loss_history-epoch2.pth", map_location="cpu", weights_only=False)
         self.assertEqual(len(resumed_checkpoint["train_losses"]), 2)
         self.assertEqual(len(resumed_checkpoint["val_losses"]), 2)
         self.assertAlmostEqual(resumed_checkpoint["train_losses"][0], checkpoint["train_losses"][0])

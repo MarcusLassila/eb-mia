@@ -18,8 +18,6 @@ class Config:
 def get_root():
     '''
     Return the path to the root of the repository.
-    Returns:
-        str | None: Repository root path, or `None` if it cannot be resolved.
     '''
     try:
         root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL)
@@ -30,11 +28,6 @@ def get_root():
 def resolve_path(path_str, root):
     '''
     Resolve a path string to an absolute path when possible.
-    Args:
-        path_str (str | Path): Path to resolve.
-        root (str | Path | None): Repository root used for relative paths.
-    Returns:
-        Path: Resolved path.
     '''
     path = Path(path_str)
     if not path.is_absolute() and root is not None:
@@ -132,8 +125,7 @@ def load_checkpoint(path: str, device: torch.device):
     Returns:
         dict: Loaded checkpoint payload.
     '''
-    return torch.load(path, map_location=device)
-
+    return torch.load(path, map_location=device, weights_only=False)
 
 def has_torch_compile_wrapped_state_dict(state_dict):
     '''
@@ -144,7 +136,6 @@ def has_torch_compile_wrapped_state_dict(state_dict):
         bool: `True` when wrapped keys are present.
     '''
     return any(key.startswith("_orig_mod.") for key in state_dict)
-
 
 def unwrap_torch_compile_state_dict(state_dict):
     '''
@@ -162,7 +153,6 @@ def unwrap_torch_compile_state_dict(state_dict):
         unwrapped_state_dict[unwrapped_key] = value
     return unwrapped_state_dict
 
-
 def unwrap_checkpoint_state_dicts(checkpoint):
     '''
     Return a checkpoint with known model state dicts unwrapped.
@@ -178,7 +168,6 @@ def unwrap_checkpoint_state_dicts(checkpoint):
             unwrapped_checkpoint[state_dict_key] = unwrap_torch_compile_state_dict(unwrapped_checkpoint[state_dict_key])
     return unwrapped_checkpoint
 
-
 def get_train_indices(path: str):
     '''
     Load training indices from a checkpoint.
@@ -193,10 +182,6 @@ def get_train_indices(path: str):
 def set_manual_seed(seed):
     '''
     Set the Python, NumPy, and Torch RNG seeds.
-    Args:
-        seed (int): Random seed.
-    Returns:
-        None
     '''
     random.seed(seed)
     np.random.seed(seed)

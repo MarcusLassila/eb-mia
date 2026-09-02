@@ -125,6 +125,7 @@ class DDPM(AbstractDiffusionModel):
         '''
         PIA score signal from "An Efficient Membership Inference Attack for the Diffusion Model by Proximal Initialization"
         '''
+        assert 0.0 <= noise_level <= 1.0
         t_0 = torch.full(size=(x.shape[0],), fill_value=0, dtype=torch.long, device=x.device)
         eps_0 = self.network(x, t_0)
         if normalize:
@@ -138,6 +139,36 @@ class DDPM(AbstractDiffusionModel):
         z = torch.sqrt(alpha_bar_t) * x + torch.sqrt(1 - alpha_bar_t) * eps_0
         eps_t = self.network(z, t)
         return torch.linalg.vector_norm(eps_0 - eps_t, ord=lp_norm, dim=(1, 2, 3))
+
+    @torch.inference_mode()
+    def t_error(self, x, noise_level):
+        '''
+        t-error signal from "Are Diffusion Models Vulnerable to Membership Inference Attacks?"
+        '''
+        assert 0.0 <= noise_level <= 1.0
+        tilde_x_t = x
+        time_index = round((self.time_steps - 1) * noise_level)
+        assert time_index + 1 < self.time_steps
+        for t in range(time_index):
+            tilde_x_t = self._tstep(tilde_x_t, torch.full(size=(x.shape[0],), fill_value=t, dtype=torch.long, device=x.device), forward=True)
+        t = torch.full(size=(x.shape[0],), fill_value=time_index, dtype=torch.long, device=x.device)
+        y = self._tstep(tilde_x_t, t, forward=True)
+        y = self._tstep(y, t + 1, forward=False)
+        squared_error = (y - tilde_x_t) ** 2
+        return squared_error.flatten(1).sum(dim=-1)
+
+    def _fphi(self, x_t, t, eps_t):
+        '''Helper for t-error'''
+        alpha_bar_t = self.alpha_bar[t].view(x_t.shape[0], 1, 1, 1)
+        return (x_t - torch.sqrt(1 - alpha_bar_t) * eps_t) / torch.sqrt(alpha_bar_t)
+
+    def _tstep(self, x_t, t, forward=True):
+        '''Helper for t-error'''
+        eps_t = self.network(x_t, t)
+        f_t = self._fphi(x_t, t, eps_t)
+        tt = t + 1 if forward else t - 1
+        alpha_bar_tt = self.alpha_bar[tt].view(x_t.shape[0], 1, 1, 1)
+        return torch.sqrt(alpha_bar_tt) * f_t + torch.sqrt(1 - alpha_bar_tt) * eps_t
 
     @torch.inference_mode()
     def sample(self, batch_size, disable_tqdm=False):
