@@ -6,7 +6,7 @@ import json
 import zipfile
 
 import torch
-from datasets import concatenate_datasets, load_dataset
+from datasets import DownloadConfig, DownloadMode, concatenate_datasets, load_dataset
 from huggingface_hub import snapshot_download
 from PIL import Image
 from torchvision import datasets
@@ -436,14 +436,23 @@ class VGGFace2(EntityDataset):
             self.transform = T.Compose(transforms)
         else:
             self.transform = transform
-        local_repo_dir = Path(data_dir) / "logasja___VGGFace2"
-        snapshot_download(
-            repo_id="logasja/VGGFace2",
-            repo_type="dataset",
-            local_dir=str(local_repo_dir),
+        download_config = DownloadConfig(local_files_only=True)
+        train_split = load_dataset(
+            "logasja/VGGFace2",
+            "256",
+            split="train",
+            cache_dir=data_dir,
+            download_config=download_config,
+            download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
         )
-        train_split = load_dataset(str(local_repo_dir), "256", split="train", cache_dir=data_dir)
-        test_split = load_dataset(str(local_repo_dir), "256", split="test", cache_dir=data_dir)
+        test_split = load_dataset(
+            "logasja/VGGFace2",
+            "256",
+            split="test",
+            cache_dir=data_dir,
+            download_config=download_config,
+            download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
+        )
         self.dataset = concatenate_datasets([train_split, test_split])
         entity_ids = torch.tensor(self.dataset["class_id"], dtype=torch.long)
         self._entity_ids = _normalize_entity_ids(entity_ids)
