@@ -223,7 +223,7 @@ class TErrorQuery(SignalQuery):
                 raise ValueError("Unavailable class of generative model.")
         return torch.stack([t_error], dim=1)
 
-def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss", secmi_step_length=1):
+def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise_level=0.1, n_data_points=None, signal_type="loss", t_error_step_size=1):
     '''
     Save one checkpoint's loss-signal payload.
     Args:
@@ -241,7 +241,7 @@ def save_loss_signals(res_dir, target_path, signal, train_mask, n_samples, noise
     target_path = Path(target_path)
     output_dir = path_utils.loss_signals_dir(res_dir, target_path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_name = path_utils.loss_signals_pickle_name(target_path, n_samples, noise_level, n_data_points, signal_type, secmi_step_length)
+    output_name = path_utils.loss_signals_pickle_name(target_path, n_samples, noise_level, n_data_points, signal_type, t_error_step_size)
     output_path = output_dir / output_name
     with open(output_path, "wb") as file:
         pickle.dump({
@@ -262,7 +262,7 @@ def resolve_loss_query_dataset(dataset, checkpoint_properties):
     dataset_name = checkpoint_properties["dataset"] if dataset is None else dataset
     return infer_dataset_name(dataset_name)
 
-def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_samples, device, noise_level, n_data_points=None, signal_type="loss", secmi_step_length=1):
+def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, batch_size, res_dir, n_samples, device, noise_level, n_data_points=None, signal_type="loss", t_error_step_size=1):
     '''
     Compute loss-signal pickles for model checkpoints.
     Args:
@@ -294,17 +294,17 @@ def run_loss_query(checkpoint_paths, checkpoint_properties, dataset, data_dir, b
             signal_query = PIAQuery(batch_size, device, noise_level, normalize=normalize)
         case "t_error":
             assert n_samples == 1, "t-error is deterministic"
-            signal_query = TErrorQuery(batch_size, device, noise_level, step_length=secmi_step_length)
+            signal_query = TErrorQuery(batch_size, device, noise_level, step_length=t_error_step_size)
         case _:
             raise ValueError(f"Unsupported signal type: {signal_type}")
     saved_paths = []
     for checkpoint_path in checkpoint_paths:
         signal, train_mask = signal_query.query(loaded_dataset, checkpoint_path, n_data_points)
-        saved_path = save_loss_signals(res_dir, checkpoint_path, signal, train_mask, n_samples, noise_level, n_data_points, signal_type, secmi_step_length)
+        saved_path = save_loss_signals(res_dir, checkpoint_path, signal, train_mask, n_samples, noise_level, n_data_points, signal_type, t_error_step_size)
         saved_paths.append(saved_path)
     return saved_paths
 
-def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_samples, checkpoint_paths, noise_level, n_data_points, signal_type, secmi_step_length=1):
+def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_samples, checkpoint_paths, noise_level, n_data_points, signal_type, t_error_step_size=1):
     '''
     Print effective loss-query settings.
     Args:
@@ -332,7 +332,7 @@ def print_loss_query_settings(device, dataset, data_dir, batch_size, res_dir, n_
     print(f"n_data_points: {n_data_points}")
     print(f"signal_type: {signal_type}")
     if signal_type == "t_error":
-        print(f"secmi_step_length: {secmi_step_length}")
+        print(f"t_error_step_size: {t_error_step_size}")
     print("checkpoint_paths:")
     for checkpoint_path in checkpoint_paths:
         print(f"  - {checkpoint_path}")
@@ -396,7 +396,7 @@ def parse_args(argv=None):
         default="loss",
         help="Signal to compute. Defaults to loss.",
     )
-    parser.add_argument("--secmi-step-length", type=int, default=1, help="DDIM interval for t_error (SecMI).")
+    parser.add_argument("--t-error-step-size", type=int, default=1, help="DDIM interval for t_error (SecMI).")
     parser.add_argument(
         "--n-data-points",
         type=int,
@@ -432,7 +432,7 @@ def main(argv=None):
         noise_level=args.noise_level,
         n_data_points=args.n_data_points,
         signal_type=args.signal_type,
-        secmi_step_length=args.secmi_step_length,
+        t_error_step_size=args.t_error_step_size,
     )
     run_loss_query(
         checkpoint_paths=checkpoint_paths,
@@ -446,7 +446,7 @@ def main(argv=None):
         noise_level=args.noise_level,
         n_data_points=args.n_data_points,
         signal_type=args.signal_type,
-        secmi_step_length=args.secmi_step_length,
+        t_error_step_size=args.t_error_step_size,
     )
 
 if __name__ == "__main__":

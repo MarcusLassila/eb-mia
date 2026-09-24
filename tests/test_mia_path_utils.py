@@ -31,7 +31,7 @@ class TestMiaPathUtils(unittest.TestCase):
         self.assertEqual(metadata["noise_level"], 0.33)
         self.assertEqual(metadata["n_data_points"], 100)
         self.assertEqual(metadata["signal_type"], "l4_norm")
-        self.assertEqual(metadata["secmi_step_length"], 1)
+        self.assertEqual(metadata["t_error_step_size"], 1)
 
     def test_t_error_filename_round_trips_ddim_interval(self):
         '''Keep SecMI results from different DDIM intervals distinct.'''
@@ -41,14 +41,14 @@ class TestMiaPathUtils(unittest.TestCase):
             1,
             noise_level=0.1,
             signal_type="t_error",
-            secmi_step_length=10,
+            t_error_step_size=10,
         )
 
         metadata = path_utils.parse_loss_signal_path(filename)
 
-        self.assertEqual(filename, "t-error-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-n1-nl0p1-secmi-step-length10.pkl")
+        self.assertEqual(filename, "t-error-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch4-n1-nl0p1-t-error-step-size10.pkl")
         self.assertEqual(metadata["signal_type"], "t_error")
-        self.assertEqual(metadata["secmi_step_length"], 10)
+        self.assertEqual(metadata["t_error_step_size"], 10)
 
     def test_legacy_loss_signal_name_remains_readable(self):
         filename = (
@@ -62,7 +62,7 @@ class TestMiaPathUtils(unittest.TestCase):
         self.assertEqual(metadata["dataset"], "VGGFace2")
         self.assertEqual(metadata["n_loss_samples"], 32)
         self.assertEqual(metadata["signal_type"], "loss")
-        self.assertEqual(metadata["secmi_step_length"], 1)
+        self.assertEqual(metadata["t_error_step_size"], 1)
 
     def test_resolve_audit_loss_signal_paths_accepts_files_and_directories(self):
         with tempfile.TemporaryDirectory() as temporary_dir:

@@ -758,7 +758,7 @@ class TestLossQuery(unittest.TestCase):
                     device=torch.device("cpu"),
                     noise_level=0.25,
                     signal_type="t_error",
-                    secmi_step_length=10,
+                    t_error_step_size=10,
                 )
 
             self.assertEqual(len(FakeTErrorQuery.instances), 1)
@@ -1019,16 +1019,16 @@ class TestLossQuery(unittest.TestCase):
                 "0.25",
                 "--signal-type",
                 "t_error",
-                "--secmi-step-length",
+                "--t-error-step-size",
                 "10",
             ])
 
         kwargs = run_loss_query_fn.call_args.kwargs
         printed_lines = [args.args[0] for args in print_fn.call_args_list]
         self.assertIn("signal_type: t_error", printed_lines)
-        self.assertIn("secmi_step_length: 10", printed_lines)
+        self.assertIn("t_error_step_size: 10", printed_lines)
         self.assertEqual(kwargs["signal_type"], "t_error")
-        self.assertEqual(kwargs["secmi_step_length"], 10)
+        self.assertEqual(kwargs["t_error_step_size"], 10)
 
     def test_main_allows_omitted_dataset(self):
         '''
