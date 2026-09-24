@@ -1,10 +1,20 @@
 import pickle
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import torch
+
+torchdiffeq_stub = types.ModuleType("torchdiffeq")
+
+def odeint_stub(func, y0, t, *args, **kwargs):
+    return torch.stack([y0 for _ in range(t.shape[0])], dim=0)
+
+torchdiffeq_stub.odeint = odeint_stub
+sys.modules.setdefault("torchdiffeq", torchdiffeq_stub)
 
 from data.datasets import EntityDataset
 from mia import loss_query as loss_query_module
@@ -48,13 +58,14 @@ class TestAuditEndToEnd(unittest.TestCase):
                 shadow_path_b: (torch.tensor([1.0, 0.3, 0.8, 0.9], dtype=torch.float32), torch.tensor([0, 0, 1, 1], dtype=torch.bool)),
             }
 
-            def fake_query_loss(self, loaded_dataset, model_path):
+            def fake_query(self, loaded_dataset, model_path, n_data_points=None):
                 assert loaded_dataset is dataset
+                assert n_data_points is None
                 return loss_sig_by_path[Path(model_path)]
 
             with (
                 patch.object(loss_query_module, "load_dataset", return_value=dataset),
-                patch.object(loss_query_module.LossQuery, "query_loss", new=fake_query_loss),
+                patch.object(loss_query_module.LossQuery, "query", new=fake_query),
             ):
                 loss_query_module.run_loss_query(
                     checkpoint_paths=[str(target_path), str(shadow_path_a), str(shadow_path_b)],
@@ -63,7 +74,7 @@ class TestAuditEndToEnd(unittest.TestCase):
                     data_dir=tmpdir,
                     batch_size=2,
                     res_dir=tmpdir,
-                    n_loss_samples=3,
+                    n_samples=3,
                     device=torch.device("cpu"),
                     noise_level=0.1,
                 )
@@ -76,7 +87,8 @@ class TestAuditEndToEnd(unittest.TestCase):
             audit_config = run_audit_module.utils.Config({
                 "dataset": "CelebA",
                 "data_dir": tmpdir,
-                "res_dir": tmpdir,
+                "results_root": tmpdir,
+                "results_dir_name": "test_audit",
                 "audit_mode": "entity",
                 "mode": "all",
                 "target_loss_paths": [str(target_loss_path)],
@@ -99,13 +111,9 @@ class TestAuditEndToEnd(unittest.TestCase):
                 run_audit_module.run_entity_audit(config=audit_config)
 
             metrics_path = (
-                path_utils.metrics_dir_from_target(tmpdir, target_path, "CompositeBASE-off", "entity", entity_audit_mode="all")
-                / path_utils.metrics_pickle_name_from_target(
-                    target_path,
-                    "CompositeBASE-off",
-                    "entity",
-                    min_samples_per_entity=0,
-                )
+                Path(tmpdir)
+                / "test_audit"
+                / path_utils.metrics_pickle_name(target_path.stem, "CompositeBASE-off")
             )
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:

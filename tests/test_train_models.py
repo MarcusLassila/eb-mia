@@ -37,7 +37,6 @@ def _write_mock_train_config(config_dir: Path, filename: str):
     config_text = (
         "batch_size: 2\n"
         "simul_batch_size: 2\n"
-        "torch_compile: false\n"
         "dataset: \"Dummy\"\n"
         "epochs: 1\n"
         "epochs_per_checkpoint: 1\n"
@@ -156,49 +155,6 @@ class TestTrainModels(unittest.TestCase):
                     self.assertTrue(torch.equal(train_dataset.indices, torch.tensor(indices, dtype=torch.long)))
                     self.assertTrue(torch.equal(val_dataset.indices, torch.tensor([1], dtype=torch.long)))
 
-    def test_train_model_from_scratch_passes_improved_vae_config(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "train_indices.pkl"
-            with open(path, "wb") as file:
-                pickle.dump({"indices": [0, 2, 4], "len_dataset": 6}, file)
-            config = types.SimpleNamespace(
-                dataset="Dummy",
-                val_frac=0.2,
-                model="ImprovedVAE",
-                image_resolution=2,
-                suffix="",
-                batch_size=2,
-                simul_batch_size=2,
-                epochs=1,
-                epochs_per_checkpoint=1,
-                lr=1e-3,
-                weight_decay=0.0,
-                ema_decay=0.0,
-                grad_clip=0.0,
-                autocast_dtype="float16",
-                lr_scheduler="none",
-                latent_ch=4,
-                base_channels=8,
-                channel_mult=[1],
-                n_res_blocks_per_level=1,
-                kl_weight=0.5,
-                free_bits=0.1,
-            )
-            with mock.patch.object(train_model, "load_dataset", side_effect=_dummy_dataset_loader):
-                with mock.patch.object(train_model, "ImprovedVAE", return_value=_DummyModel()) as mock_vae:
-                    with mock.patch.object(train_model, "TrainLoop") as mock_loop:
-                        mock_loop.return_value.train.return_value = None
-                        train_model.train_model_from_scratch(
-                            accelerator=_DummyAccelerator(),
-                            config=config,
-                            data_dir=Path(tmpdir),
-                            savedir=Path(tmpdir),
-                            train_indices_path=path,
-                        )
-            self.assertEqual(mock_vae.call_args.kwargs["latent_ch"], 4)
-            self.assertEqual(mock_vae.call_args.kwargs["channel_mult"], (1,))
-            self.assertEqual(mock_vae.call_args.kwargs["kl_weight"], 0.5)
-            self.assertEqual(mock_vae.call_args.kwargs["free_bits"], 0.1)
 
     def test_train_model_from_scratch_passes_lr_scheduler_params_dict(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -307,6 +263,25 @@ class TestTrainModels(unittest.TestCase):
             self.assertEqual(train_call_kwargs["train_indices_path"], root / "from_cli.pkl")
             self.assertEqual(train_call_kwargs["data_dir"], root / "datasets")
             self.assertEqual(train_call_kwargs["savedir"], root / "checkpoints")
+
+    def test_main_scratch_training_uses_cli_torch_compile_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config_dir = root / "training" / "configs"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_file = "config_train_vae_dummy.yaml"
+            _write_mock_train_config(config_dir, config_file)
+            with mock.patch.object(train_model.utils, "get_root", return_value=str(root)):
+                with mock.patch.object(train_model, "AcceleratorLite", return_value=_DummyAccelerator()) as mock_accelerator:
+                    with mock.patch.object(train_model, "train_model_from_scratch"):
+                        train_model.main(
+                            config_file=config_file,
+                            suffix="",
+                            train_indices_path="from_cli.pkl",
+                            data_dir="datasets",
+                            save_dir="checkpoints",
+                        )
+            self.assertFalse(mock_accelerator.call_args.kwargs["torch_compile"])
 
     def test_main_resume_without_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:

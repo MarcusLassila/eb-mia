@@ -1,0 +1,106 @@
+# Run manually: bash run_mia_audit_benchmark.sh entity_lira_variance_benchmark
+# Online: global/local by shared/separate IN/OUT variance. Offline: global/local OUT variance.
+# Each case audits the same ten targets with every attack and fixed ten-point entity probes.
+audit_mode: entity
+dataset: CelebA
+round_robin: false
+audit_random_seed: 0
+loss_normalization: log_standardized
+min_samples_per_entity: 10
+max_samples_per_entity: 10
+show_auc: false
+results_dir_name: entity_lira_variance_benchmark
+attacks:
+- name: CompositeLiRAv2-online-global-shared
+  attack: CompositeLiRAv2
+  offline: false
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: true
+  share_variance: true
+- name: CompositeLiRAv2-online-global-separate
+  attack: CompositeLiRAv2
+  offline: false
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: true
+  share_variance: false
+- name: CompositeLiRAv2-online-local-shared
+  attack: CompositeLiRAv2
+  offline: false
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: false
+  share_variance: true
+- name: CompositeLiRAv2-online-local-separate
+  attack: CompositeLiRAv2
+  offline: false
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: false
+  share_variance: false
+- name: CompositeLiRAv2-offline-global
+  attack: CompositeLiRAv2
+  offline: true
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: true
+- name: CompositeLiRAv2-offline-local
+  attack: CompositeLiRAv2
+  offline: true
+  covariance: spherical
+  loss_transformation: none
+  use_global_dispersion: false
+audit_groups:
+- case: ddpm_matched_exclude_train
+  mode: exclude_train
+  results_dir_name: entity_lira_variance_ddpm_matched_exclude_train
+  loss_path_pairs:
+  - target_loss_paths: &ddpm_paths
+    - loss-signals/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch500
+    shadow_loss_paths: *ddpm_paths
+- case: ddpm_mixed_exclude_train
+  mode: exclude_train
+  results_dir_name: entity_lira_variance_ddpm_mixed_exclude_train
+  loss_path_pairs:
+  - target_loss_paths: *ddpm_paths
+    shadow_loss_paths: &mixed_paths
+    - loss-signals/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch500
+    - loss-signals/FM-CelebA-ent-f0p5-p0p5-sz64-epoch700
+- case: fm_matched_exclude_train
+  mode: exclude_train
+  results_dir_name: entity_lira_variance_fm_matched_exclude_train
+  loss_path_pairs:
+  - target_loss_paths: &fm_paths
+    - loss-signals/FM-CelebA-ent-f0p5-p0p5-sz64-epoch700
+    shadow_loss_paths: *fm_paths
+- case: fm_mixed_exclude_train
+  mode: exclude_train
+  results_dir_name: entity_lira_variance_fm_mixed_exclude_train
+  loss_path_pairs:
+  - target_loss_paths: *fm_paths
+    shadow_loss_paths: *mixed_paths
+- case: ddpm_matched_max_one_train
+  mode: max_one_train
+  results_dir_name: entity_lira_variance_ddpm_matched_max_one_train
+  loss_path_pairs:
+  - target_loss_paths: *ddpm_paths
+    shadow_loss_paths: *ddpm_paths
+- case: ddpm_mixed_max_one_train
+  mode: max_one_train
+  results_dir_name: entity_lira_variance_ddpm_mixed_max_one_train
+  loss_path_pairs:
+  - target_loss_paths: *ddpm_paths
+    shadow_loss_paths: *mixed_paths
+- case: fm_matched_max_one_train
+  mode: max_one_train
+  results_dir_name: entity_lira_variance_fm_matched_max_one_train
+  loss_path_pairs:
+  - target_loss_paths: *fm_paths
+    shadow_loss_paths: *fm_paths
+- case: fm_mixed_max_one_train
+  mode: max_one_train
+  results_dir_name: entity_lira_variance_fm_mixed_max_one_train
+  loss_path_pairs:
+  - target_loss_paths: *fm_paths
+    shadow_loss_paths: *mixed_paths

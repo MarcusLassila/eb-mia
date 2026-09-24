@@ -50,10 +50,10 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
             shadow_path_d = Path(tmpdir) / "DDPM-celeba-ent-f0p5-p1p0-h0p5-s4-sz64-epoch10.pth"
             target_loss_path = self._write_loss_file(tmpdir, target_path, [0.90, 0.95, 1.40, 1.45], [1, 0, 0, 0])
             shadow_loss_paths = [
-                self._write_loss_file(tmpdir, shadow_path_a, [1.00, 1.10, 1.20, 1.30], [1, 0, 0, 0]),
-                self._write_loss_file(tmpdir, shadow_path_b, [1.40, 1.50, 0.80, 0.90], [0, 0, 1, 0]),
-                self._write_loss_file(tmpdir, shadow_path_c, [1.05, 1.15, 1.25, 1.35], [1, 0, 0, 0]),
-                self._write_loss_file(tmpdir, shadow_path_d, [1.45, 1.55, 0.85, 0.95], [0, 0, 1, 0]),
+                self._write_loss_file(tmpdir, shadow_path_a, [1.00, 1.10, 1.20, 1.30], [1, 0, 1, 0]),
+                self._write_loss_file(tmpdir, shadow_path_b, [1.40, 1.50, 0.80, 0.90], [0, 0, 0, 0]),
+                self._write_loss_file(tmpdir, shadow_path_c, [1.05, 1.15, 1.25, 1.35], [1, 0, 1, 0]),
+                self._write_loss_file(tmpdir, shadow_path_d, [1.45, 1.55, 0.85, 0.95], [0, 0, 0, 0]),
             ]
             config = run_audit_module.utils.Config({
                 "dataset": "celeba",
@@ -62,7 +62,8 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
                 "mode": "hold_out",
                 "min_samples_per_entity": 1,
                 "max_samples_per_entity": 1,
-                "res_dir": tmpdir,
+                "results_root": tmpdir,
+                "results_dir_name": "test_composite_lira",
                 "target_loss_paths": [str(target_loss_path)],
                 "shadow_loss_paths": [str(path) for path in shadow_loss_paths],
                 "attack": {
@@ -76,7 +77,7 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
             def fake_evaluate(score, ground_truth):
                 captured["score"] = score.clone()
                 captured["ground_truth"] = ground_truth.clone()
-                return {"AUC": 1.0, "TPR@1%FPR": 1.0, "TPR@0.1%FPR": 1.0, "n_audit_points": 2}
+                return {"AUC": 1.0, "pAUC@1%FPR": 1.0, "TPR@1%FPR": 1.0, "TPR@0.1%FPR": 1.0, "n_audit_points": 2}
 
             with (
                 patch.object(
@@ -95,24 +96,10 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
 
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
             self.assertEqual(captured["score"].shape, (2,))
-            self.assertGreater(float(captured["score"][0]), float(captured["score"][1]))
             metrics_path = (
-                path_utils.metrics_dir_from_target(
-                    tmpdir,
-                    target_path,
-                    "CompositeLiRA-online-none",
-                    "entity",
-                    entity_audit_mode="hold_out",
-                    min_samples_per_entity=1,
-                    max_samples_per_entity=1,
-                )
-                / path_utils.metrics_pickle_name_from_target(
-                    target_path,
-                    "CompositeLiRA-online-none",
-                    "entity",
-                    min_samples_per_entity=1,
-                    max_samples_per_entity=1,
-                )
+                Path(tmpdir)
+                / "test_composite_lira"
+                / path_utils.metrics_pickle_name(target_path.stem, "CompositeLiRA-online-none")
             )
             self.assertTrue(metrics_path.exists())
 

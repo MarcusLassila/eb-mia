@@ -187,7 +187,7 @@ class TestDDPMTrain(unittest.TestCase):
                 savepath=savepath,
             ).train()
             checkpoint_path = Path(tmpdir) / "ddpm_test-epoch1.pth"
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
             self.assertIn("ema_network_state_dict", checkpoint)
             raw_state = checkpoint["raw_network_state_dict"]
             ema_state = checkpoint["ema_network_state_dict"]
@@ -250,7 +250,7 @@ class TestDDPMTrain(unittest.TestCase):
             train_loop.raw_network.state_dict = lambda: {f"_orig_mod.{k}": v for k, v in original_state_dict().items()}
             train_loop.train()
             checkpoint_path = Path(tmpdir) / "ddpm_test-epoch1.pth"
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
             self.assertTrue(all(not key.startswith("_orig_mod.") for key in checkpoint["network_state_dict"]))
             self.assertTrue(all(not key.startswith("_orig_mod.") for key in checkpoint["raw_network_state_dict"]))
 

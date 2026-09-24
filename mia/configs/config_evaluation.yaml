@@ -1,5 +1,0 @@
-res_dir: "./mia/results/DDPM-CelebA2-ent-f0p5-p0p5-sz64-epoch1000"
-metrics_folders:
-  - "BASE-sample"
-  - "LiRA-off-sample"
-low_exponent: -4

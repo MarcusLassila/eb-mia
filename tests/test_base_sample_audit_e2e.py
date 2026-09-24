@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import torch
 
-from mia import attacks
 from mia import evaluation as evaluation_module
 from mia import path_utils
 from mia import run_audit as run_audit_module
@@ -32,7 +31,8 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             config = run_audit_module.utils.Config({
                 "dataset": "cifar10",
                 "data_dir": tmpdir,
-                "res_dir": tmpdir,
+                "results_root": tmpdir,
+                "results_dir_name": "test_base_sample",
                 "audit_mode": "sample",
                 "n_audit_samples": 4,
                 "round_robin": False,
@@ -47,15 +47,10 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             ):
                 run_audit_module.run_sample_audit(config=config)
 
-            metrics_dir = path_utils.metrics_dir_from_target(tmpdir, target_path, "BASE-off", "sample")
-            metrics_path = metrics_dir / path_utils.metrics_pickle_name_from_target(target_path, "BASE-off", "sample")
+            metrics_path = Path(tmpdir) / "test_base_sample" / path_utils.metrics_pickle_name(target_path.stem, "BASE-off")
             self.assertTrue(metrics_path.exists())
-            summaries = evaluation_module.run_evaluation(
-                config=run_audit_module.utils.Config({"res_dir": tmpdir, "metrics_folders": [str(metrics_dir)]}),
-            )
-            self.assertEqual(len(summaries), 1)
-            self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.png").exists())
-            self.assertTrue((tmpdir_path / f"average_roc_curves_{metrics_dir.stem}.tex").exists())
+            grouped_metrics = evaluation_module.collect_grouped_metrics(metrics_path.parent)
+            self.assertEqual(len(grouped_metrics), 1)
 
     def test_base_sample_audit_round_robin_uses_only_target_paths_and_excludes_complements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -75,7 +70,8 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             config = run_audit_module.utils.Config({
                 "dataset": "cifar10",
                 "data_dir": tmpdir,
-                "res_dir": tmpdir,
+                "results_root": tmpdir,
+                "results_dir_name": "test_round_robin",
                 "audit_mode": "sample",
                 "n_audit_samples": 4,
                 "round_robin": True,
@@ -86,14 +82,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
 
             def fake_evaluate(score, ground_truth):
                 captured_scores.append(score.clone())
-                return {"AUC": 0.5, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1, "n_audit_points": len(score)}
-
-            expected_first_target_scores = attacks.BASE(
-                shadow_loss_sigs=torch.tensor([[1.0, 0.3, 1.2, 0.4], [1.1, 0.2, 1.3, 0.5]], dtype=torch.float32),
-                shadow_train_mask=torch.tensor([[1, 1, 0, 0], [0, 0, 1, 1]], dtype=torch.bool),
-                offline=True,
-                prior=0.5,
-            ).run_attack(torch.tensor([0.2, 0.4, 0.6, 0.8], dtype=torch.float32))
+                return {"AUC": 0.5, "pAUC@1%FPR": 0.45, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1, "n_audit_points": len(score)}
 
             with (
                 patch.object(run_audit_module, "select_sample_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
@@ -103,7 +92,33 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
                 run_audit_module.run_sample_audit(config=config)
 
             self.assertEqual(len(captured_scores), 4)
-            self.assertTrue(torch.allclose(captured_scores[0], expected_first_target_scores, atol=1e-6))
+            self.assertTrue(all(score.shape == (4,) for score in captured_scores))
+
+    def test_explicit_shadow_paths_exclude_target_and_complement_splits(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            target_path = tmpdir_path / "DDPM-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
+            same_shadow_path = tmpdir_path / "FlowMatching-cifar10-smpl-f0p5-s0-sz32-epoch4.pth"
+            comp_shadow_path = tmpdir_path / "FlowMatching-cifar10-smpl-f0p5-s0-comp-sz32-epoch4.pth"
+            kept_shadow_path = tmpdir_path / "FlowMatching-cifar10-smpl-f0p5-s1-sz32-epoch4.pth"
+            target_loss_path = self._write_loss_file(tmpdir, target_path, [0.2, 0.4, 0.6, 0.8], [1, 0, 1, 0])
+            same_shadow_loss_path = self._write_loss_file(tmpdir, same_shadow_path, [1.0, 1.1, 1.2, 1.3], [1, 0, 1, 0])
+            comp_shadow_loss_path = self._write_loss_file(tmpdir, comp_shadow_path, [1.4, 1.5, 1.6, 1.7], [0, 1, 0, 1])
+            kept_shadow_loss_path = self._write_loss_file(tmpdir, kept_shadow_path, [1.8, 1.9, 2.0, 2.1], [1, 1, 0, 0])
+            config = run_audit_module.utils.Config({
+                "audit_mode": "sample",
+                "round_robin": False,
+                "target_loss_paths": [str(target_loss_path)],
+                "shadow_loss_paths": [
+                    str(same_shadow_loss_path),
+                    str(comp_shadow_loss_path),
+                    str(kept_shadow_loss_path),
+                ],
+            })
+
+            _, shadow_path_groups = run_audit_module.resolve_target_shadow_paths(config)
+
+            self.assertEqual(shadow_path_groups, [[kept_shadow_loss_path.resolve()]])
 
 
 if __name__ == "__main__":

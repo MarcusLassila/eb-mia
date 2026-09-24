@@ -1,0 +1,95 @@
+# Run manually: bash run_mia_audit_benchmark.sh sample_lira_v2_benchmark
+# Eight matched/mixed model-and-dataset cases, four attacks, ten targets per case.
+# Every attack uses the same target and reference models in each case.
+audit_mode: sample
+round_robin: false
+seed: 0
+loss_normalization: log_standardized
+show_auc: false
+results_dir_name: sample_lira_v2_benchmark
+attacks:
+- name: LiRA-global-shared
+  attack: LiRA
+  offline: false
+  loss_transformation: none
+  use_global_dispersion: true
+  share_variance: true
+- name: LiRA-global-separate
+  attack: LiRA
+  offline: false
+  loss_transformation: none
+  use_global_dispersion: true
+  share_variance: false
+- name: LiRA-local-shared
+  attack: LiRA
+  offline: false
+  loss_transformation: none
+  use_global_dispersion: false
+  share_variance: true
+- name: LiRA-local-separate
+  attack: LiRA
+  offline: false
+  loss_transformation: none
+  use_global_dispersion: false
+  share_variance: false
+audit_groups:
+- case: ddpm_cifar10_matched
+  results_dir_name: sample_lira_v2_ddpm_cifar10_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+- case: ddpm_cifar10_mixed
+  results_dir_name: sample_lira_v2_ddpm_cifar10_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    - loss-signals/FM-CIFAR10-sample
+- case: fm_cifar10_matched
+  results_dir_name: sample_lira_v2_fm_cifar10_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CIFAR10-sample
+    shadow_loss_paths:
+    - loss-signals/FM-CIFAR10-sample
+- case: fm_cifar10_mixed
+  results_dir_name: sample_lira_v2_fm_cifar10_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CIFAR10-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    - loss-signals/FM-CIFAR10-sample
+- case: ddpm_celeba_matched
+  results_dir_name: sample_lira_v2_ddpm_celeba_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+- case: ddpm_celeba_mixed
+  results_dir_name: sample_lira_v2_ddpm_celeba_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    - loss-signals/FM-CelebA-sample
+- case: fm_celeba_matched
+  results_dir_name: sample_lira_v2_fm_celeba_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CelebA-sample
+    shadow_loss_paths:
+    - loss-signals/FM-CelebA-sample
+- case: fm_celeba_mixed
+  results_dir_name: sample_lira_v2_fm_celeba_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CelebA-sample
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    - loss-signals/FM-CelebA-sample

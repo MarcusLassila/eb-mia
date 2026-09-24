@@ -156,3 +156,28 @@ def load_loss_signals(loss_path):
     if len(loss_sigs) != len(train_mask):
         raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")
     return loss_sigs, train_mask
+
+def standardize_signals(signals, pretransformation, min_std=1e-12):
+    '''Apply a named transformation before standardizing each model's signals.
+    Args:
+        signals (torch.Tensor): One model's 2D signals or a 3D model stack.
+        pretransformation (str): Either log or none.
+        min_std (float): Lower bound for each model's standard deviation.
+    Returns:
+        torch.Tensor: Transformed signals standardized within each model.
+    '''
+    if signals.ndim not in (2, 3):
+        raise ValueError("Signals must have shape (points, queries) or (models, points, queries).")
+    if pretransformation == "log":
+        transformed = torch.log(signals)
+    elif pretransformation == "none":
+        transformed = signals
+    else:
+        raise ValueError(f"Unsupported pretransformation: {pretransformation}")
+    if not torch.isfinite(transformed).all():
+        raise ValueError("Pretransformation produced non-finite signal values.")
+    model_axes = (0, 1) if signals.ndim == 2 else (1, 2)
+    model_mean = transformed.mean(dim=model_axes, keepdim=True)
+    model_std = transformed.std(dim=model_axes, unbiased=False, keepdim=True)
+    model_std = model_std.clamp_min(min_std)
+    return (transformed - model_mean) / model_std

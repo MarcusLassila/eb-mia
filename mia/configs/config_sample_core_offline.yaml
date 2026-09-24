@@ -1,0 +1,26 @@
+audit_mode: sample
+round_robin: true
+seed: 0
+loss_normalization: log_standardized
+loss_paths:
+- loss-signals/DDPM-CIFAR10-sample
+- loss-signals/DDPM-CelebA-sample
+- loss-signals/FM-CIFAR10-sample
+- loss-signals/FM-CelebA-sample
+attacks:
+- name: BASE
+  attack: BASE
+  offline: true
+  prior: 0.5
+- name: LiRA_legacy
+  attack: LiRA_legacy
+  offline: true
+  loss_transformation: none
+- name: HG_LiRA_r
+  attack: HG_LiRA_r
+  offline: true
+  loss_transformation: none
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+results_dir_name: audit_results_sample_core_offline

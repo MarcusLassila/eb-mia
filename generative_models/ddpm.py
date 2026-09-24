@@ -141,19 +141,23 @@ class DDPM(AbstractDiffusionModel):
         return torch.linalg.vector_norm(eps_0 - eps_t, ord=lp_norm, dim=(1, 2, 3))
 
     @torch.inference_mode()
-    def t_error(self, x, noise_level):
+    def t_error(self, x, noise_level, step_length=1):
         '''
         t-error signal from "Are Diffusion Models Vulnerable to Membership Inference Attacks?"
         '''
         assert 0.0 <= noise_level <= 1.0
-        tilde_x_t = x
         time_index = round((self.time_steps - 1) * noise_level)
-        assert time_index + 1 < self.time_steps
-        for t in range(time_index):
-            tilde_x_t = self._tstep(tilde_x_t, torch.full(size=(x.shape[0],), fill_value=t, dtype=torch.long, device=x.device), forward=True)
-        t = torch.full(size=(x.shape[0],), fill_value=time_index, dtype=torch.long, device=x.device)
-        y = self._tstep(tilde_x_t, t, forward=True)
-        y = self._tstep(y, t + 1, forward=False)
+        if step_length < 1 or time_index < 2 * step_length or time_index % step_length != 0:
+            raise ValueError("SecMI requires step_length >= 1 and a selected timestep that is a multiple of step_length and at least 2*step_length.")
+        tilde_x_t = x
+        for current_index in range(0, time_index - step_length, step_length):
+            current_t = torch.full((x.shape[0],), current_index, dtype=torch.long, device=x.device)
+            target_t = current_t + step_length
+            tilde_x_t = self._tstep(tilde_x_t, current_t, target_t)
+        previous_t = torch.full((x.shape[0],), time_index - step_length, dtype=torch.long, device=x.device)
+        selected_t = previous_t + step_length
+        y = self._tstep(tilde_x_t, previous_t, selected_t)
+        y = self._tstep(y, selected_t, previous_t)
         squared_error = (y - tilde_x_t) ** 2
         return squared_error.flatten(1).sum(dim=-1)
 
@@ -162,12 +166,11 @@ class DDPM(AbstractDiffusionModel):
         alpha_bar_t = self.alpha_bar[t].view(x_t.shape[0], 1, 1, 1)
         return (x_t - torch.sqrt(1 - alpha_bar_t) * eps_t) / torch.sqrt(alpha_bar_t)
 
-    def _tstep(self, x_t, t, forward=True):
+    def _tstep(self, x_t, t, target_t):
         '''Helper for t-error'''
         eps_t = self.network(x_t, t)
         f_t = self._fphi(x_t, t, eps_t)
-        tt = t + 1 if forward else t - 1
-        alpha_bar_tt = self.alpha_bar[tt].view(x_t.shape[0], 1, 1, 1)
+        alpha_bar_tt = self.alpha_bar[target_t].view(x_t.shape[0], 1, 1, 1)
         return torch.sqrt(alpha_bar_tt) * f_t + torch.sqrt(1 - alpha_bar_tt) * eps_t
 
     @torch.inference_mode()

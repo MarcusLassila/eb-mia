@@ -148,7 +148,7 @@ class TestVAETrain(unittest.TestCase):
                 savepath=savepath,
             ).train()
             checkpoint_path = Path(tmpdir) / "vae_test-epoch1.pth"
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
             self.assertIn("ema_network_state_dict", checkpoint)
             raw_state = checkpoint["raw_network_state_dict"]
             ema_state = checkpoint["ema_network_state_dict"]
@@ -198,7 +198,7 @@ class TestVAETrain(unittest.TestCase):
                 accelerator=accelerator,
                 savepath=savepath,
             ).train()
-            resume_checkpoint = torch.load(Path(tmpdir) / "vae_resume-epoch1.pth", map_location="cpu")
+            resume_checkpoint = torch.load(Path(tmpdir) / "vae_resume-epoch1.pth", map_location="cpu", weights_only=False)
             resume_checkpoint["network_state_dict"] = {
                 f"_orig_mod.{k}": v for k, v in resume_checkpoint["network_state_dict"].items()
             }
@@ -218,7 +218,7 @@ class TestVAETrain(unittest.TestCase):
             ).train()
             resumed_path = Path(tmpdir) / "vae_resume-epoch2.pth"
             self.assertTrue(resumed_path.exists())
-            resumed_checkpoint = torch.load(resumed_path, map_location="cpu")
+            resumed_checkpoint = torch.load(resumed_path, map_location="cpu", weights_only=False)
             self.assertEqual(resumed_checkpoint["epoch"], 2)
 
 

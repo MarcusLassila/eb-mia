@@ -1,0 +1,86 @@
+# Run manually: bash run_mia_audit_benchmark.sh entity_lira_exploration_benchmark
+# Five offline variants: legacy CompositeLiRA and four CompositeLiRAv2 covariances.
+# CompositeLiRA keeps its original pooled scalar variance; v2 centers within entities.
+# All attacks receive log_standardized signals with no second log transformation.
+# Correlated variants use upper-orthant tails, with seeded log-space QMC integration.
+# n_qmc_samples must be a power of two; increase it to assess integration accuracy.
+# Covariance shrinkage is toward the diagonal; rank applies only to low_rank.
+# Each mode has separate metric files, summaries, and averaged ROC plots.
+# hold_out is available only for FM/VGGFace2 in these signals; no DDPM/VGGFace2 files.
+# Details: research/entity_lira_exploration.md
+audit_mode: entity
+round_robin: true
+audit_random_seed: 0
+loss_normalization: log_standardized
+results_dir_name: entity_lira_exploration_benchmark
+attacks:
+- name: CompositeLiRA-legacy
+  attack: CompositeLiRA
+  offline: true
+  use_full_cov: false
+  loss_transformation: none
+- name: CompositeLiRAv2-spherical
+  attack: CompositeLiRAv2
+  offline: true
+  loss_transformation: none
+  covariance: spherical
+  use_global_dispersion: true
+- name: CompositeLiRAv2-diagonal
+  attack: CompositeLiRAv2
+  offline: true
+  loss_transformation: none
+  covariance: diagonal
+  use_global_dispersion: true
+- name: CompositeLiRAv2-low-rank
+  attack: CompositeLiRAv2
+  offline: true
+  loss_transformation: none
+  covariance: low_rank
+  use_global_dispersion: true
+  covariance_shrinkage: 0.1
+  n_qmc_samples: 1024
+  random_seed: 0
+  covariance_rank: 2
+- name: CompositeLiRAv2-full
+  attack: CompositeLiRAv2
+  offline: true
+  loss_transformation: none
+  covariance: full
+  use_global_dispersion: true
+  covariance_shrinkage: 0.1
+  n_qmc_samples: 1024
+  random_seed: 0
+audit_groups:
+- dataset: CelebA
+  mode: exclude_train
+  min_samples_per_entity: 10
+  max_samples_per_entity: 10
+  results_dir_name: entity_lira_exploration_celeba_exclude_train
+  loss_paths: &id001
+  - loss-signals/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch500
+  - loss-signals/FM-CelebA-ent-f0p5-p0p5-sz64-epoch700
+- dataset: CelebA
+  mode: max_one_train
+  min_samples_per_entity: 10
+  max_samples_per_entity: 10
+  results_dir_name: entity_lira_exploration_celeba_max_one_train
+  loss_paths: *id001
+- dataset: VGGFace2
+  mode: hold_out
+  min_samples_per_entity: 50
+  max_samples_per_entity: 50
+  results_dir_name: entity_lira_exploration_vggface2_hold_out
+  loss_paths: &id002
+  - loss-signals/FM-VGGFace2-loss-sigs
+- dataset: VGGFace2
+  mode: exclude_train
+  min_samples_per_entity: 50
+  max_samples_per_entity: 50
+  results_dir_name: entity_lira_exploration_vggface2_exclude_train
+  loss_paths: *id002
+- dataset: VGGFace2
+  mode: max_one_train
+  min_samples_per_entity: 50
+  max_samples_per_entity: 50
+  results_dir_name: entity_lira_exploration_vggface2_max_one_train
+  loss_paths: *id002

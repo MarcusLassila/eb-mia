@@ -1,0 +1,158 @@
+# Online residual-shape sweep: 2 attacks x 5 shapes x 9 fixed targets = 90 audits.
+# Mixed cases use all eligible DDPM and FM references after excluding the
+# target split and its complement. Run with: bash run_sample_hg_shape_ablation.sh
+audit_mode: sample
+round_robin: false
+seed: 0
+loss_normalization: log_standardized
+show_auc: false
+results_dir_name: sample_hg_shape_exploration_benchmark
+attacks:
+- name: HG_LiRA-a1p1
+  attack: HG_LiRA
+  offline: false
+  loss_transformation: none
+  residual_shape: 1.1
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA-a1p5
+  attack: HG_LiRA
+  offline: false
+  loss_transformation: none
+  residual_shape: 1.5
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA-a2p0
+  attack: HG_LiRA
+  offline: false
+  loss_transformation: none
+  residual_shape: 2.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA-a3p0
+  attack: HG_LiRA
+  offline: false
+  loss_transformation: none
+  residual_shape: 3.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA-a4p0
+  attack: HG_LiRA
+  offline: false
+  loss_transformation: none
+  residual_shape: 4.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA_r-a1p1
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  residual_shape: 1.1
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA_r-a1p5
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  residual_shape: 1.5
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA_r-a2p0
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  residual_shape: 2.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA_r-a3p0
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  residual_shape: 3.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+- name: HG_LiRA_r-a4p0
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  residual_shape: 4.0
+  n_gibbs_samples: 64
+  n_gibbs_warmup: 64
+  n_quadrature: 65
+audit_groups:
+- case: ddpm_cifar10_matched
+  results_dir_name: sample_hg_shape_ddpm_cifar10_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+- case: ddpm_cifar10_mixed
+  results_dir_name: sample_hg_shape_ddpm_cifar10_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    - loss-signals/FM-CIFAR10-sample
+- case: fm_cifar10_matched
+  results_dir_name: sample_hg_shape_fm_cifar10_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
+    shadow_loss_paths:
+    - loss-signals/FM-CIFAR10-sample
+- case: fm_cifar10_mixed
+  results_dir_name: sample_hg_shape_fm_cifar10_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CIFAR10-sample
+    - loss-signals/FM-CIFAR10-sample
+- case: ddpm_celeba_matched
+  results_dir_name: sample_hg_shape_ddpm_celeba_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+- case: ddpm_celeba_mixed
+  results_dir_name: sample_hg_shape_ddpm_celeba_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    - loss-signals/FM-CelebA-sample
+- case: fm_celeba_matched
+  results_dir_name: sample_hg_shape_fm_celeba_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
+    shadow_loss_paths:
+    - loss-signals/FM-CelebA-sample
+- case: fm_celeba_mixed
+  results_dir_name: sample_hg_shape_fm_celeba_mixed
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
+    shadow_loss_paths:
+    - loss-signals/DDPM-CelebA-sample
+    - loss-signals/FM-CelebA-sample
+- case: fm_imagenet_matched
+  results_dir_name: sample_hg_shape_fm_imagenet_matched
+  loss_path_pairs:
+  - target_loss_paths:
+    - loss-signals/FM-ImageNet32-loss-signals/FlowMatching-ImageNet-smpl-f0p5-sz32-epoch600/loss_signals-FlowMatching-ImageNet-smpl-f0p5-s0-sz32-epoch600-ls32-nl0p33.pkl
+    shadow_loss_paths:
+    - loss-signals/FM-ImageNet32-loss-signals/FlowMatching-ImageNet-smpl-f0p5-sz32-epoch600

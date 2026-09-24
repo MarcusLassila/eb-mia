@@ -1,0 +1,27 @@
+audit_mode: entity
+round_robin: true
+audit_random_seed: 0
+audit_groups:
+- dataset: CelebA
+  mode: exclude_train
+  min_samples_per_entity: 5
+  max_samples_per_entity: 5
+  loss_paths:
+  - loss-signals/DDPM-CelebA-ent-f0p5-p0p5-sz64-epoch500
+  - loss-signals/FM-CelebA-ent-f0p5-p0p5-sz64-epoch700
+# - dataset: VGGFace2
+#   mode: hold_out
+#   min_samples_per_entity: 50
+#   max_samples_per_entity: 50
+#   loss_paths:
+#   - loss-signals/FM-VGGFace2-loss-sigs
+results_dir_name: audit_results_entity_core_online
+attacks:
+- name: CompositeLiRA
+  attack: CompositeLiRA
+  offline: True
+  use_full_cov: false
+- name: CompositeBASE
+  attack: CompositeBASE
+  offline: True
+  prior: 0.5

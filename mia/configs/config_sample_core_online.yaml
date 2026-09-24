@@ -1,0 +1,29 @@
+audit_mode: sample
+round_robin: true
+seed: 0
+loss_normalization: log_standardized
+loss_paths:
+- loss-signals/DDPM-CIFAR10-sample
+- loss-signals/FM-CIFAR10-sample
+- loss-signals/DDPM-CelebA-sample
+- loss-signals/FM-CelebA-sample
+- loss-signals/FM-ImageNet32-loss-signals
+attacks:
+- name: BASE
+  attack: BASE
+  offline: false
+  prior: 0.5
+- name: LiRA
+  attack: LiRA
+  offline: false
+  loss_transformation: none
+  use_global_dispersion: false
+  share_variance: true
+- name: HG_LiRA_r
+  attack: HG_LiRA_r
+  offline: false
+  loss_transformation: none
+  n_gibbs_samples: 128
+  n_gibbs_warmup: 64
+  n_quadrature: 50
+results_dir_name: audit_results_sample_core_online

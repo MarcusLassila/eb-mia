@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from scipy.stats import norm
 
-from mia import attacks
+from mia import attacks_entity
 
 
 class TestCompositeLiRAOffline(unittest.TestCase):
@@ -13,7 +13,7 @@ class TestCompositeLiRAOffline(unittest.TestCase):
             0: [0, 1],
             1: [2, 3],
         }
-        attacker = attacks.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [1.0, 2.0, 5.0, 6.0],
@@ -34,7 +34,7 @@ class TestCompositeLiRAOffline(unittest.TestCase):
         score = attacker.run_attack(target_loss_sigs)
 
         phi_target = -target_loss_sigs
-        scale_out = np.sqrt(float(attacker.var_out))
+        scale_out = np.sqrt(float(attacker.cov_out))
         for entity_id, indices in audit_table.items():
             expected_log_sfs = norm.logsf(
                 phi_target[indices].cpu().numpy(),

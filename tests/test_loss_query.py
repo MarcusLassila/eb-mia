@@ -356,8 +356,8 @@ class TestLossQuery(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def t_error(self, x, noise_level):
-                self.calls.append((x, noise_level))
+            def t_error(self, x, noise_level, step_length=1):
+                self.calls.append((x, noise_level, step_length))
                 return torch.tensor([1.5, 2.5], dtype=torch.float32)
 
         x = torch.randn(2, 1, 4, 4)
@@ -366,12 +366,75 @@ class TestLossQuery(unittest.TestCase):
             batch_size=2,
             device=torch.device("cpu"),
             noise_level=0.2,
+            step_length=10,
         )
 
         signal = t_error_query.t_error(model, x)
 
         self.assertTrue(torch.allclose(signal, torch.tensor([[1.5], [2.5]])))
-        self.assertEqual(model.calls, [(x, 0.2)])
+        self.assertEqual(model.calls, [(x, 0.2, 10)])
+
+    def test_ddpm_t_error_uses_authors_ddim_intervals(self):
+        '''Check that SecMI visits the authors' forward grid and reverse comparison.'''
+        model = DDPMModel.__new__(DDPMModel)
+        model.time_steps = 101
+        transitions = []
+
+        def recording_step(samples, current_t, target_t):
+            transitions.append((current_t[0].item(), target_t[0].item()))
+            return samples + 1
+
+        model._tstep = recording_step
+        samples = torch.zeros(2, 1, 2, 2)
+
+        scores = model.t_error(samples, noise_level=1.0, step_length=10)
+
+        expected_transitions = [(step, step + 10) for step in range(0, 90, 10)]
+        expected_transitions.extend([(90, 100), (100, 90)])
+        self.assertEqual(transitions, expected_transitions)
+        self.assertTrue(torch.equal(scores, torch.tensor([16.0, 16.0])))
+
+    def test_ddpm_t_error_rejects_invalid_intervals(self):
+        '''Reject intervals that cannot form the authors' comparison grid.'''
+        model = DDPMModel.__new__(DDPMModel)
+        model.time_steps = 101
+        samples = torch.zeros(1, 1, 2, 2)
+
+        for noise_level, step_length in [(0.1, 0), (0.1, 10), (0.25, 10)]:
+            with self.subTest(noise_level=noise_level, step_length=step_length):
+                with self.assertRaises(ValueError):
+                    model.t_error(samples, noise_level=noise_level, step_length=step_length)
+
+    def test_ddpm_t_error_unit_interval_uses_selected_time_as_endpoint(self):
+        '''Use the selected timestep as the endpoint when step_length is one.'''
+        model = DDPMModel.__new__(DDPMModel)
+        model.time_steps = 11
+        transitions = []
+
+        def recording_step(samples, current_t, target_t):
+            transitions.append((current_t[0].item(), target_t[0].item()))
+            return samples
+
+        model._tstep = recording_step
+        samples = torch.zeros(1, 1, 2, 2)
+
+        model.t_error(samples, noise_level=0.5)
+
+        self.assertEqual(transitions, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 4)])
+
+    def test_ddpm_tstep_uses_requested_target_time(self):
+        '''Apply the DDIM formula across an arbitrary target interval.'''
+        model = DDPMModel.__new__(DDPMModel)
+        model.alpha_bar = torch.tensor([0.9, 0.8, 0.7])
+        model.network = lambda samples, time: torch.zeros_like(samples)
+        samples = torch.ones(1, 1, 2, 2)
+        current_t = torch.tensor([0])
+        target_t = torch.tensor([2])
+
+        result = model._tstep(samples, current_t, target_t)
+
+        expected = torch.sqrt(model.alpha_bar[2] / model.alpha_bar[0]) * samples
+        self.assertTrue(torch.allclose(result, expected))
 
     def test_query_t_error_can_use_first_n_data_points(self):
         '''
@@ -661,10 +724,11 @@ class TestLossQuery(unittest.TestCase):
         class FakeTErrorQuery:
             instances = []
 
-            def __init__(self, batch_size, device, noise_level):
+            def __init__(self, batch_size, device, noise_level, step_length=1):
                 self.batch_size = batch_size
                 self.device = device
                 self.noise_level = noise_level
+                self.step_length = step_length
                 self.instances.append(self)
 
             def query(self, loaded_dataset, model_path, n_data_points=None):
@@ -694,11 +758,13 @@ class TestLossQuery(unittest.TestCase):
                     device=torch.device("cpu"),
                     noise_level=0.25,
                     signal_type="t_error",
+                    secmi_step_length=10,
                 )
 
             self.assertEqual(len(FakeTErrorQuery.instances), 1)
             self.assertEqual(FakeTErrorQuery.instances[0].noise_level, 0.25)
-            saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 1, 0.25, None, "t_error")
+            self.assertEqual(FakeTErrorQuery.instances[0].step_length, 10)
+            saved_path = path_utils.loss_signals_dir(tmpdir, target_path) / path_utils.loss_signals_pickle_name(target_path, 1, 0.25, None, "t_error", 10)
             self.assertEqual(saved_paths, [saved_path])
             with open(saved_path, "rb") as file:
                 payload = pickle.load(file)
@@ -953,12 +1019,16 @@ class TestLossQuery(unittest.TestCase):
                 "0.25",
                 "--signal-type",
                 "t_error",
+                "--secmi-step-length",
+                "10",
             ])
 
         kwargs = run_loss_query_fn.call_args.kwargs
         printed_lines = [args.args[0] for args in print_fn.call_args_list]
         self.assertIn("signal_type: t_error", printed_lines)
+        self.assertIn("secmi_step_length: 10", printed_lines)
         self.assertEqual(kwargs["signal_type"], "t_error")
+        self.assertEqual(kwargs["secmi_step_length"], 10)
 
     def test_main_allows_omitted_dataset(self):
         '''

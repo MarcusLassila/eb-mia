@@ -11,7 +11,6 @@ from generative_models.utils import load_model
 from generative_models.ddpm import DDPM
 from generative_models.flow_matching import FlowMatching
 from generative_models.vae import VAE
-from generative_models.vae_improved import ImprovedVAE
 
 
 class TestGenerativeUtils(unittest.TestCase):
@@ -112,32 +111,6 @@ class TestGenerativeUtils(unittest.TestCase):
                 self.assertTrue(torch.equal(tensor, loaded_model.network.state_dict()[key]))
             self.assertFalse(loaded_model.network.training)
 
-    def test_load_model_improved_vae(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "ImprovedVAE-Dummy-ent-f1p0-p1p0-s0-sz8.pth"
-            model_config = {
-                "in_ch": 1,
-                "in_dim": 8,
-                "latent_ch": 2,
-                "base_channels": 8,
-                "channel_mult": (1,),
-                "n_res_blocks_per_level": 1,
-                "n_rsamples": 2,
-            }
-            model = ImprovedVAE(**model_config)
-            checkpoint = {
-                "model_config": model_config,
-                "network_state_dict": model.network.state_dict(),
-                "train_indices": torch.tensor([3, 4]),
-            }
-            torch.save(checkpoint, path)
-            loaded_model, train_indices = load_model(path, torch.device("cpu"))
-            self.assertIsInstance(loaded_model, ImprovedVAE)
-            self.assertEqual(loaded_model.n_rsamples, 2)
-            self.assertTrue(torch.equal(train_indices, checkpoint["train_indices"]))
-            for key, tensor in model.network.state_dict().items():
-                self.assertTrue(torch.equal(tensor, loaded_model.network.state_dict()[key]))
-            self.assertFalse(loaded_model.network.training)
 
     def test_load_model_flow_matching(self):
         '''

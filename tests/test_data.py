@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 import unittest
 import zipfile
@@ -204,9 +205,11 @@ class TestData(unittest.TestCase):
             def __len__(self):
                 return len(self._data)
 
-        def fake_load_dataset(name, config_name, split, cache_dir):
-            self.assertTrue(name.endswith("logasja___VGGFace2"))
+        def fake_load_dataset(name, config_name, split, cache_dir, download_config, download_mode):
+            self.assertEqual(name, "logasja/VGGFace2")
             self.assertEqual(config_name, "256")
+            self.assertTrue(download_config.local_files_only)
+            self.assertEqual(download_mode, data_module.DownloadMode.REUSE_DATASET_IF_EXISTS)
             if split == "train":
                 return FakeSplit([10, 10, 30])
             if split == "test":
@@ -217,19 +220,13 @@ class TestData(unittest.TestCase):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            local_repo_dir = str(Path(tmpdir) / "logasja___VGGFace2")
-            with patch("data.datasets.snapshot_download", return_value=local_repo_dir) as snapshot_fn, patch(
-                "data.datasets.load_dataset",
-                side_effect=fake_load_dataset,
-            ), patch("data.datasets.concatenate_datasets", side_effect=fake_concatenate_datasets):
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset), patch(
+                "data.datasets.concatenate_datasets",
+                side_effect=fake_concatenate_datasets,
+            ):
                 dataset = data_module.VGGFace2(
                     data_dir=tmpdir,
                     transform=lambda x: x,
-                )
-                snapshot_fn.assert_called_once_with(
-                    repo_id="logasja/VGGFace2",
-                    repo_type="dataset",
-                    local_dir=local_repo_dir,
                 )
                 self.assertEqual(len(dataset), 5)
                 self.assertEqual(dataset.entity_ids.tolist(), [0, 0, 1, 2, 3])
@@ -319,6 +316,38 @@ class TestData(unittest.TestCase):
 
         self.assertEqual(tuple(sample.shape), (1, 32, 32))
 
+    def test_imagenet_uses_processed_sharded_cache_when_available(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processed_dir = Path(tmpdir) / "processed" / "ImageNet" / "rgb-sz128"
+            shards_dir = processed_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            shard_path = shards_dir / "imagenet-rgb-sz128-000000.zip"
+            image_buffer = BytesIO()
+            image = Image.new("RGB", (128, 128), color=(128, 64, 32))
+            image.save(image_buffer, format="JPEG")
+            with zipfile.ZipFile(shard_path, "w", compression=zipfile.ZIP_STORED) as shard_file:
+                shard_file.writestr("000000000.jpg", image_buffer.getvalue())
+            manifest = {
+                "version": 1,
+                "dataset": "ImageNet",
+                "size": 128,
+                "color": "RGB",
+                "image_format": "JPEG",
+                "images_per_shard": 10000,
+                "splits": [
+                    {"name": "train", "length": 1},
+                    {"name": "validation", "length": 0},
+                ],
+            }
+            with (processed_dir / "manifest.json").open("w") as file:
+                json.dump(manifest, file)
+            with patch("data.datasets.load_dataset", side_effect=AssertionError("HF ImageNet should not be loaded")):
+                dataset = data_module.ImageNet(data_dir=tmpdir, transform=None, size=128)
+                sample = dataset[0]
+
+        self.assertEqual(len(dataset), 1)
+        self.assertEqual(tuple(sample.shape), (3, 128, 128))
+
     def test_vggface2_grayscale_transform(self):
         class FakeSplit:
             def __init__(self, class_ids, image):
@@ -346,27 +375,28 @@ class TestData(unittest.TestCase):
 
         image = Image.new("RGB", (256, 256), color=(128, 128, 128))
 
-        def fake_load_dataset(name, config_name, split, cache_dir):
-            self.assertTrue(name.endswith("logasja___VGGFace2"))
+        def fake_load_dataset(name, config_name, split, cache_dir, download_config, download_mode):
+            self.assertEqual(name, "logasja/VGGFace2")
             self.assertEqual(config_name, "256")
+            self.assertTrue(download_config.local_files_only)
+            self.assertEqual(download_mode, data_module.DownloadMode.REUSE_DATASET_IF_EXISTS)
             return FakeSplit([0, 1], image)
 
         def fake_concatenate_datasets(datasets):
             return FakeConcatDataset(datasets=datasets)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            local_repo_dir = str(Path(tmpdir) / "logasja___VGGFace2")
-            with patch("data.datasets.snapshot_download", return_value=local_repo_dir) as snapshot_fn, patch(
-                "data.datasets.load_dataset",
-                side_effect=fake_load_dataset,
-            ), patch("data.datasets.concatenate_datasets", side_effect=fake_concatenate_datasets):
+            with patch("data.datasets.load_dataset", side_effect=fake_load_dataset) as load_dataset_fn, patch(
+                "data.datasets.concatenate_datasets",
+                side_effect=fake_concatenate_datasets,
+            ):
                 gray_dataset = data_module.VGGFace2(data_dir=tmpdir, transform=None, size=32, grayscale=True)
                 gray_sample = gray_dataset[0]
                 self.assertEqual(tuple(gray_sample.shape), (1, 32, 32))
                 color_dataset = data_module.VGGFace2(data_dir=tmpdir, transform=None, size=64, grayscale=False)
                 color_sample = color_dataset[0]
                 self.assertEqual(tuple(color_sample.shape), (3, 64, 64))
-                self.assertEqual(snapshot_fn.call_count, 2)
+                self.assertEqual(load_dataset_fn.call_count, 4)
 
     def test_vggface2_huggingface_tiny_split(self):
         if os.environ.get("RUN_REMOTE_DATASET_TESTS") != "1":
