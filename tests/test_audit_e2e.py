@@ -19,6 +19,7 @@ sys.modules.setdefault("torchdiffeq", torchdiffeq_stub)
 from data.datasets import EntityDataset
 from mia import loss_query as loss_query_module
 from mia import path_utils
+from mia import result_store
 from mia import run_audit as run_audit_module
 
 
@@ -54,8 +55,8 @@ class TestAuditEndToEnd(unittest.TestCase):
             shadow_path_b = tmpdir_path / "DDPM-CelebA-ent-f0p5-p0p5-s2-sz64-epoch10.pth"
             loss_sig_by_path = {
                 target_path: (torch.tensor([0.2, 0.5, 0.1, 0.1], dtype=torch.float32), torch.tensor([1, 0, 0, 0], dtype=torch.bool)),
-                shadow_path_a: (torch.tensor([0.9, 0.2, 1.1, 1.2], dtype=torch.float32), torch.tensor([1, 1, 0, 0], dtype=torch.bool)),
-                shadow_path_b: (torch.tensor([1.0, 0.3, 0.8, 0.9], dtype=torch.float32), torch.tensor([0, 0, 1, 1], dtype=torch.bool)),
+                shadow_path_a: (torch.tensor([0.9, 0.2, 1.1, 1.2], dtype=torch.float32), torch.tensor([1, 0, 1, 0], dtype=torch.bool)),
+                shadow_path_b: (torch.tensor([1.0, 0.3, 0.8, 0.9], dtype=torch.float32), torch.tensor([0, 0, 0, 0], dtype=torch.bool)),
             }
 
             def fake_query(self, loaded_dataset, model_path, n_data_points=None):
@@ -110,11 +111,8 @@ class TestAuditEndToEnd(unittest.TestCase):
             ):
                 run_audit_module.run_entity_audit(config=audit_config)
 
-            metrics_path = (
-                Path(tmpdir)
-                / "test_audit"
-                / path_utils.metrics_pickle_name(target_path.stem, "CompositeBASE-off")
-            )
+            manifest_path = Path(tmpdir) / "test_audit" / "audit_manifest.json"
+            metrics_path, = result_store.load_manifest_paths(manifest_path)
             self.assertTrue(metrics_path.exists())
             with open(metrics_path, "rb") as file:
                 metrics = pickle.load(file)

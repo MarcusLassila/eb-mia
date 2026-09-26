@@ -1,248 +1,25 @@
 audit_mode: sample
 round_robin: false
 seed: 0
+n_loss_samples: 32
 loss_normalization: log_standardized
 loss_path_pairs:
 - target_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch1000-n128-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch800-n128-nl0p33.pkl
+  - loss-signals/DDPM-CIFAR10-sample
+  shadow_loss_paths: &mixed_cifar10_reference_paths
+  - loss-signals/DDPM-CIFAR10-sample
+  - loss-signals/FM-CIFAR10-sample
 - target_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch1000-n128-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch800-n128-nl0p33.pkl
+  - loss-signals/FM-CIFAR10-sample
+  shadow_loss_paths: *mixed_cifar10_reference_paths
 - target_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch1000-n128-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch800-n128-nl0p33.pkl
+  - loss-signals/DDPM-CelebA-sample
+  shadow_loss_paths: &mixed_celeba_reference_paths
+  - loss-signals/DDPM-CelebA-sample
+  - loss-signals/FM-CelebA-sample
 - target_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch1000-n128-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch1000-n128-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-comp-sz64-epoch400-n64-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-comp-sz64-epoch400-n64-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-comp-sz64-epoch400-n64-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-comp-sz64-epoch400-n64-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-comp-sz64-epoch400-n64-nl0p1.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch800-n128-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch800-n128-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch800-n128-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch800-n128-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s4-comp-sz32-epoch800-n128-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s0-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/DDPM-CIFAR10-sample/loss-signals-DDPM-CIFAR10-smpl-f0p5-s1-comp-sz32-epoch1000-n128-nl0p1.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s2-comp-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-sz32-epoch800-n128-nl0p33.pkl
-  - loss-signals/FM-CIFAR10-sample/loss-signals-FlowMatching-CIFAR10-smpl-f0p5-s3-comp-sz32-epoch800-n128-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-comp-sz64-epoch900-n64-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-comp-sz64-epoch900-n64-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s2-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-comp-sz64-epoch900-n64-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s3-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s0-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-comp-sz64-epoch900-n64-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s4-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s1-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-comp-sz64-epoch900-n64-nl0p33.pkl
-- target_loss_paths:
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s4-comp-sz64-epoch900-n64-nl0p33.pkl
-  shadow_loss_paths:
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s0-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/DDPM-CelebA-sample/loss-signals-DDPM-CelebA-smpl-f0p5-s1-comp-sz64-epoch400-n64-nl0p1.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s2-comp-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-sz64-epoch900-n64-nl0p33.pkl
-  - loss-signals/FM-CelebA-sample/loss-signals-FlowMatching-CelebA-smpl-f0p5-s3-comp-sz64-epoch900-n64-nl0p33.pkl
+  - loss-signals/FM-CelebA-sample
+  shadow_loss_paths: *mixed_celeba_reference_paths
 attacks:
 - name: BASE
   attack: BASE
@@ -254,8 +31,8 @@ attacks:
   loss_transformation: none
   use_global_dispersion: false
   share_variance: true
-- name: HG_LiRA_r
-  attack: HG_LiRA_r
+- name: HG_LiRA_r_shared
+  attack: HG_LiRA_r_shared
   offline: false
   loss_transformation: none
   n_gibbs_samples: 128

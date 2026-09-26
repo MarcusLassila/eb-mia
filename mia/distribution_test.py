@@ -13,7 +13,7 @@ def load_selected_signals(signal_paths, max_points, seed, normalization):
     '''Load sampled data points across model files; return values, masks, and indices.'''
     if max_points < 1:
         raise ValueError("max_points must be positive.")
-    if normalization not in ("none", "log_standardized"):
+    if normalization not in ("none", "log", "log_standardized"):
         raise ValueError(f"Unsupported normalization: {normalization}")
     rng = np.random.default_rng(seed)
     selected_signals = []
@@ -32,8 +32,12 @@ def load_selected_signals(signal_paths, max_points, seed, normalization):
             raise ValueError("Normality tests require at least three query outputs per data point.")
         if not torch.isfinite(signals).all():
             raise ValueError(f"Non-finite signal values in {signal_path}.")
-        if normalization == "log_standardized":
+        if normalization == "log":
+            signals = torch.log(signals)
+        elif normalization == "log_standardized":
             signals = standardize_signals(signals, "log")
+        if not torch.isfinite(signals).all():
+            raise ValueError(f"Normalization produced non-finite signal values in {signal_path}.")
         point_signals = signals[point_indices]
         point_mask = train_mask[point_indices]
         selected_signals.append(point_signals.numpy())
@@ -69,8 +73,11 @@ def normality_statistics(values):
     result["anderson_reject_5pct"] = bool(anderson_result.statistic > critical_value)
     return result
 
-def write_tikz_plot(path, title, x_label, y_label, curves):
+def write_tikz_plot(path, title, x_label, y_label, curves, axis_options=""):
     '''Write plot coordinates and styles to a standalone PGFPlots file; return its path.'''
+    axis_settings = "grid=major"
+    if axis_options:
+        axis_settings = f"{axis_settings},{axis_options}"
     lines = [
         r"\documentclass[tikz]{standalone}",
         r"\usepackage{pgfplots}",
@@ -80,7 +87,7 @@ def write_tikz_plot(path, title, x_label, y_label, curves):
         r"\begin{axis}[",
         "width=12cm,height=8cm,",
         f"title={{{title}}},xlabel={{{x_label}}},ylabel={{{y_label}}},",
-        r"grid=major]",
+        f"{axis_settings}]",
     ]
     for style, x_values, y_values, label in curves:
         coordinates = " ".join(f"({float(x):.8e},{float(y):.8e})" for x, y in zip(x_values, y_values))
@@ -138,10 +145,10 @@ def save_diagnostic_plots(values, result, plot_prefix, title, bins):
                                            "Signal value", "Density", histogram_curves)
     return [qq_path, qq_tikz_path, histogram_path, histogram_tikz_path]
 
-def run_distribution_analysis(input_dir, output_dir="temp_results", normalization="none", max_points=8, plots_per_group=1, seed=0, bins=40):
+def run_distribution_analysis(input_dir, output_dir="temp_results", normalization="none", max_points=200, plots_per_group=1, seed=0, bins=40, max_plot_points=1):
     '''Analyze query and across-model distributions; write plots and statistics.'''
-    if plots_per_group < 0 or bins < 1:
-        raise ValueError("plots_per_group must be nonnegative and bins must be positive.")
+    if plots_per_group < 0 or max_plot_points < 0 or bins < 1:
+        raise ValueError("Plot counts must be nonnegative and bins must be positive.")
     input_dir = Path(input_dir)
     if not input_dir.is_dir():
         raise ValueError(f"Signal folder does not exist: {input_dir}")
@@ -152,6 +159,8 @@ def run_distribution_analysis(input_dir, output_dir="temp_results", normalizatio
     analysis_dir = Path(output_dir) / "distributional_analysis"
     analysis_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
+    plot_point_count = min(max_plot_points, len(point_indices))
+    plot_point_positions = set(rng.choice(len(point_indices), size=plot_point_count, replace=False))
     records = []
     plot_paths = []
     for point_position, data_index in enumerate(point_indices):
@@ -165,21 +174,23 @@ def run_distribution_analysis(input_dir, output_dir="temp_results", normalizatio
             model_indices = np.flatnonzero(train_masks[:, point_position] == membership)
             if not len(model_indices):
                 continue
-            plot_count = min(plots_per_group, len(model_indices))
-            plot_indices = rng.choice(model_indices, size=plot_count, replace=False)
-            for model_index in plot_indices:
-                values = signals[model_index, point_position]
-                result = normality_statistics(values)
-                prefix = analysis_dir / f"query_point{data_index}_model{model_index}_{group}"
-                title = f"Query outputs: point {data_index}, model {model_index}, {group}"
-                plot_paths.extend(save_diagnostic_plots(values, result, prefix, title, bins))
+            if point_position in plot_point_positions:
+                plot_count = min(plots_per_group, len(model_indices))
+                plot_indices = rng.choice(model_indices, size=plot_count, replace=False)
+                for model_index in plot_indices:
+                    values = signals[model_index, point_position]
+                    result = normality_statistics(values)
+                    prefix = analysis_dir / f"query_point{data_index}_model{model_index}_{group}"
+                    title = f"Query outputs: point {data_index}, model {model_index}, {group}"
+                    plot_paths.extend(save_diagnostic_plots(values, result, prefix, title, bins))
             means = signals[model_indices, point_position].mean(axis=1)
             result = normality_statistics(means)
             records.append({"scope": "model_means", "data_index": int(data_index), "group": group,
                             "model_file": "", **result})
-            prefix = analysis_dir / f"model_means_point{data_index}_{group}"
-            title = f"Query means across models: point {data_index}, {group}"
-            plot_paths.extend(save_diagnostic_plots(means, result, prefix, title, bins))
+            if point_position in plot_point_positions:
+                prefix = analysis_dir / f"model_means_point{data_index}_{group}"
+                title = f"Query means across models: point {data_index}, {group}"
+                plot_paths.extend(save_diagnostic_plots(means, result, prefix, title, bins))
     csv_path = analysis_dir / "normality_tests.csv"
     fieldnames = ("scope", "data_index", "group", "model_file", "n", "mean", "std",
                   "shapiro_stat", "shapiro_p", "anderson_stat", "anderson_5pct_critical",
@@ -204,8 +215,14 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Test Gaussian assumptions for checkpoint loss signals.")
     parser.add_argument("--input-dir", required=True, help="Folder containing checkpoint signal pickles.")
     parser.add_argument("--output-dir", default="temp_results", help="Output root directory.")
-    parser.add_argument("--normalization", choices=("none", "log_standardized"), default="none")
-    parser.add_argument("--max-points", type=int, default=8)
+    parser.add_argument(
+        "--normalization",
+        choices=("none", "log", "log_standardized"),
+        default="none",
+        help="Signal transform: none, log, or per-model standardized log.",
+    )
+    parser.add_argument("--max-points", type=int, default=200)
+    parser.add_argument("--max-plot-points", type=int, default=1)
     parser.add_argument("--plots-per-group", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--bins", type=int, default=40)
@@ -215,7 +232,8 @@ def main(argv=None):
     '''Run CLI distribution analysis; return paths to generated outputs.'''
     args = parse_args(argv)
     return run_distribution_analysis(args.input_dir, args.output_dir, args.normalization,
-                                     args.max_points, args.plots_per_group, args.seed, args.bins)
+                                     args.max_points, args.plots_per_group, args.seed, args.bins,
+                                     args.max_plot_points)
 
 
 if __name__ == "__main__":

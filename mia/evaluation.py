@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve
 
 from . import path_utils
+from . import result_store
 
 
 _SUMMARY_METRICS = (
@@ -48,14 +49,19 @@ def evaluate_MIA(score, ground_truth):
         "ground_truth": ground_truth,
     }
 
-def collect_grouped_metrics(results_dir):
+def collect_grouped_metrics(results_dir, manifest_path=None):
     '''Load metrics and group target results by model, dataset, and attack.'''
     results_dir = Path(results_dir)
+    if manifest_path is None:
+        manifest_path = results_dir / "audit_manifest.json"
+    metrics_paths = result_store.load_manifest_paths(manifest_path)
     grouped_metrics = {}
-    for metrics_path in sorted(results_dir.glob("metrics_attack-*_target-*.pkl")):
+    targets_by_group = {}
+    attack_settings_by_group = {}
+    for metrics_path in metrics_paths:
         with open(metrics_path, "rb") as file:
             metrics = pickle.load(file)
-        required_keys = {"attack", "target_model", "target_dataset"}
+        required_keys = {"attack", "target_model", "target_dataset", "target_stem", "scenario_id", "settings"}
         missing_keys = required_keys.difference(metrics)
         if missing_keys:
             missing_names = ", ".join(sorted(missing_keys))
@@ -63,11 +69,24 @@ def collect_grouped_metrics(results_dir):
         group = (
             str(metrics["target_model"]),
             str(metrics["target_dataset"]),
+            str(metrics["scenario_id"]),
             str(metrics["attack"]),
         )
+        targets = targets_by_group.setdefault(group, set())
+        target = metrics["target_stem"]
+        if target in targets:
+            raise ValueError(f"Duplicate target {target} in audit group {group}.")
+        targets.add(target)
+        attack_settings = metrics["settings"]["attack"]
+        previous_settings = attack_settings_by_group.setdefault(group, attack_settings)
+        if attack_settings != previous_settings:
+            raise ValueError(f"Attack settings differ within audit group {group}.")
         grouped_metrics.setdefault(group, []).append(metrics)
-    if not grouped_metrics:
-        raise ValueError(f"No audit metrics found in {results_dir}")
+    scenario_targets = {}
+    for group, targets in targets_by_group.items():
+        expected_targets = scenario_targets.setdefault(group[:3], targets)
+        if targets != expected_targets:
+            raise ValueError(f"Compared attacks have different target sets in scenario {group[:3]}.")
     return grouped_metrics
 
 def summarize_metrics(metrics_list):
@@ -112,13 +131,13 @@ def _write_average_roc_tikz(path, fpr_space, curves, title):
     ])
     path.write_text("\n".join(lines) + "\n")
 
-def plot_average_roc_curves(results_dir, low_exponent=-4):
+def plot_average_roc_curves(results_dir, low_exponent=-4, manifest_path=None):
     '''Plot target-averaged log-log ROC curves by model and dataset.'''
     results_dir = Path(results_dir)
-    grouped_metrics = collect_grouped_metrics(results_dir)
+    grouped_metrics = collect_grouped_metrics(results_dir, manifest_path)
     fpr_space = np.logspace(low_exponent, 0, 1000)
     model_dataset_groups = {}
-    for (model, dataset, attack), metrics_list in grouped_metrics.items():
+    for (model, dataset, scenario, attack), metrics_list in grouped_metrics.items():
         interpolated_tprs = []
         for metrics in metrics_list:
             fpr = np.asarray(metrics["FPR"], dtype=float)
@@ -126,15 +145,15 @@ def plot_average_roc_curves(results_dir, low_exponent=-4):
             interpolated_tprs.append(np.interp(fpr_space, fpr, tpr))
         mean_tpr = np.mean(interpolated_tprs, axis=0)
         mean_auc = float(np.mean([metrics["AUC"] for metrics in metrics_list]))
-        group = (model, dataset)
+        group = (model, dataset, scenario)
         model_dataset_groups.setdefault(group, [])
         model_dataset_groups[group].append((attack, mean_tpr, mean_auc))
 
     output_paths = []
-    for (model, dataset), curves in sorted(model_dataset_groups.items()):
+    for (model, dataset, scenario), curves in sorted(model_dataset_groups.items()):
         curves = sorted(curves, key=lambda curve: curve[0])
-        title = f"{model} {dataset}"
-        output_stem = f"average_roc_curves_{model}-{dataset}"
+        title = f"{model} {dataset} ({scenario})"
+        output_stem = f"average_roc_curves_{model}-{dataset}_{scenario}"
         png_path = results_dir / f"{output_stem}.png"
         tikz_path = results_dir / f"{output_stem}.tex"
 
@@ -179,19 +198,19 @@ def print_metrics_table(columns, rows, text_columns):
         if row_index == 0:
             print("  ".join("-" * width for width in widths))
 
-def print_grouped_metrics(results_dir, show_auc=False):
+def print_grouped_metrics(results_dir, show_auc=False, manifest_path=None):
     '''Print target-averaged metrics, optionally including AUC.'''
-    grouped_metrics = collect_grouped_metrics(results_dir)
+    grouped_metrics = collect_grouped_metrics(results_dir, manifest_path)
     print("")
     print("Benchmark summary")
-    columns = ["Model", "Dataset", "Attack", "Targets"]
+    columns = ["Model", "Dataset", "Setting", "Attack", "Targets"]
     if show_auc:
         columns.append("AUC")
     columns.extend(["pAUC@1%", "TPR@1%", "TPR@0.1%"])
     rows = []
-    for (model, dataset, attack), metrics_list in sorted(grouped_metrics.items()):
+    for (model, dataset, scenario, attack), metrics_list in sorted(grouped_metrics.items()):
         summary = summarize_metrics(metrics_list)
-        values = [model, dataset, attack, str(summary["n_targets"])]
+        values = [model, dataset, scenario, attack, str(summary["n_targets"])]
         if show_auc:
             values.append(f"{summary['AUC']:.4f}")
         values.extend([
@@ -200,13 +219,14 @@ def print_grouped_metrics(results_dir, show_auc=False):
             f"{summary['TPR@0.1%FPR']:.4f}",
         ])
         rows.append(values)
-    print_metrics_table(columns, rows, text_columns=3)
+    print_metrics_table(columns, rows, text_columns=4)
 
 def parse_args(argv=None):
     '''Parse the grouped benchmark-summary command line.'''
     parser = argparse.ArgumentParser(description="Summarize an MIA audit benchmark.")
     parser.add_argument("results_dir_name", help="Named directory below the audit results root.")
     parser.add_argument("--results-root", type=Path, default=None)
+    parser.add_argument("--manifest", type=Path, default=None, help="Completed audit manifest; defaults to audit_manifest.json in the results directory.")
     parser.add_argument("--show-auc", action="store_true", help="Include AUC in the printed table.")
     return parser.parse_args(argv)
 
@@ -214,8 +234,8 @@ def main(argv=None):
     '''Print grouped metrics for a completed benchmark.'''
     args = parse_args(argv)
     results_dir = path_utils.audit_results_dir(args.results_dir_name, args.results_root)
-    print_grouped_metrics(results_dir, show_auc=args.show_auc)
-    plot_average_roc_curves(results_dir)
+    print_grouped_metrics(results_dir, show_auc=args.show_auc, manifest_path=args.manifest)
+    plot_average_roc_curves(results_dir, manifest_path=args.manifest)
 
 if __name__ == "__main__":
     main()

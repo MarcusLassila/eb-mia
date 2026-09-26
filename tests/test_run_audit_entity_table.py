@@ -112,6 +112,26 @@ class TestSelectEntityAuditIndices(unittest.TestCase):
         self.assertIn(2, audit_table[0])
         self.assertIn(4, audit_table[1])
 
+    def test_balancing_is_random_reproducible_and_independent_of_table_order(self):
+        table = {entity: [2 * entity, 2 * entity + 1] for entity in range(20)}
+        membership = torch.zeros(40, dtype=torch.bool)
+        membership[0] = True
+        selections = set()
+        for seed in range(8):
+            generator = torch.Generator().manual_seed(seed)
+            audit = select_entity_audit_indices(table, membership, "exclude_train", 1, 1, generator=generator)
+            torch.rand(100)
+            reversed_table = dict(reversed(list(table.items())))
+            repeated = select_entity_audit_indices(
+                reversed_table, membership, "exclude_train", 1, 1,
+                generator=torch.Generator().manual_seed(seed),
+            )
+            self.assertEqual(audit, repeated)
+            self.assertEqual(len(audit), 2)
+            self.assertEqual(audit[0], [1])
+            selections.update(entity for entity in audit if entity != 0)
+        self.assertGreater(len(selections), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

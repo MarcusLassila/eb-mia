@@ -60,10 +60,20 @@ class TestLiRA(unittest.TestCase):
             attacker.run_attack(dispersed_targets),
         )
 
-    def test_rejects_offline_inference(self):
-        '''Check LiRA rejects the unsupported offline setting.'''
-        with self.assertRaisesRegex(ValueError, "online inference only"):
-            LiRA(self.shadow_loss_sigs, self.shadow_train_mask, offline=True)
+    def test_offline_uses_only_out_references_with_unequal_class_counts(self):
+        '''Check OUT-tail scores remain defined when a point has no IN references.'''
+        shadow_train_mask = self.shadow_train_mask.clone()
+        shadow_train_mask[:, 0] = False
+        attacker = LiRA(self.shadow_loss_sigs, shadow_train_mask, offline=True, use_global_var=False)
+        shadow_means = -self.shadow_loss_sigs.mean(dim=-1).numpy()
+        out_mask = ~shadow_train_mask.numpy()
+        expected_mean = np.array([shadow_means[out_mask[:, index], index].mean() for index in range(2)])
+        expected_std = np.array([shadow_means[out_mask[:, index], index].std(ddof=1) for index in range(2)])
+        target_mean = -self.target_loss_sigs.mean(dim=-1).numpy()
+        expected_score = norm.logcdf(target_mean, loc=expected_mean, scale=expected_std)
+        np.testing.assert_allclose(attacker.mean_out, expected_mean)
+        np.testing.assert_allclose(attacker.std_out, expected_std)
+        np.testing.assert_allclose(attacker.run_attack(self.target_loss_sigs), expected_score)
 
     def test_audit_factory_constructs_lira(self):
         '''Check audit options reach LiRA.'''

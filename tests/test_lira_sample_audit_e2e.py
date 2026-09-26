@@ -20,6 +20,7 @@ sys.modules.setdefault("torchdiffeq", torchdiffeq_stub)
 from mia import evaluation as evaluation_module
 from mia import loss_query as loss_query_module
 from mia import path_utils
+from mia import result_store
 from mia import run_audit as run_audit_module
 
 
@@ -96,7 +97,8 @@ class TestLiRASampleAuditEndToEnd(unittest.TestCase):
             ):
                 run_audit_module.run_sample_audit(config=audit_config)
 
-            metrics_path = Path(tmpdir) / "test_lira_sample" / path_utils.metrics_pickle_name(target_path.stem, "LiRA-on-none")
+            manifest_path = Path(tmpdir) / "test_lira_sample" / "audit_manifest.json"
+            metrics_path, = result_store.load_manifest_paths(manifest_path)
             self.assertTrue(metrics_path.exists())
 
             stdout = io.StringIO()

@@ -1,6 +1,6 @@
 # Run manually: bash run_mia_audit_benchmark.sh entity_lira_exploration_benchmark
-# Five offline variants: legacy CompositeLiRA and four CompositeLiRAv2 covariances.
-# CompositeLiRA keeps its original pooled scalar variance; v2 centers within entities.
+# Five offline variants: CompositeLiRA_legacy and four CompositeLiRA covariances.
+# CompositeLiRA_legacy pools raw variance; CompositeLiRA centers within entities.
 # All attacks receive log_standardized signals with no second log transformation.
 # Correlated variants use upper-orthant tails, with seeded log-space QMC integration.
 # n_qmc_samples must be a power of two; increase it to assess integration accuracy.
@@ -15,24 +15,24 @@ loss_normalization: log_standardized
 results_dir_name: entity_lira_exploration_benchmark
 attacks:
 - name: CompositeLiRA-legacy
-  attack: CompositeLiRA
+  attack: CompositeLiRA_legacy
   offline: true
   use_full_cov: false
   loss_transformation: none
-- name: CompositeLiRAv2-spherical
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-spherical
+  attack: CompositeLiRA
   offline: true
   loss_transformation: none
   covariance: spherical
   use_global_dispersion: true
-- name: CompositeLiRAv2-diagonal
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-diagonal
+  attack: CompositeLiRA
   offline: true
   loss_transformation: none
   covariance: diagonal
   use_global_dispersion: true
-- name: CompositeLiRAv2-low-rank
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-low-rank
+  attack: CompositeLiRA
   offline: true
   loss_transformation: none
   covariance: low_rank
@@ -41,8 +41,8 @@ attacks:
   n_qmc_samples: 1024
   random_seed: 0
   covariance_rank: 2
-- name: CompositeLiRAv2-full
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-full
+  attack: CompositeLiRA
   offline: true
   loss_transformation: none
   covariance: full

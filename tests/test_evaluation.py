@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from mia import evaluation
+from mia import result_store
 
 
 class TestEvaluation(unittest.TestCase):
@@ -17,6 +18,8 @@ class TestEvaluation(unittest.TestCase):
             "target_stem": target,
             "target_model": model,
             "target_dataset": dataset,
+            "scenario_id": "setting-a",
+            "settings": {"attack": {"attack": attack}},
             "AUC": auc,
             "pAUC@1%FPR": auc,
             "TPR@1%FPR": auc,
@@ -28,6 +31,10 @@ class TestEvaluation(unittest.TestCase):
         path = Path(directory) / f"metrics_attack-{attack}_target-{target}.pkl"
         with open(path, "wb") as file:
             pickle.dump(metrics, file)
+        manifest_path = Path(directory) / "audit_manifest.json"
+        paths = result_store.load_manifest_paths(manifest_path) if manifest_path.exists() else []
+        paths.append(path)
+        result_store.write_artifact(manifest_path, {"schema_version": 2, "metrics_paths": [str(item) for item in paths]})
 
     def test_collect_and_print_metrics_groups_targets(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -37,7 +44,7 @@ class TestEvaluation(unittest.TestCase):
             self._write_metrics(temporary_dir, "FM-a", "FlowMatching", "VGGFace2", long_attack, 0.7)
 
             grouped = evaluation.collect_grouped_metrics(temporary_dir)
-            ddpm_summary = evaluation.summarize_metrics(grouped[("DDPM", "CelebA", "LiRA")])
+            ddpm_summary = evaluation.summarize_metrics(grouped[("DDPM", "CelebA", "setting-a", "LiRA")])
             output = io.StringIO()
             with redirect_stdout(output):
                 evaluation.print_grouped_metrics(temporary_dir)
@@ -75,7 +82,7 @@ class TestEvaluation(unittest.TestCase):
             )
             self._write_metrics(
                 temporary_dir,
-                "DDPM-b",
+                "DDPM-a",
                 "DDPM",
                 "CelebA",
                 "BASE",
@@ -86,8 +93,53 @@ class TestEvaluation(unittest.TestCase):
 
             self.assertEqual(len(output_paths), 2)
             self.assertTrue(all(path.exists() for path in output_paths))
-            png_path = Path(temporary_dir) / "average_roc_curves_DDPM-CelebA.png"
+            png_path = Path(temporary_dir) / "average_roc_curves_DDPM-CelebA_setting-a.png"
             self.assertTrue(png_path.exists())
+
+    def test_manifest_ignores_stale_files_and_rejects_missing_or_duplicate_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self._write_metrics(directory, "a", "DDPM", "CelebA", "BASE", 0.7)
+            stale = Path(directory) / "metrics_attack-stale_target-old.pkl"
+            stale.write_bytes(b"not a valid pickle")
+            self.assertEqual(len(evaluation.collect_grouped_metrics(directory)), 1)
+            manifest_path = Path(directory) / "audit_manifest.json"
+            paths = result_store.load_manifest_paths(manifest_path)
+            result_store.write_artifact(manifest_path, {
+                "schema_version": 2, "metrics_paths": [str(paths[0]), str(paths[0])],
+            })
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                evaluation.collect_grouped_metrics(directory)
+            result_store.write_artifact(manifest_path, {
+                "schema_version": 2, "metrics_paths": [str(Path(directory) / "missing.pkl")],
+            })
+            with self.assertRaises(FileNotFoundError):
+                evaluation.collect_grouped_metrics(directory)
+
+    def test_compared_attacks_require_identical_target_sets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self._write_metrics(directory, "a", "DDPM", "CelebA", "BASE", 0.7)
+            self._write_metrics(directory, "b", "DDPM", "CelebA", "LiRA", 0.8)
+            with self.assertRaisesRegex(ValueError, "different target sets"):
+                evaluation.collect_grouped_metrics(directory)
+
+    def test_scenarios_are_separate_and_duplicate_targets_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self._write_metrics(directory, "a", "DDPM", "CelebA", "BASE", 0.7)
+            manifest_path = Path(directory) / "audit_manifest.json"
+            first_path, = result_store.load_manifest_paths(manifest_path)
+            with first_path.open("rb") as file:
+                metrics = pickle.load(file)
+            other_path = Path(directory) / "other.pkl"
+            metrics["scenario_id"] = "setting-b"
+            result_store.write_artifact(other_path, metrics)
+            result_store.write_artifact(manifest_path, {
+                "schema_version": 2, "metrics_paths": [str(first_path), str(other_path)],
+            })
+            self.assertEqual(len(evaluation.collect_grouped_metrics(directory)), 2)
+            metrics["scenario_id"] = "setting-a"
+            result_store.write_artifact(other_path, metrics)
+            with self.assertRaisesRegex(ValueError, "Duplicate target"):
+                evaluation.collect_grouped_metrics(directory)
 
 
 if __name__ == "__main__":

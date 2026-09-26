@@ -11,42 +11,42 @@ max_samples_per_entity: 10
 show_auc: false
 results_dir_name: entity_lira_variance_benchmark
 attacks:
-- name: CompositeLiRAv2-online-global-shared
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-online-global-shared
+  attack: CompositeLiRA
   offline: false
   covariance: spherical
   loss_transformation: none
   use_global_dispersion: true
   share_variance: true
-- name: CompositeLiRAv2-online-global-separate
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-online-global-separate
+  attack: CompositeLiRA
   offline: false
   covariance: spherical
   loss_transformation: none
   use_global_dispersion: true
   share_variance: false
-- name: CompositeLiRAv2-online-local-shared
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-online-local-shared
+  attack: CompositeLiRA
   offline: false
   covariance: spherical
   loss_transformation: none
   use_global_dispersion: false
   share_variance: true
-- name: CompositeLiRAv2-online-local-separate
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-online-local-separate
+  attack: CompositeLiRA
   offline: false
   covariance: spherical
   loss_transformation: none
   use_global_dispersion: false
   share_variance: false
-- name: CompositeLiRAv2-offline-global
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-offline-global
+  attack: CompositeLiRA
   offline: true
   covariance: spherical
   loss_transformation: none
   use_global_dispersion: true
-- name: CompositeLiRAv2-offline-local
-  attack: CompositeLiRAv2
+- name: CompositeLiRA-offline-local
+  attack: CompositeLiRA
   offline: true
   covariance: spherical
   loss_transformation: none

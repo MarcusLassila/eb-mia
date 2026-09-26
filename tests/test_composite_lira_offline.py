@@ -13,7 +13,7 @@ class TestCompositeLiRAOffline(unittest.TestCase):
             0: [0, 1],
             1: [2, 3],
         }
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [1.0, 2.0, 5.0, 6.0],

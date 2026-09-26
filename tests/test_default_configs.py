@@ -16,6 +16,7 @@ class TestDefaultConfigs(unittest.TestCase):
             "config_entity_mismatched_online.yaml",
             "config_sample_core_offline.yaml",
             "config_sample_core_online.yaml",
+            "config_sample_ddpm_cifar10_online.yaml",
             "config_sample_hg_shape_exploration_benchmark.yaml",
             "config_sample_mismatched_offline.yaml",
             "config_sample_mismatched_online.yaml",

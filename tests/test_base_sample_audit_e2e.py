@@ -8,6 +8,7 @@ import torch
 
 from mia import evaluation as evaluation_module
 from mia import path_utils
+from mia import result_store
 from mia import run_audit as run_audit_module
 
 
@@ -47,7 +48,8 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             ):
                 run_audit_module.run_sample_audit(config=config)
 
-            metrics_path = Path(tmpdir) / "test_base_sample" / path_utils.metrics_pickle_name(target_path.stem, "BASE-off")
+            manifest_path = Path(tmpdir) / "test_base_sample" / "audit_manifest.json"
+            metrics_path, = result_store.load_manifest_paths(manifest_path)
             self.assertTrue(metrics_path.exists())
             grouped_metrics = evaluation_module.collect_grouped_metrics(metrics_path.parent)
             self.assertEqual(len(grouped_metrics), 1)
@@ -82,7 +84,7 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
 
             def fake_evaluate(score, ground_truth):
                 captured_scores.append(score.clone())
-                return {"AUC": 0.5, "pAUC@1%FPR": 0.45, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1, "n_audit_points": len(score)}
+                return {"AUC": 0.5, "pAUC@1%FPR": 0.45, "TPR@1%FPR": 0.25, "TPR@0.1%FPR": 0.1, "TPR@0.01%FPR": 0.01, "n_audit_points": len(score)}
 
             with (
                 patch.object(run_audit_module, "select_sample_audit_indices", return_value=torch.arange(4, dtype=torch.long)),
@@ -119,6 +121,38 @@ class TestBaseSampleAuditEndToEnd(unittest.TestCase):
             _, shadow_path_groups = run_audit_module.resolve_target_shadow_paths(config)
 
             self.assertEqual(shadow_path_groups, [[kept_shadow_loss_path.resolve()]])
+
+    def test_entity_shadow_filter_uses_exact_entity_membership_in_both_modes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            masks = [
+                [1, 0, 1, 0, 0, 0, 0, 0],
+                [0, 1, 0, 1, 0, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0, 1, 0],
+                [0, 0, 0, 0, 0, 1, 0, 1],
+                [0, 0, 0, 0, 1, 0, 0, 0],
+                [1, 0, 0, 0, 1, 0, 0, 0],
+            ]
+            paths = []
+            for seed, mask in enumerate(masks):
+                checkpoint = Path(directory) / f"DDPM-CelebA-ent-f0p5-p0p5-s{seed}-sz64-epoch10.pth"
+                path = self._write_loss_file(directory, checkpoint, [1.] * 8, mask)
+                paths.append(path.resolve())
+            metadata = {"entity_ids": [0, 0, 1, 1, 2, 2, 3, 3]}
+            for round_robin in (False, True):
+                config = run_audit_module.utils.Config({
+                    "audit_mode": "entity", "dataset": "CelebA", "round_robin": round_robin,
+                    "target_loss_paths": paths if round_robin else paths[:1],
+                    "shadow_loss_paths": paths,
+                })
+                with patch.object(run_audit_module, "load_dataset_metadata", return_value=metadata):
+                    targets, groups = run_audit_module.resolve_target_shadow_paths(config)
+                target_index = targets.index(paths[0])
+                self.assertEqual(groups[target_index], paths[4:])
+            config.audit_mode = "sample"
+            config.round_robin = False
+            config.target_loss_paths = paths[:1]
+            _, groups = run_audit_module.resolve_target_shadow_paths(config)
+            self.assertEqual(groups[0], paths[1:])
 
 
 if __name__ == "__main__":

@@ -34,6 +34,18 @@ class TestDistributionTest(unittest.TestCase):
             self.assertEqual(indices.tolist(), [0, 1])
             self.assertEqual(masks.tolist(), [[True, False]])
 
+    def test_load_selected_signals_applies_log_without_standardization(self):
+        '''Apply the log transform without centering or scaling the signals.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self.write_signals(Path(tmpdir), 2, [True, False])
+            selected, masks, indices = distribution_test.load_selected_signals(
+                [path], max_points=2, seed=0, normalization="log"
+            )
+            raw = np.array([[3.0, 3.1, 3.2, 3.3, 3.4], [4.0, 4.1, 4.2, 4.3, 4.4]], dtype=np.float32)
+            self.assertTrue(np.allclose(selected[0], np.log(raw), atol=1e-6))
+            self.assertEqual(indices.tolist(), [0, 1])
+            self.assertEqual(masks.tolist(), [[True, False]])
+
     def test_run_distribution_analysis_writes_grouped_statistics_and_plots(self):
         '''Write per-model query tests and member-separated model-mean tests.'''
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -43,7 +55,9 @@ class TestDistributionTest(unittest.TestCase):
                 mask = [model_index < 3, model_index >= 3]
                 self.write_signals(input_dir, model_index, mask)
             output_dir = Path(tmpdir) / "results"
-            result = distribution_test.run_distribution_analysis(input_dir, output_dir, max_points=2)
+            result = distribution_test.run_distribution_analysis(
+                input_dir, output_dir, max_points=2, max_plot_points=1
+            )
             with open(result["csv_path"], newline="") as file:
                 records = list(csv.DictReader(file))
             with open(result["summary_path"]) as file:
@@ -56,10 +70,10 @@ class TestDistributionTest(unittest.TestCase):
             self.assertTrue(all(row["anderson_5pct_critical"] for row in records))
             self.assertEqual(summary["n_models"], 6)
             self.assertEqual(summary["data_indices"], [0, 1])
-            self.assertEqual(len(result["plot_paths"]), 32)
+            self.assertEqual(len(result["plot_paths"]), 16)
             self.assertTrue(all(path.is_file() for path in result["plot_paths"]))
             tikz_paths = [path for path in result["plot_paths"] if path.suffix == ".tex"]
-            self.assertEqual(len(tikz_paths), 16)
+            self.assertEqual(len(tikz_paths), 8)
             self.assertTrue(all(r"\begin{axis}[" in path.read_text() for path in tikz_paths))
             histogram_tikz = next(path for path in tikz_paths if "_hist" in path.name)
             self.assertIn("ybar interval", histogram_tikz.read_text())
@@ -81,14 +95,22 @@ class TestDistributionTest(unittest.TestCase):
             with open(first, "wb") as file:
                 pickle.dump({"loss_sigs": [[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]],
                              "train_mask": [True, False]}, file)
-            with self.assertRaisesRegex(ValueError, "non-finite"):
-                distribution_test.load_selected_signals([first], 2, 0, "log_standardized")
+            for normalization in ("log", "log_standardized"):
+                with self.subTest(normalization=normalization):
+                    with self.assertRaisesRegex(ValueError, "non-finite"):
+                        distribution_test.load_selected_signals([first], 2, 0, normalization)
 
     def test_cli_defaults(self):
         '''Use the requested output root and default raw-signal mode.'''
         args = distribution_test.parse_args(["--input-dir", "/tmp/signals"])
         self.assertEqual(args.output_dir, "temp_results")
         self.assertEqual(args.normalization, "none")
+        self.assertEqual(args.max_points, 200)
+        self.assertEqual(args.max_plot_points, 1)
+        log_args = distribution_test.parse_args(
+            ["--input-dir", "/tmp/signals", "--normalization", "log"]
+        )
+        self.assertEqual(log_args.normalization, "log")
 
 
 if __name__ == "__main__":

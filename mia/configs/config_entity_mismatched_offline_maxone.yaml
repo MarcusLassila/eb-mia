@@ -1,7 +1,7 @@
 dataset: CelebA
 audit_mode: entity
 round_robin: false
-mode: exclude_train
+mode: max_one_train
 min_samples_per_entity: 5
 max_samples_per_entity: 15
 audit_random_seed: 0

@@ -5,6 +5,7 @@ audit_mode: sample
 round_robin: false
 seed: 0
 loss_normalization: log_standardized
+n_loss_samples: 32
 show_auc: false
 results_dir_name: sample_lira_v2_benchmark
 attacks:

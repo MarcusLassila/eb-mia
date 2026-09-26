@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import re
 
 import utils
@@ -118,6 +119,19 @@ def audit_results_dir(results_dir_name, results_root=None):
         results_root = repo_root / "results" / "mia_audit"
     return Path(results_root).expanduser().resolve() / results_dir_name
 
-def metrics_pickle_name(target_stem, attack):
+def metrics_pickle_name(target_metadata, attack, audit_mode, n_queries, settings_id):
     '''Build a flat metrics filename for one target and attack.'''
-    return f"metrics_attack-{attack}_target-{target_stem}.pkl"
+    target_stem = target_metadata["target_stem"]
+    signal = target_metadata["signal_type"].replace("_", "-")
+    noise = format_float_filename_token(target_metadata["noise_level"])
+    name = f"metrics_attack-{attack}_target-{target_stem}_{audit_mode}_{signal}-n{n_queries}-nl{noise}_cfg-{settings_id}.pkl"
+    if Path(name).name != name or len(name.encode("utf-8")) > 255:
+        raise ValueError("Audit result filename must be a single component of at most 255 bytes.")
+    return name
+
+def audit_seed(target_loss_path, seed):
+    '''Return a deterministic RNG seed from the configured seed and target checkpoint identity.'''
+    metadata = parse_loss_signal_path(target_loss_path)
+    identity = f"{seed}:{metadata['target_stem']}"
+    digest = hashlib.sha256(identity.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % (2 ** 63)

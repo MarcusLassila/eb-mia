@@ -54,7 +54,7 @@ class TestAttacks(unittest.TestCase):
             prior=0.5,
         ).run_attack(target_loss_sigs[:, None])
 
-        expected = torch.sigmoid(torch.tensor([7.5, 4.25], dtype=torch.float32))
+        expected = torch.tensor([7.5, 4.25], dtype=torch.float32)
         self.assertTrue(torch.allclose(score, expected, atol=1e-6))
 
     def test_normal_base_switches_between_global_and_per_sample_variance(self):
@@ -138,8 +138,9 @@ class TestAttacks(unittest.TestCase):
 
 
     def test_hg_lira_r_offline_score_matches_manual_cdf_mixture(self):
-        '''Compare offline HG_LiRA_r with its manual predictive CDF mixture.'''
+        '''Compare both offline HG_LiRA_r tails with a manual CDF mixture.'''
         shadow_sigs, shadow_mask, target_sigs = self._hierarchical_gibbs_inputs()
+        target_sigs[0] += 1.0
         attacker = attacks_sample.HG_LiRA_r(
             ref_sigs=shadow_sigs,
             ref_train_mask=shadow_mask,
@@ -159,6 +160,14 @@ class TestAttacks(unittest.TestCase):
         nodes, weights = np.polynomial.hermite.hermgauss(
             attacker.n_quadrature
         )
+        quadrature_mean = attacker.Ms_out[None, :, :]
+        quadrature_mean = quadrature_mean + (
+            np.sqrt(2.0 * attacker.Vs_out)[None, :, :]
+            * nodes[:, None, None]
+        )
+        cdf_offsets = target_mean[None, None, :] - quadrature_mean
+        self.assertTrue(np.any(cdf_offsets < 0.0))
+        self.assertTrue(np.any(cdf_offsets >= 0.0))
         state_log_cdf = []
         for state_index in range(attacker.n_gibbs_samples):
             node_log_cdf = []
@@ -261,7 +270,7 @@ class TestAttacks(unittest.TestCase):
         self.assertTrue(torch.allclose(raw_score, mean_score, atol=1e-6))
 
     def test_composite_lira_online_uses_constructor_audit_table(self):
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table={0: [0], 1: [2]},
             shadow_loss_sigs=torch.tensor([
                 [10.0, 1.0, 5.0, 6.0],
@@ -292,7 +301,7 @@ class TestAttacks(unittest.TestCase):
             0: [0, 1],
             1: [2, 3],
         }
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [1.0, 1.2, 5.0, 5.2],
@@ -322,7 +331,7 @@ class TestAttacks(unittest.TestCase):
             0: [0],
             1: [2],
         }
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [10.0, 1.0, 5.0, 6.0],
@@ -355,7 +364,7 @@ class TestAttacks(unittest.TestCase):
             0: [2, 3],
             1: [6, 7],
         }
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [10.0, 11.0, 1.0, 2.0, 20.0, 21.0, 3.0, 4.0],
@@ -376,7 +385,7 @@ class TestAttacks(unittest.TestCase):
             0: [2, 3],
             1: [6, 7],
         }
-        attacker = attacks_entity.CompositeLiRA(
+        attacker = attacks_entity.CompositeLiRA_legacy(
             audit_table=audit_table,
             shadow_loss_sigs=torch.tensor([
                 [10.0, 11.0, 1.0, 2.0, 20.0, 21.0, 3.0, 4.0],
@@ -413,7 +422,7 @@ class TestAttacks(unittest.TestCase):
             [0, 1],
             [0, 1],
         ], dtype=torch.bool)
-        attacker = attacks_entity.CompositeLiRAv2(
+        attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
             shadow_entity_mask=shadow_entity_mask,
@@ -457,7 +466,7 @@ class TestAttacks(unittest.TestCase):
         for use_global_dispersion in (True, False):
             for covariance in ("spherical", "diagonal", "low_rank", "full"):
                 with self.subTest(global_dispersion=use_global_dispersion, covariance=covariance):
-                    attacker = attacks_entity.CompositeLiRAv2(
+                    attacker = attacks_entity.CompositeLiRA(
                         audit_table=audit_table,
                         shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
                         shadow_entity_mask=shadow_entity_mask,
@@ -494,7 +503,7 @@ class TestAttacks(unittest.TestCase):
                     self.assertTrue(torch.isfinite(score[0]))
                     self.assertTrue(torch.isfinite(score[1]))
 
-        default_attacker = attacks_entity.CompositeLiRAv2(
+        default_attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
             shadow_entity_mask=shadow_entity_mask,
@@ -503,7 +512,7 @@ class TestAttacks(unittest.TestCase):
         self.assertEqual(default_attacker.covariance, "spherical")
         self.assertAlmostEqual(float(default_attacker.var_out), 4.5)
 
-        online_attacker = attacks_entity.CompositeLiRAv2(
+        online_attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
             shadow_entity_mask=shadow_entity_mask,
@@ -522,7 +531,7 @@ class TestAttacks(unittest.TestCase):
             [3.0, 12.0, 22.0],
         ], dtype=torch.float64)
         shadow_entity_mask = torch.zeros((3, 2), dtype=torch.bool)
-        attacker = attacks_entity.CompositeLiRAv2(
+        attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
             shadow_entity_mask=shadow_entity_mask,
@@ -533,7 +542,7 @@ class TestAttacks(unittest.TestCase):
         self.assertAlmostEqual(float(attacker.var_out), 1.0)
         self.assertEqual(len(attacker.run_attack(shadow_loss_sigs[0])), 2)
         with self.assertRaisesRegex(ValueError, "equal probe counts"):
-            attacks_entity.CompositeLiRAv2(
+            attacks_entity.CompositeLiRA(
                 audit_table=audit_table,
                 shadow_loss_sigs=shadow_loss_sigs.unsqueeze(-1),
                 shadow_entity_mask=shadow_entity_mask,
@@ -552,7 +561,7 @@ class TestAttacks(unittest.TestCase):
         shadow_entity_mask = torch.tensor([
             [1, 0], [1, 0], [0, 1], [0, 1],
         ], dtype=torch.bool)
-        attacker = attacks_entity.CompositeLiRAv2(
+        attacker = attacks_entity.CompositeLiRA(
             audit_table=audit_table,
             shadow_loss_sigs=shadow_loss_sigs,
             shadow_entity_mask=shadow_entity_mask,

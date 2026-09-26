@@ -3,12 +3,14 @@ from . import attacks_entity
 from . import attacks_sample
 from . import evaluation
 from . import path_utils
+from . import result_store
 from .utils import (
     entitiy_train_mask,
     indices_of_shadow_models,
     select_sample_audit_indices,
     select_entity_audit_indices,
     load_loss_signals,
+    subsample_loss_signals,
     standardize_signals,
 )
 import utils
@@ -17,9 +19,7 @@ import argparse
 import torch
 from tqdm.auto import tqdm
 
-import pickle
 import yaml
-import numpy as np
 
 def attack_config_from_config(config):
     '''
@@ -66,7 +66,7 @@ def get_attacker(
                 shadow_train_mask=shadow_train_mask,
                 offline=getattr(attack_config, "offline", False),
                 prior=getattr(attack_config, "prior", 0.5),
-                apply_sigmoid=getattr(attack_config, "apply_sigmoid", True),
+                apply_sigmoid=getattr(attack_config, "apply_sigmoid", False),
             )
         case "NormalBASE":
             attacker = attacks_sample.NormalBASE(
@@ -75,7 +75,7 @@ def get_attacker(
                 offline=getattr(attack_config, "offline", False),
                 prior=getattr(attack_config, "prior", 0.5),
                 use_global_var=getattr(attack_config, "use_global_dispersion", True),
-                apply_sigmoid=getattr(attack_config, "apply_sigmoid", True),
+                apply_sigmoid=getattr(attack_config, "apply_sigmoid", False),
             )
         case "LiRA_alt":
             attacker = attacks_sample.LiRA_alt(
@@ -83,7 +83,7 @@ def get_attacker(
                 shadow_train_mask=shadow_train_mask,
                 offline=getattr(attack_config, "offline", False),
                 use_global_var=getattr(attack_config, "use_global_dispersion", False),
-                loss_transformation=getattr(attack_config, "loss_transformation", "log"),
+                loss_transformation=getattr(attack_config, "loss_transformation", "none"),
             )
         case "LiRA_legacy":
             attacker = attacks_sample.LiRA_legacy(
@@ -122,30 +122,40 @@ def get_attacker(
                 n_gibbs_warmup=getattr(attack_config, "n_gibbs_warmup", 64),
                 n_quadrature=getattr(attack_config, "n_quadrature", 50),
             )
+        case "HG_LiRA_r_shared":
+            attacker = attacks_sample.HG_LiRA_r_shared(
+                ref_sigs=shadow_loss_sigs,
+                ref_train_mask=shadow_train_mask,
+                offline=getattr(attack_config, "offline", False),
+                sig_transformation=getattr(attack_config, "loss_transformation", "none"),
+                n_gibbs_samples=getattr(attack_config, "n_gibbs_samples", 128),
+                n_gibbs_warmup=getattr(attack_config, "n_gibbs_warmup", 64),
+                n_quadrature=getattr(attack_config, "n_quadrature", 50),
+                random_seed=getattr(attack_config, "random_seed", 42),
+            )
         case "CompositeBASE":
             attacker = attacks_entity.CompositeBASE(
                 attack_config=attack_config,
                 shadow_loss_sigs=shadow_loss_sigs,
                 shadow_train_mask=shadow_train_mask,
             )
-        case "CompositeLiRA":
-            attacker = attacks_entity.CompositeLiRA(
+        case "CompositeLiRA_legacy":
+            attacker = attacks_entity.CompositeLiRA_legacy(
                 audit_table=audit_table,
                 shadow_loss_sigs=shadow_loss_sigs,
                 shadow_entity_mask=shadow_entity_mask,
                 offline=getattr(attack_config, "offline", False),
                 use_full_cov=getattr(attack_config, "use_full_cov", False),
             )
-        case "CompositeLiRAv2":
+        case "CompositeLiRA":
             if audit_table is None or shadow_entity_mask is None:
                 raise ValueError("CompositeLiRA requires audit_table and shadow_entity_mask.")
-            attacker = attacks_entity.CompositeLiRAv2(
+            attacker = attacks_entity.CompositeLiRA(
                 audit_table=audit_table,
                 shadow_loss_sigs=shadow_loss_sigs,
                 shadow_entity_mask=shadow_entity_mask,
                 offline=getattr(attack_config, "offline", False),
-                use_full_cov=getattr(attack_config, "use_full_cov", False),
-                covariance=getattr(attack_config, "covariance", None),
+                covariance=getattr(attack_config, "covariance", "spherical"),
                 use_global_dispersion=getattr(attack_config, "use_global_dispersion", True),
                 share_variance=getattr(attack_config, "share_variance", False),
                 covariance_rank=getattr(attack_config, "covariance_rank", 2),
@@ -190,7 +200,7 @@ def get_attacker(
     assert attacker is not None
     return attacker
 
-def resolve_target_shadow_paths(config):
+def resolve_target_shadow_paths(config, entity_ids=None):
     '''
     Resolve per-target shadow loss-signal path groups for auditing.
     Args:
@@ -200,55 +210,35 @@ def resolve_target_shadow_paths(config):
     '''
     target_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "target_loss_paths")
     if getattr(config, "round_robin", False):
-        target_train_masks = []
-        for target_loss_path in target_loss_paths:
-            _, train_mask = load_loss_signals(target_loss_path)
-            target_train_masks.append(train_mask)
-        target_train_masks = torch.stack(target_train_masks)
-        shadow_path_groups = []
-        for target_idx in range(len(target_loss_paths)):
-            shadow_indices = indices_of_shadow_models(target_idx, target_train_masks)
-            shadow_path_groups.append([target_loss_paths[idx] for idx in shadow_indices])
-        return target_loss_paths, shadow_path_groups
-    shadow_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "shadow_loss_paths")
+        shadow_loss_paths = target_loss_paths
+    else:
+        shadow_loss_paths = path_utils.resolve_audit_loss_signal_paths(config, "shadow_loss_paths")
+    all_paths = sorted(set(target_loss_paths + shadow_loss_paths))
+    train_masks = []
+    for loss_path in all_paths:
+        _, train_mask = load_loss_signals(loss_path)
+        if train_masks and len(train_mask) != len(train_masks[0]):
+            raise ValueError(f"Unexpected train-mask length in {loss_path}.")
+        train_masks.append(train_mask)
+    train_masks = torch.stack(train_masks)
+    if config.audit_mode == "entity":
+        if entity_ids is None:
+            metadata = load_dataset_metadata(config.dataset)
+            entity_ids = torch.tensor(metadata["entity_ids"], dtype=torch.long)
+        if len(entity_ids) != train_masks.shape[1]:
+            raise ValueError("Entity metadata must match the loss-signal population.")
+        unique_entities, entity_ids = torch.unique(entity_ids, return_inverse=True)
+        train_masks = entitiy_train_mask(entity_ids, len(unique_entities), train_masks)
+    candidate_paths = set(shadow_loss_paths)
     shadow_path_groups = []
     for target_loss_path in target_loss_paths:
-        filtered_shadow_paths = filter_shadow_loss_paths(
-            target_loss_path,
-            shadow_loss_paths,
-        )
-        shadow_path_groups.append(filtered_shadow_paths)
+        target_index = all_paths.index(target_loss_path)
+        shadow_indices = indices_of_shadow_models(target_index, train_masks)
+        filtered_paths = [all_paths[index] for index in shadow_indices if all_paths[index] in candidate_paths]
+        if not filtered_paths:
+            raise ValueError(f"No shadow models remain after excluding target and complement splits for {target_loss_path}.")
+        shadow_path_groups.append(filtered_paths)
     return target_loss_paths, shadow_path_groups
-
-def filter_shadow_loss_paths(target_loss_path, shadow_loss_paths):
-    '''
-    Exclude explicit shadows trained on the target split or exact complement.
-    Args:
-        target_loss_path (Path): Target loss-signal pickle path.
-        shadow_loss_paths (list[Path]): Candidate shadow loss-signal pickle paths.
-    Returns:
-        list[Path]: Filtered shadow loss-signal pickle paths.
-    '''
-    _, target_train_mask = load_loss_signals(target_loss_path)
-    filtered_shadow_paths = []
-    for shadow_loss_path in shadow_loss_paths:
-        _, shadow_train_mask = load_loss_signals(shadow_loss_path)
-        if len(shadow_train_mask) != len(target_train_mask):
-            raise ValueError(
-                f"Unexpected train-mask length in {shadow_loss_path}: "
-                f"got {len(shadow_train_mask)}, expected {len(target_train_mask)}."
-            )
-        same_train_split = torch.equal(shadow_train_mask, target_train_mask)
-        complement_train_split = torch.equal(shadow_train_mask, ~target_train_mask)
-        if same_train_split or complement_train_split:
-            continue
-        filtered_shadow_paths.append(shadow_loss_path)
-    if not filtered_shadow_paths:
-        raise ValueError(
-            f"No shadow models remain after excluding target and complement "
-            f"splits for {target_loss_path}."
-        )
-    return filtered_shadow_paths
 
 def load_shadow_loss_signals(shadow_loss_paths, target_len):
     '''
@@ -324,43 +314,6 @@ def _validate_entity_hold_out_indices(entity_index_table, loss_paths, target_len
                 f"Entity {entity_id} hold-out indices {used_indices} appear in train masks for {used_paths}."
             )
 
-def print_average_metrics_table(attack, metrics_list, show_auc=False):
-    '''
-    Print mean audit metrics over target models.
-    Args:
-        attack (str): Attack name shown in the summary.
-        metrics_list (list[dict]): Metrics for each target model.
-        show_auc (bool): Whether to print AUC.
-    Returns:
-        None
-    '''
-    metric_names = ["AUC"] if show_auc else []
-    metric_names.extend(["pAUC@1%FPR", "TPR@1%FPR", "TPR@0.1%FPR", "n_audit_points"])
-    rows = []
-    for metric_name in metric_names:
-        mean_value = float(np.mean([metrics[metric_name] for metrics in metrics_list]))
-        rows.append([metric_name, f"{mean_value:.4f}"])
-    print("")
-    print(f"Audit summary ({attack})")
-    evaluation.print_metrics_table(["Metric", "Mean"], rows, text_columns=1)
-
-def save_audit_metrics(config, metrics, target_loss_path, attack):
-    '''Save one target's metrics with grouping metadata in the benchmark directory.'''
-    target_metadata = path_utils.parse_loss_signal_path(target_loss_path)
-    metrics["attack"] = attack
-    metrics["target_stem"] = target_metadata["target_stem"]
-    metrics["target_model"] = target_metadata["model"]
-    metrics["target_dataset"] = target_metadata["dataset"]
-    metrics["audit_config"] = dict(config.__dict__)
-    results_root = getattr(config, "results_root", None)
-    results_dir = path_utils.audit_results_dir(config.results_dir_name, results_root)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    filename = path_utils.metrics_pickle_name(target_metadata["target_stem"], attack)
-    metrics_path = results_dir / filename
-    with open(metrics_path, "wb") as file:
-        pickle.dump(metrics, file)
-    return metrics_path
-
 def run_sample_audit(config):
     '''
     Run a sample-level membership inference audit.
@@ -372,16 +325,25 @@ def run_sample_audit(config):
     attack_config = attack_config_from_config(config)
     attack = getattr(attack_config, "name", attack_config.attack)
     target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
-    all_metrics = []
-    for target_loss_path, shadow_loss_paths in tqdm(
-        zip(target_loss_paths, shadow_path_groups),
+    n_loss_samples = getattr(config, "n_loss_samples", None)
+    sampling_seed = int(getattr(config, "seed", 0))
+    metrics_paths = []
+    target_shadow_pairs = zip(target_loss_paths, shadow_path_groups)
+    progress = tqdm(
+        target_shadow_pairs,
         total=len(target_loss_paths),
         desc="Running sample-level audit",
-    ):
+    )
+    for target_loss_path, shadow_loss_paths in progress:
         target_loss_sigs, target_train_mask = load_loss_signals(target_loss_path)
         n_population = len(target_loss_sigs)
         shadow_loss_sigs, shadow_train_mask = load_shadow_loss_signals(shadow_loss_paths, len(target_loss_sigs))
-        loss_normalization = getattr(config, "loss_normalization", "none")
+        target_seed = path_utils.audit_seed(target_loss_path, sampling_seed)
+        if n_loss_samples is not None:
+            generator = torch.Generator().manual_seed(target_seed)
+            target_loss_sigs = subsample_loss_signals(target_loss_sigs, n_loss_samples, generator)
+            shadow_loss_sigs = subsample_loss_signals(shadow_loss_sigs, n_loss_samples, generator)
+        loss_normalization = getattr(config, "loss_normalization", "log_standardized")
         target_loss_sigs, shadow_loss_sigs = normalize_loss_signals(
             target_loss_sigs,
             shadow_loss_sigs,
@@ -389,20 +351,24 @@ def run_sample_audit(config):
         )
         attacker = get_attacker(attack_config, shadow_loss_sigs, shadow_train_mask)
         scores = attacker.run_attack(target_loss_sigs)
+        audit_generator = torch.Generator().manual_seed(target_seed)
         audit_indices = select_sample_audit_indices(
             getattr(config, "n_audit_samples", n_population),
             target_train_mask,
+            generator=audit_generator,
         )
         ground_truth = target_train_mask.to(dtype=torch.long)[audit_indices]
         audit_scores = scores[audit_indices]
         metrics = evaluation.evaluate_MIA(score=audit_scores, ground_truth=ground_truth)
-        all_metrics.append(metrics)
-        save_audit_metrics(config, metrics, target_loss_path, attack)
+        metrics["audit_indices"] = audit_indices.tolist()
+        metrics_path = result_store.save_audit_metrics(config, metrics, target_loss_path, shadow_loss_paths, attack)
+        metrics_paths.append(metrics_path)
+    manifest_path = result_store.write_audit_manifest(config, metrics_paths)
     if getattr(config, "print_summary", True):
-        print_average_metrics_table(
-            attack,
-            all_metrics,
+        evaluation.print_grouped_metrics(
+            metrics_paths[0].parent,
             show_auc=getattr(config, "show_auc", False),
+            manifest_path=manifest_path,
         )
 
 def run_entity_audit(config):
@@ -415,39 +381,41 @@ def run_entity_audit(config):
     '''
     attack_config = attack_config_from_config(config)
     sample_attack = getattr(attack_config, "name", attack_config.attack)
-    target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config)
-    target_properties = path_utils.parse_loss_signal_path(target_loss_paths[0])
-    hold_out_frac = target_properties["per_entity_hold_out"]
     metadata = load_dataset_metadata(config.dataset)
     entity_ids = torch.tensor(metadata["entity_ids"], dtype=torch.long)
+    target_loss_paths, shadow_path_groups = resolve_target_shadow_paths(config, entity_ids)
     n_entities = int(metadata["n_entities"])
     n_population = int(metadata["n_samples"])
     entity_index_table = entity_index_table_from_entity_ids(metadata["entity_ids"])
     min_samples_per_entity = getattr(config, "min_samples_per_entity", 0)
     max_samples_per_entity = getattr(config, "max_samples_per_entity", None)
     audit_random_seed = int(getattr(config, "audit_random_seed", 0))
-    if hold_out_frac > 0.0:
-        all_loss_paths = target_loss_paths + [path for shadow_paths in shadow_path_groups for path in shadow_paths]
-        unique_loss_paths = list(dict.fromkeys(all_loss_paths))
-        _validate_entity_hold_out_indices(
-            entity_index_table=entity_index_table,
-            loss_paths=unique_loss_paths,
-            target_len=n_population,
-            hold_out_frac=hold_out_frac,
-        )
-    all_metrics = []
+    n_loss_samples = getattr(config, "n_loss_samples", None)
+    metrics_paths = []
     target_shadow_pairs = zip(target_loss_paths, shadow_path_groups)
     progress = tqdm(
         target_shadow_pairs,
         total=len(target_loss_paths),
         desc="Running entity-level audit",
     )
-    for target_index, (target_loss_path, shadow_loss_paths) in enumerate(progress):
+    for target_loss_path, shadow_loss_paths in progress:
+        hold_out_frac = path_utils.parse_loss_signal_path(target_loss_path)["per_entity_hold_out"]
+        _validate_entity_hold_out_indices(
+            entity_index_table=entity_index_table,
+            loss_paths=[target_loss_path, *shadow_loss_paths],
+            target_len=n_population,
+            hold_out_frac=hold_out_frac,
+        )
         target_loss_sigs, target_train_mask = load_loss_signals(target_loss_path)
         if len(target_loss_sigs) != n_population:
             raise ValueError(f"Unexpected loss-signal length in {target_loss_path}: got {len(target_loss_sigs)}, expected {n_population}.")
         shadow_loss_sigs, shadow_train_mask = load_shadow_loss_signals(shadow_loss_paths, len(target_loss_sigs))
-        loss_normalization = getattr(config, "loss_normalization", "none")
+        target_seed = path_utils.audit_seed(target_loss_path, audit_random_seed)
+        if n_loss_samples is not None:
+            generator = torch.Generator().manual_seed(target_seed)
+            target_loss_sigs = subsample_loss_signals(target_loss_sigs, n_loss_samples, generator)
+            shadow_loss_sigs = subsample_loss_signals(shadow_loss_sigs, n_loss_samples, generator)
+        loss_normalization = getattr(config, "loss_normalization", "log_standardized")
         target_loss_sigs, shadow_loss_sigs = normalize_loss_signals(
             target_loss_sigs,
             shadow_loss_sigs,
@@ -456,7 +424,7 @@ def run_entity_audit(config):
         target_train_index = utils.mask_to_index(target_train_mask)
         train_entity_ids = torch.unique(entity_ids[target_train_index])
         shadow_entity_mask = entitiy_train_mask(entity_ids=entity_ids, n_entities=n_entities, sample_train_mask=shadow_train_mask)
-        torch.manual_seed(audit_random_seed + target_index)
+        audit_generator = torch.Generator().manual_seed(target_seed)
         audit_table = select_entity_audit_indices(
             entity_index_table=entity_index_table,
             train_mask=target_train_mask,
@@ -464,6 +432,7 @@ def run_entity_audit(config):
             min_samples_per_entity=min_samples_per_entity,
             max_samples_per_entity=max_samples_per_entity,
             hold_out_frac=hold_out_frac,
+            generator=audit_generator,
         )
         audit_entity_ids = torch.tensor(sorted(audit_table.keys()), dtype=torch.long)
         ground_truth = torch.isin(audit_entity_ids, train_entity_ids).to(dtype=torch.long)
@@ -478,7 +447,7 @@ def run_entity_audit(config):
         match attack_config.attack:
             case "CompositeBASE":
                 score = attacker.run_attack(audit_table=audit_table, target_loss_sigs=target_loss_sigs)
-            case "CompositeLiRA" | "CompositeLiRAv2" | "HBE_Simple" | "HBE_GlobalLatent":
+            case "CompositeLiRA_legacy" | "CompositeLiRA" | "HBE_Simple" | "HBE_GlobalLatent":
                 score = attacker.run_attack(target_loss_sigs)
             case _:
                 raise ValueError(f"Unsupported entity-level attack: {attack_config.attack}")
@@ -489,13 +458,16 @@ def run_entity_audit(config):
             metrics["calibration_diagnostics"] = attacker.calibration_diagnostics
         if hasattr(attacker, "fit_diagnostics"):
             metrics["fit_diagnostics"] = attacker.fit_diagnostics
-        all_metrics.append(metrics)
-        save_audit_metrics(config, metrics, target_loss_path, sample_attack)
+        metrics["audit_entity_ids"] = audit_entity_ids.tolist()
+        metrics["audit_table"] = audit_table
+        metrics_path = result_store.save_audit_metrics(config, metrics, target_loss_path, shadow_loss_paths, sample_attack)
+        metrics_paths.append(metrics_path)
+    manifest_path = result_store.write_audit_manifest(config, metrics_paths)
     if getattr(config, "print_summary", True):
-        print_average_metrics_table(
-            sample_attack,
-            all_metrics,
+        evaluation.print_grouped_metrics(
+            metrics_paths[0].parent,
             show_auc=getattr(config, "show_auc", False),
+            manifest_path=manifest_path,
         )
 
 def parse_args(argv=None):

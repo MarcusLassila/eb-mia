@@ -90,12 +90,21 @@ class TestMiaPathUtils(unittest.TestCase):
             result_dir = path_utils.audit_results_dir("sample_core_offline", temporary_dir)
 
             self.assertEqual(result_dir, (Path(temporary_dir) / "sample_core_offline").resolve())
-            self.assertEqual(
-                path_utils.metrics_pickle_name("DDPM-CIFAR10-sz32", "LiRA"),
-                "metrics_attack-LiRA_target-DDPM-CIFAR10-sz32.pkl",
-            )
+            metadata = {
+                "target_stem": "DDPM-CIFAR10-sz32", "signal_type": "loss", "noise_level": 0.1,
+            }
+            filename = path_utils.metrics_pickle_name(metadata, "LiRA", "sample", 64, "abc123")
+            self.assertEqual(filename, "metrics_attack-LiRA_target-DDPM-CIFAR10-sz32_sample_loss-n64-nl0p1_cfg-abc123.pkl")
             with self.assertRaises(ValueError):
                 path_utils.audit_results_dir("nested/name", temporary_dir)
+
+    def test_audit_seed_tracks_target_identity_instead_of_iteration_order(self):
+        filename = "loss-signals-DDPM-CelebA-smpl-f0p5-s0-sz64-epoch400-n64-nl0p1.pkl"
+        seed = path_utils.audit_seed(Path("first") / filename, 7)
+        self.assertEqual(seed, path_utils.audit_seed(Path("other") / filename, 7))
+        self.assertEqual(seed, path_utils.audit_seed(filename.replace("nl0p1", "nl0p2"), 7))
+        self.assertNotEqual(seed, path_utils.audit_seed(filename, 8))
+        self.assertNotEqual(seed, path_utils.audit_seed(filename.replace("-s0-", "-s1-"), 7))
 
 
 if __name__ == "__main__":

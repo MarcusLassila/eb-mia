@@ -22,18 +22,12 @@ def indices_of_shadow_models(index_target, train_mask):
         list[int]: Selected shadow model indices.
     '''
     target_train_mask = train_mask[index_target]
-    index_complement = None
-    indices = []
-    for i, mask in enumerate(train_mask):
-        if torch.all(mask & target_train_mask == 0):
-            assert index_complement is None, "Should be only one complement model"
-            index_complement = i
-        elif i != index_target:
-            indices.append(i)
-    assert index_complement is not None
-    return indices
+    same_split = (train_mask == target_train_mask).all(dim=1)
+    complement_split = (train_mask == ~target_train_mask).all(dim=1)
+    keep_mask = ~(same_split | complement_split)
+    return mask_to_index(keep_mask).tolist()
 
-def select_sample_audit_indices(n_audit_samples, train_mask):
+def select_sample_audit_indices(n_audit_samples, train_mask, generator=None):
     n_in = train_mask.sum().item()
     n_out = (~train_mask).sum().item()
     n_audit_samples = min(n_audit_samples, 2 * n_in, 2 * n_out)
@@ -41,9 +35,9 @@ def select_sample_audit_indices(n_audit_samples, train_mask):
     assert res == 0, "Require an even number of audit samples"
     member_indices = mask_to_index(train_mask)
     non_member_indices = mask_to_index(~train_mask)
-    rand_mask = torch.randperm(member_indices.shape[0])
+    rand_mask = torch.randperm(member_indices.shape[0], generator=generator)
     selected_members = member_indices[rand_mask][:n_audit_per_class]
-    rand_mask = torch.randperm(non_member_indices.shape[0])
+    rand_mask = torch.randperm(non_member_indices.shape[0], generator=generator)
     selected_non_members = non_member_indices[rand_mask][:n_audit_per_class]
     audit_indices = torch.cat((selected_members, selected_non_members)).sort()[0]
     return audit_indices
@@ -55,12 +49,13 @@ def select_entitywise_audit_indices(
     min_samples_per_entity=0,
     max_samples_per_entity=None,
     hold_out_frac=0.0,
+    generator=None,
 ):
     entity_indices = torch.as_tensor(entity_indices)
     train_indices = entity_indices[train_mask[entity_indices]]
-    train_indices = train_indices[torch.randperm(train_indices.shape[0])]
+    train_indices = train_indices[torch.randperm(train_indices.shape[0], generator=generator)]
     non_train_indices = entity_indices[~train_mask[entity_indices]]
-    non_train_indices = non_train_indices[torch.randperm(non_train_indices.shape[0])]
+    non_train_indices = non_train_indices[torch.randperm(non_train_indices.shape[0], generator=generator)]
     is_member_entity = train_indices.shape[0] > 0
     if max_samples_per_entity is None:
         max_samples_per_entity = entity_indices.shape[0]
@@ -103,10 +98,11 @@ def select_entity_audit_indices(
     max_samples_per_entity: int = None,
     hold_out_frac: float = 0.0,
     balance_in_and_out: bool = True,
+    generator=None,
 ):
     train_entity_ids = set()
     selected_index_table = {}
-    for entity_id, indices in entity_index_table.items():
+    for entity_id, indices in sorted(entity_index_table.items()):
         selected_indices, is_member_entity = select_entitywise_audit_indices(
             entity_indices=indices,
             train_mask=train_mask,
@@ -114,6 +110,7 @@ def select_entity_audit_indices(
             min_samples_per_entity=min_samples_per_entity,
             max_samples_per_entity=max_samples_per_entity,
             hold_out_frac=hold_out_frac,
+            generator=generator,
         )
         if selected_indices:
             selected_index_table[entity_id] = selected_indices
@@ -127,7 +124,13 @@ def select_entity_audit_indices(
             raise RuntimeError("Failed to include both target and non-target entities in the audit table.")
 
         keep_per_class = min(len(in_entity_ids), len(out_entity_ids))
-        selected_entity_ids = in_entity_ids[:keep_per_class] + out_entity_ids[:keep_per_class]
+        selected_entity_ids = []
+        for entity_ids in (in_entity_ids, out_entity_ids):
+            if len(entity_ids) > keep_per_class:
+                permutation = torch.randperm(len(entity_ids), generator=generator)
+                entity_ids = [entity_ids[index] for index in permutation[:keep_per_class]]
+            selected_entity_ids.extend(entity_ids)
+        selected_entity_ids.sort()
         audit_table = {entity_id: selected_index_table[entity_id] for entity_id in selected_entity_ids}
     else:
         audit_table = selected_index_table
@@ -156,6 +159,23 @@ def load_loss_signals(loss_path):
     if len(loss_sigs) != len(train_mask):
         raise ValueError(f"Loss-signal length and train mask length mismatch in {loss_path}.")
     return loss_sigs, train_mask
+
+def subsample_loss_signals(signals, n_samples, generator=None):
+    '''Sample loss signals without replacement along each row's final axis.
+    Args:
+        signals (torch.Tensor): Loss samples for points or models and points.
+        n_samples (int): Number of samples to keep from each row.
+        generator (torch.Generator | None): Optional random generator.
+    Returns:
+        torch.Tensor: Independently sampled rows with n_samples values each.
+    '''
+    if n_samples < 1 or n_samples > signals.shape[-1]:
+        raise ValueError("n_loss_samples must be between 1 and the available loss-sample count.")
+    if n_samples == signals.shape[-1]:
+        return signals
+    random_values = torch.rand(signals.shape, generator=generator, device=signals.device)
+    sample_indices = random_values.argsort(dim=-1)[..., :n_samples]
+    return signals.gather(-1, sample_indices)
 
 def standardize_signals(signals, pretransformation, min_std=1e-12):
     '''Apply a named transformation before standardizing each model's signals.

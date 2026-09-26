@@ -3,14 +3,10 @@ round_robin: true
 seed: 0
 n_loss_samples: 32
 loss_normalization: log_standardized
+results_root: temp_results
+results_dir_name: ddpm_cifar10_online_loss_attacks
 loss_paths:
-# - loss-signals/DDPM-CIFAR10-sample
-# - loss-signals/FM-CIFAR10-sample
-# - loss-signals/DDPM-CelebA-sample
-# - loss-signals/FM-CelebA-sample
-- loss-signals/FM-ImageNet32-loss-signals
-results_dir_name: audit_results_sample_core_online_100k
-n_audit_samples: 100000
+- loss-signals/DDPM-CIFAR10-sample
 attacks:
 - name: BASE
   attack: BASE
@@ -26,6 +22,7 @@ attacks:
   attack: HG_LiRA_r_shared
   offline: false
   loss_transformation: none
-  n_gibbs_samples: 128
+  n_quadrature: 50
   n_gibbs_warmup: 64
-  n_quadrature: 65
+  n_gibbs_samples: 128
+  random_seed: 42

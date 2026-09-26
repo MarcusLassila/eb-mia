@@ -28,7 +28,7 @@ class CompositeBASE:
             scores[entity_id] = entity_scores.sum()
         return scores
 
-class CompositeLiRA:
+class CompositeLiRA_legacy:
 
     def __init__(self, audit_table, shadow_loss_sigs, shadow_entity_mask, offline=True, use_full_cov=False):
         self.audit_table = audit_table
@@ -96,7 +96,7 @@ class CompositeLiRA:
                 score[entity_id] = torch.tensor(log_p_in - log_p_out, dtype=torch.float32)
         return score
 
-class CompositeLiRAv2:
+class CompositeLiRA:
 
     def __init__(
         self,
@@ -104,9 +104,8 @@ class CompositeLiRAv2:
         shadow_loss_sigs,
         shadow_entity_mask,
         offline=True,
-        use_full_cov=False,
         loss_transformation="none",
-        covariance=None,
+        covariance="spherical",
         use_global_dispersion=True,
         share_variance=False,
         covariance_rank=2,
@@ -114,8 +113,7 @@ class CompositeLiRAv2:
         n_qmc_samples=1024,
         random_seed=0,
     ):
-        if covariance is None:
-            covariance = "full" if use_full_cov else "spherical"
+
         if covariance not in {"spherical", "diagonal", "low_rank", "full"}:
             raise ValueError(f"Unknown CompositeLiRA covariance: {covariance}")
         if share_variance and (offline or covariance != "spherical"):

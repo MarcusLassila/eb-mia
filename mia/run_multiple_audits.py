@@ -8,6 +8,7 @@ import yaml
 
 from . import evaluation
 from . import path_utils
+from . import result_store
 
 
 def load_batch_config(config_path):
@@ -92,6 +93,7 @@ def build_audit_configs(batch_config):
                 audit_config = dict(group_config)
                 audit_config["target_loss_paths"] = loss_path_pair["target_loss_paths"]
                 audit_config["shadow_loss_paths"] = loss_path_pair["shadow_loss_paths"]
+                audit_config["reference_protocol"] = loss_path_pairs
                 audit_config["attack"] = dict(attack_config)
                 audit_config["print_summary"] = True
                 audit_configs.append(audit_config)
@@ -105,9 +107,13 @@ def run_audits(audit_configs):
     Returns:
         None
     '''
+    results_by_directory = {}
     with tempfile.TemporaryDirectory(prefix="eb-mia-audits-") as temp_dir:
         temp_dir = Path(temp_dir)
         for index, audit_config in enumerate(audit_configs, start=1):
+            audit_config = dict(audit_config)
+            manifest_path = temp_dir / f"audit-{index}.json"
+            audit_config["manifest_path"] = str(manifest_path)
             attack_config = audit_config["attack"]
             attack_name = attack_config.get("name", attack_config["attack"])
             loss_path = audit_config["target_loss_paths"][0]
@@ -126,6 +132,16 @@ def run_audits(audit_configs):
                 str(config_path),
             ]
             subprocess.run(command, check=True)
+            metrics_paths = result_store.load_manifest_paths(manifest_path)
+            results_root = audit_config.get("results_root")
+            results_dir = path_utils.audit_results_dir(audit_config["results_dir_name"], results_root)
+            results_by_directory.setdefault(results_dir, []).extend(metrics_paths)
+    for results_dir, metrics_paths in results_by_directory.items():
+        resolved_paths = [str(path.resolve()) for path in metrics_paths]
+        if len(set(resolved_paths)) != len(resolved_paths):
+            raise ValueError(f"Duplicate audit settings in batch results for {results_dir}.")
+        manifest = {"schema_version": 2, "metrics_paths": resolved_paths}
+        result_store.write_artifact(results_dir / "audit_manifest.json", manifest)
 
 def parse_args(argv=None):
     '''

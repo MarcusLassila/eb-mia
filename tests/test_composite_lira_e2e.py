@@ -8,6 +8,7 @@ from unittest.mock import patch
 import torch
 
 from mia import path_utils
+from mia import result_store
 from mia import run_audit as run_audit_module
 
 
@@ -77,7 +78,7 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
             def fake_evaluate(score, ground_truth):
                 captured["score"] = score.clone()
                 captured["ground_truth"] = ground_truth.clone()
-                return {"AUC": 1.0, "pAUC@1%FPR": 1.0, "TPR@1%FPR": 1.0, "TPR@0.1%FPR": 1.0, "n_audit_points": 2}
+                return {"AUC": 1.0, "pAUC@1%FPR": 1.0, "TPR@1%FPR": 1.0, "TPR@0.1%FPR": 1.0, "TPR@0.01%FPR": 1.0, "n_audit_points": 2}
 
             with (
                 patch.object(
@@ -96,11 +97,8 @@ class TestCompositeLiRAEndToEnd(unittest.TestCase):
 
             self.assertTrue(torch.equal(captured["ground_truth"], torch.tensor([1, 0], dtype=torch.long)))
             self.assertEqual(captured["score"].shape, (2,))
-            metrics_path = (
-                Path(tmpdir)
-                / "test_composite_lira"
-                / path_utils.metrics_pickle_name(target_path.stem, "CompositeLiRA-online-none")
-            )
+            manifest_path = Path(tmpdir) / "test_composite_lira" / "audit_manifest.json"
+            metrics_path, = result_store.load_manifest_paths(manifest_path)
             self.assertTrue(metrics_path.exists())
 
 

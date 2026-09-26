@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import norm
 import torch
 
-from mia.attacks_entity import CompositeLiRAv2
+from mia.attacks_entity import CompositeLiRA
 from mia.run_audit import get_attacker
 from mia.run_multiple_audits import build_audit_configs, load_batch_config
 
@@ -45,7 +45,7 @@ class TestEntityLiRAVariance(unittest.TestCase):
             degrees[entity_id] = (len(in_values) + len(out_values) - 2) * len(indices)
         for use_global_dispersion in (True, False):
             with self.subTest(use_global_dispersion=use_global_dispersion):
-                attacker = CompositeLiRAv2(
+                attacker = CompositeLiRA(
                     self.audit_table,
                     self.shadow_loss_sigs,
                     self.shadow_entity_mask,
@@ -79,7 +79,7 @@ class TestEntityLiRAVariance(unittest.TestCase):
         for offline, covariance in ((True, "spherical"), (False, "diagonal")):
             with self.subTest(offline=offline, covariance=covariance):
                 with self.assertRaisesRegex(ValueError, "online spherical"):
-                    CompositeLiRAv2(
+                    CompositeLiRA(
                         self.audit_table,
                         self.shadow_loss_sigs,
                         self.shadow_entity_mask,
@@ -91,7 +91,7 @@ class TestEntityLiRAVariance(unittest.TestCase):
     def test_factory_and_benchmark_cover_six_settings(self):
         '''Check factory dispatch and eight paired matched/mixed benchmark cases.'''
         attack_config = SimpleNamespace(
-            attack="CompositeLiRAv2",
+            attack="CompositeLiRA",
             offline=False,
             covariance="spherical",
             use_global_dispersion=False,
